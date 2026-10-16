@@ -167,11 +167,18 @@ export type LighterPublicPosition = {
   entryPrice: number | null;
   unrealizedPnl: number | null;
 };
+export type LighterPublicAsset = {
+  symbol: string;
+  balance: number;
+  lockedBalance: number | null;
+  marginBalance: number | null;
+};
 export type LighterPublicAccount = {
   index: number;
   availableBalance: number | null;
   collateral: number | null;
   positions: LighterPublicPosition[];
+  assets: LighterPublicAsset[] | null;
 };
 
 /** Public GET /api/v1/account, normalized from official DetailedAccount model.
@@ -200,11 +207,24 @@ export async function getLighterPublicAccounts(
         entryPrice: entry, unrealizedPnl: pnl,
       });
     }
+    const assets: LighterPublicAsset[] | null = Array.isArray(account.assets)
+      ? list(account.assets).flatMap(raw => {
+          const item = record(raw);
+          const symbol = typeof item?.symbol === "string" ? item.symbol.trim() : "";
+          const balance = finite(item?.balance);
+          if (!symbol || balance === null) return [];
+          return [{
+            symbol, balance,
+            lockedBalance: finite(item?.locked_balance),
+            marginBalance: finite(item?.margin_balance),
+          }];
+        })
+      : null;
     return {
       index,
       availableBalance: finite(account.available_balance),
       collateral: finite(account.collateral),
-      positions,
+      positions, assets,
     };
   }));
   return responses;

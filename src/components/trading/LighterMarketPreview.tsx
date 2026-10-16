@@ -179,6 +179,27 @@ export default function LighterMarketPreview({
     </div>;
   };
 
+  const lighterAssetCards = (
+    <div className="rounded-xl border border-brand-border bg-brand-surface p-3 space-y-2">
+      <h3 className="text-xs font-bold">Lighter asset balances</h3>
+      {publicAccounts === null
+        ? <p className="text-xs text-brand-muted">{accountsLoading ? "Loading actual asset balances…" : "Connect wallet to check balances."}</p>
+        : publicAccounts.some(a => a.assets === null)
+          ? <p className="text-xs text-brand-muted">Assets unavailable from Lighter account response.</p>
+          : publicAccounts.flatMap(a => (a.assets ?? []).map(asset =>
+              <div key={a.index + ":" + asset.symbol}
+                className="flex justify-between gap-3 py-2 border-t border-brand-border/50 text-[11px]">
+                <div className="min-w-0">
+                  <p className="font-semibold">{asset.symbol} <span className="text-brand-muted font-normal">· Account #{a.index}</span></p>
+                  {asset.lockedBalance !== null && <p className="text-[10px] text-brand-muted">Locked: {formatPrice(asset.lockedBalance, 8)} {asset.symbol}</p>}
+                </div>
+                <div className="font-mono font-bold">{formatPrice(asset.balance, 8)}</div>
+              </div>
+            ))
+          }
+    </div>
+  );
+
   const accountCards = (
     <div className="space-y-3">
       {!walletAddress && <p className="text-xs text-brand-muted">Connect your wallet to check registered Lighter accounts.</p>}
@@ -220,7 +241,7 @@ export default function LighterMarketPreview({
         ordersCount={undefined}
       />
       <div className="p-2 md:p-3 min-h-[110px] overflow-y-auto overflow-x-hidden">
-        {accountTab === "BALANCES" && accountCards}
+        {accountTab === "BALANCES" && <>{lighterAssetCards}{accountCards}</>}
         {accountTab === "POSITIONS" && (
           <div className="space-y-2">
             {accountsLoading && <p className="text-xs text-brand-muted">Checking Lighter positions…</p>}
@@ -520,6 +541,7 @@ export default function LighterMarketPreview({
             </div>)}
         </div>
         <p className="text-[10px] text-brand-muted px-1">Lighter account amounts only. Unsupported spot/margin details remain unavailable—not estimated or copied from Hyperliquid. Deposit and withdrawal open the official exchange until HideDex Lighter signing is verified.</p>
+        {lighterAssetCards}
         {accountCards}
       </div>;
     })()}
