@@ -13,6 +13,7 @@ export type LighterMarket = {
   kind: "perp" | "spot";
   priceDecimals: number;
   sizeDecimals: number;
+  maxLeverage: number | null;
   multiplier: number;
   lastTradePrice: number | null;
   volume24hUsd: number | null;
@@ -65,7 +66,9 @@ export async function getLighterMarkets(signal?: AbortSignal): Promise<LighterMa
     if (id === null || !Number.isInteger(id) || id < 0 || !symbol ||
         pd === null || sd === null || pd < 0 || sd < 0) return;
     const mult = finite(obj.multiplier);
-    result.push({ id, symbol, kind, priceDecimals: pd, sizeDecimals: sd,
+    const f = finite(obj.min_initial_margin_fraction);
+    const maxLeverage = kind === "perp" && f !== null && f > 0 && f <= 10000 ? Math.floor(10000 / f) : null;
+    result.push({ id, symbol, kind, priceDecimals: pd, sizeDecimals: sd, maxLeverage,
       multiplier: mult !== null && mult > 0 ? mult : 1,
       lastTradePrice: finite(obj.last_trade_price),
       volume24hUsd: finite(obj.daily_quote_token_volume),

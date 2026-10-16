@@ -284,3 +284,30 @@ export async function withdrawLighterUsdc(args: {
     return accepted(tx);
   });
 }
+
+export async function updateLighterPerpMargin(args: {
+  walletAddress: string; market: LighterMarket;
+  leverage: number; marginMode: "cross" | "isolated";
+}): Promise<string> {
+  return withWrite(async () => {
+    if (args.market.kind !== "perp" || !Number.isSafeInteger(args.leverage) || args.leverage < 1)
+      throw new Error("Invalid perpetual market or leverage.");
+    const s = active(args.walletAddress);
+    if (!(await verifyLighterTradingKey(args.walletAddress))) throw new Error("Lighter signer not authorized.");
+    const fresh = (await getLighterMarkets()).find(m =>
+      m.kind === "perp" && m.id === args.market.id && m.symbol === args.market.symbol);
+    if (!fresh?.maxLeverage || args.leverage > fresh.maxLeverage)
+      throw new Error("Leverage exceeds the verified Lighter market limit.");
+    const meta = (await s.client.markets()).find(m =>
+      m.marketId === fresh.id && m.symbol === fresh.symbol.toUpperCase());
+    if (!meta?.maxLeverage || args.leverage > meta.maxLeverage ||
+      meta.priceDecimals !== fresh.priceDecimals || meta.sizeDecimals !== fresh.sizeDecimals)
+      throw new Error("Lighter SDK metadata mismatch. No margin update was sent.");
+    const tx = await s.client.rest.updateLeverage(s.signer, {
+      marketIndex: fresh.id, leverage: args.leverage,
+      marginMode: args.marginMode === "isolated" ? 1 : 0,
+      minFraction: meta.minInitialMarginFraction,
+    });
+    return accepted(tx);
+  });
+}
