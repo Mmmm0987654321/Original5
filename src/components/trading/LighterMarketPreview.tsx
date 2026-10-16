@@ -257,7 +257,7 @@ export default function LighterMarketPreview({
     </div>
   );
 
-  return <div className="w-full min-w-0 text-brand-text pb-6" data-exchange="lighter">
+  return <div className="w-full min-w-0 text-brand-text pb-1" data-exchange="lighter">
     {marketError && <div role="alert" className="mb-2 p-3 border border-rose-500/40 rounded-lg text-xs text-rose-400">
       Lighter market API unavailable: {marketError}. Hyperliquid prices are never substituted.
     </div>}
@@ -356,7 +356,7 @@ export default function LighterMarketPreview({
           </div>
         )}
       </div>
-      <div className="grid grid-cols-12 gap-1.5 md:gap-2 mb-2 items-stretch">
+      <div className="grid grid-cols-12 gap-1.5 md:gap-2 mb-1.5 items-stretch">
         <div id="terminal-order-form" className="col-span-7 min-w-0 bg-brand-bg border border-brand-border rounded-xl p-1.5 md:p-2.5 flex flex-col h-full shadow-lg relative gap-2">
           <div className="flex items-center gap-1">
             <select aria-label="Order type" value={orderType}
@@ -458,7 +458,7 @@ export default function LighterMarketPreview({
         ? publicAccounts.reduce((total, a) => total + (a.availableBalance ?? 0), 0) : null;
       const showBalance = (value: number | null) =>
         <TrustShieldValue fieldKey="portfolio" value={value === null ? "—" : formatPrice(value, 6) + " USDC"} hideEyeIcon />;
-      return <div id="funds-portfolio-container" className="space-y-3 sm:space-y-4 text-brand-text font-sans bg-brand-bg px-3 pt-2 pb-2 sm:p-4 sm:pb-8 rounded-3xl max-w-4xl mx-auto w-full">
+      return <div id="funds-portfolio-container" className="space-y-2.5 sm:space-y-3 text-brand-text font-sans bg-brand-bg px-2.5 pt-1 pb-0 sm:px-4 sm:pt-2 sm:pb-2 rounded-3xl max-w-4xl mx-auto w-full">
         <div className="relative bg-brand-surface border border-brand-border/70 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 overflow-hidden shadow-sm" id="funds-hero-card">
           <div className="absolute top-0 right-0 w-80 h-80 bg-accent/5 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
           <div className="relative flex items-center justify-between gap-2">
