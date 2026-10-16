@@ -143,6 +143,14 @@ export default function LighterMarketPreview({
     }
   }, [walletAddress]);
 
+  // Keep transaction/status feedback out of the Trade layout and dismiss
+  // automatically; the modal retains registration/recovery instructions.
+  useEffect(() => {
+    if (!tradingNotice || authSheetOpen) return;
+    const id=window.setTimeout(()=>setTradingNotice(""),8000);
+    return ()=>window.clearTimeout(id);
+  },[tradingNotice,authSheetOpen]);
+
   const beginLighterAuthorization = async () => {
     if (!walletAddress || tradingBusy) return;
     setTradingBusy(true); setTradingNotice("");
@@ -508,6 +516,9 @@ export default function LighterMarketPreview({
   };
 
   const signedAccount = publicAccounts?.find(account=>account.index===tradingIdentity?.accountIndex) ?? null;
+  // Public read-only balance for a single verified account may be displayed
+  // before signing, but never combine independent subaccounts for order sizing.
+  const displayTradingAccount = signedAccount ?? (publicAccounts?.length===1 ? publicAccounts[0] : null);
   const inputPrice = orderType === "limit" ? Number(limitPrice) : marketPrice;
   const inputAmount = Number(amount);
   const sizeInCoin = Number.isFinite(inputAmount) && inputAmount > 0 && inputPrice !== null && inputPrice > 0
@@ -957,8 +968,8 @@ export default function LighterMarketPreview({
             isPerp={kind==="perp"}
             side={side==="buy"?"BUY":"SELL"}
             onSide={next=>{setSide(next==="BUY"?"buy":"sell");setReduceOnly(false);}}
-            available={signedAccount?.availableBalance != null
-              ? formatPrice(signedAccount.availableBalance,5)+" USDC" : "—"}
+            available={displayTradingAccount?.availableBalance != null
+              ? formatPrice(displayTradingAccount.availableBalance,5)+" USDC" : "—"}
           />
                     <HideDexBasicOrderInputs
             type={orderType==="market"?"MARKET":"LIMIT"}
@@ -977,9 +988,9 @@ export default function LighterMarketPreview({
           />
                     <div className="grid grid-cols-5 gap-1">
             {[10,25,50,75,100].map(percent => <button type="button" key={percent}
-              disabled={!marketPrice || signedAccount?.availableBalance == null || !tradingIdentity}
+              disabled={!marketPrice || displayTradingAccount?.availableBalance == null}
               onClick={() => {
-                const available = signedAccount?.availableBalance??0;
+                const available = displayTradingAccount?.availableBalance??0;
                 const price = orderType==="limit" ? Number(limitPrice) : marketPrice;
                 if (price && price>0 && available>0) setAmount(String(Number((sizeUnit === "USD"
                   ? available*percent/100 : available*percent/100/price).toFixed(6))));
@@ -1028,7 +1039,7 @@ export default function LighterMarketPreview({
           </button>
         </div>
         <HideDexOrderBookPanel
-          asks={makeLighterBookRows(feed.asks,"ask")}
+          asks={makeLighterBookRows(feed.asks,"ask").reverse()}
           bids={makeLighterBookRows(feed.bids,"bid")}
           midPrice={marketPrice}
           midLabel="Last Price"
