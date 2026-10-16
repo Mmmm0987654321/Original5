@@ -279,7 +279,7 @@ export default function Navbar({
 
         {/* Exchange selector is isolated from Hyperliquid signing and account state.
             Lighter execution is disabled until the official signer is verified. */}
-        {onSelectExchange && (activeTab === ActiveTab.Perp || activeTab === ActiveTab.Spot || activeTab === ActiveTab.Markets) && (
+        {onSelectExchange && activeTab !== ActiveTab.Landing && (
           <label className="ml-2 flex items-center gap-1 shrink-0 text-[10px] text-brand-muted">
             <span className="hidden sm:inline">Exchange</span>
             <select
@@ -615,10 +615,11 @@ export default function Navbar({
                   </span>
                 </div>
                 <p className="text-xl font-bold text-brand-text mb-3">
-                  <TrustShieldValue
-                    fieldKey="portfolio"
-                    value={`${balanceUSDC.toLocaleString()} USDC`}
-                  />
+                  {selectedExchange === "lighter" ? (
+                    <span className="text-sm font-semibold text-brand-muted">Lighter balance: see Funds</span>
+                  ) : (
+                    <TrustShieldValue fieldKey="portfolio" value={`${balanceUSDC.toLocaleString()} USDC`} />
+                  )}
                 </p>
                 <div className="flex gap-2 text-xs font-mono text-gray-400 bg-brand-overlay-subtle p-2.5 rounded-xl mb-3 items-center">
                   <Wallet className="w-4 h-4 text-indigo-400" />

@@ -448,7 +448,13 @@ export default function App() {
   // One verified, in-memory session per connected wallet. Never trust
   // localStorage, query strings or a public status GET to unlock the app.
   const [requestedTab, setActiveTab] = useState<ActiveTab>(ActiveTab.Landing);
-  const [selectedExchange, setSelectedExchange] = useState<"hyperliquid" | "lighter">("hyperliquid");
+  const [selectedExchange, setSelectedExchange] = useState<"hyperliquid" | "lighter">(() => {
+    try { return sessionStorage.getItem("hidedex_exchange") === "lighter" ? "lighter" : "hyperliquid"; }
+    catch { return "hyperliquid"; }
+  });
+  useEffect(() => {
+    try { sessionStorage.setItem("hidedex_exchange", selectedExchange); } catch { /* Private browsing */ }
+  }, [selectedExchange]);
   const [launchVerifiedWallet, setLaunchVerifiedWallet] = useState<string | null>(null);
   // Local storage remembers previously opened UX, never access authorization.
   const [lastTradingWallet, setLastTradingWallet] = useState<string>(() => {
@@ -481,12 +487,8 @@ export default function App() {
     && !!walletAddress
     && launchVerifiedWallet === walletAddress.trim().toLowerCase();
   // Every tab/route renderer uses the effective tab, so a URL or child
-  // Exchange choice only changes the isolated trading view. Never reuse HL orders for Lighter.
-  useEffect(() => {
-    if (requestedTab !== ActiveTab.Perp && requestedTab !== ActiveTab.Spot && requestedTab !== ActiveTab.Markets) {
-      setSelectedExchange("hyperliquid");
-    }
-  }, [requestedTab]);
+  // Exchange selection persists across Market, Trade, Funds and Account tabs.
+  // A tab change must never silently switch trading venues.
 
   // setActiveTab cannot render trading screens before signed verification.
   const activeTab: ActiveTab = hasTradingAccess ? requestedTab : ActiveTab.Landing;
@@ -3758,7 +3760,11 @@ export default function App() {
           onSelectExchange={(venue) => {
             // Exchange switch never executes any order, transfer, setup signature or funding action.
             setSelectedExchange(venue);
-            setActiveTab(ActiveTab.Perp);
+            if (activeTab !== ActiveTab.Markets && activeTab !== ActiveTab.Spot &&
+                activeTab !== ActiveTab.Perp && activeTab !== ActiveTab.Portfolio &&
+                activeTab !== ActiveTab.Profile && activeTab !== ActiveTab.Dashboard) {
+              setActiveTab(ActiveTab.Perp);
+            }
           }}
           walletConnected={walletConnected}
           walletAddress={walletAddress}
@@ -3924,7 +3930,7 @@ export default function App() {
           )}
 
           {/* GENERAL DASHBOARD PAGE */}
-          {activeTab === ActiveTab.Dashboard && (
+          {selectedExchange === "hyperliquid" && activeTab === ActiveTab.Dashboard && (
             walletConnected ? (
               <GeneralDashboard
                 tokens={tokens}
@@ -4132,13 +4138,27 @@ export default function App() {
             />
           )}
 
-          {selectedExchange === "lighter" &&
-            (activeTab === ActiveTab.Spot || activeTab === ActiveTab.Perp || activeTab === ActiveTab.Markets) && (
-              <LighterMarketPreview walletAddress={walletConnected ? walletAddress : ""} />
+          {selectedExchange === "lighter" && (
+            <LighterMarketPreview
+              walletAddress={walletConnected ? walletAddress : ""}
+              section={
+                activeTab === ActiveTab.Markets || activeTab === ActiveTab.Dashboard ? "markets" :
+                activeTab === ActiveTab.Portfolio ? "funds" :
+                activeTab === ActiveTab.Profile ? "account" :
+                activeTab === ActiveTab.Orders || activeTab === ActiveTab.TradeHistory ? "orders" :
+                "trade"
+              }
+              initialKind={activeTab === ActiveTab.Spot ? "spot" : "perp"}
+              onSelectSection={(section) => setActiveTab(
+                section === "markets" ? ActiveTab.Markets :
+                section === "funds" ? ActiveTab.Portfolio :
+                section === "account" ? ActiveTab.Profile : ActiveTab.Perp
+              )}
+            />
           )}
 
           {/* PORTFOLIO BALANCE SCREEN */}
-          {activeTab === ActiveTab.Portfolio && (
+          {selectedExchange === "hyperliquid" && activeTab === ActiveTab.Portfolio && (
             walletConnected ? (
               <PortfolioPanel
                 walletConnected={walletConnected}
@@ -4188,7 +4208,7 @@ export default function App() {
           )}
 
           {/* ACCOUNT & SETTINGS PAGE */}
-          {activeTab === ActiveTab.Profile && (
+          {selectedExchange === "hyperliquid" && activeTab === ActiveTab.Profile && (
             <AccountSettingsPanel
               walletConnected={walletConnected}
               onDisconnectWallet={handleDisconnectWallet}
@@ -4198,7 +4218,7 @@ export default function App() {
           )}
 
           {/* ORDERS MANAGER PAGE */}
-          {activeTab === ActiveTab.Orders && (
+          {selectedExchange === "hyperliquid" && activeTab === ActiveTab.Orders && (
             walletConnected ? (
               <div className="space-y-6 animate-in fade-in duration-200">
                 <div className="flex flex-col gap-1.5 border-b border-brand-border pb-4">
@@ -4223,7 +4243,7 @@ export default function App() {
           )}
 
           {/* TRADE HISTORY LEDGER PAGE */}
-          {activeTab === ActiveTab.TradeHistory && (
+          {selectedExchange === "hyperliquid" && activeTab === ActiveTab.TradeHistory && (
             mode === "PRIVATE" ? (
               <PrivateModeBlockedMessage />
             ) : walletConnected ? (
