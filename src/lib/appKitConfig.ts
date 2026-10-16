@@ -3,7 +3,13 @@ import { EthersAdapter } from "@reown/appkit-adapter-ethers";
 import { arbitrum, mainnet } from "@reown/appkit/networks";
 
 const rawProjectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID;
-const projectId = typeof rawProjectId === "string" ? rawProjectId.trim() : "";
+// Public Reown project ID already documented in this repository's .env.example.
+// Prefer Vercel's configured value; use this existing ID if a newly imported
+// project is missing VITE_WALLETCONNECT_PROJECT_ID. This is a public client ID,
+// not a secret or wallet signing credential.
+const projectId = typeof rawProjectId === "string" && rawProjectId.trim()
+  ? rawProjectId.trim()
+  : "e36f4642eb489923b516cbf3f0dfd68e";
 
 if (!projectId) {
   throw new Error("VITE_WALLETCONNECT_PROJECT_ID is not configured");
