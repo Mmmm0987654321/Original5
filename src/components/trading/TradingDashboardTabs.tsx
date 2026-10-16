@@ -786,7 +786,7 @@ export default function TradingDashboardTabs({
                           {label:"Margin",value:"$"+pos.margin.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})},
                           {label:"Mark Price",value:Number.isFinite(pos.markPrice)&&pos.markPrice>0 ?
                             "$"+pos.markPrice.toLocaleString(undefined,{minimumFractionDigits:1}):"--"},
-                          {label:"TP / SL Target",value:{(() => {
+                          {label:"TP / SL Target",value:(() => {
                                   const posKey = pos.sourceCoin || pos.symbol;
                                   const matchingTriggers = posKey
                                     ? openOrders.filter((order) => {
@@ -821,7 +821,7 @@ export default function TradingDashboardTabs({
                                       })}
                                     </div>
                                   );
-                                })()}},
+                                })()},
                         ]}
                         actions={<>
                           <button type="button" onClick={()=>handleOpenTpSlModal(pos)}
