@@ -76,6 +76,7 @@ import TradingDashboardTabs from "./TradingDashboardTabs";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
 import HideDexOrderBookPanel from "./HideDexOrderBookPanel";
 import HideDexMobileMarketHeader from "./HideDexMobileMarketHeader";
+import HideDexDesktopMarketBar from "./HideDexDesktopMarketBar";
 import { HideDexSideAndAvailability, HideDexBasicOrderInputs } from "./HideDexTradeEntry";
 import MarketSelector, {
   renderAssetLogo,
@@ -4468,81 +4469,16 @@ export default function RedesignedTerminal({
       {/* 1. TOP INTERACTIVE HEADER SECTION: ONE unified compact upper market panel */}
       <div className="hidden md:block relative glass-panel rounded-xl border border-brand-border bg-brand-surface py-1.5 px-2 sm:px-2.5 select-none shadow-sm mb-1.5 md:mb-2" id="terminal-unified-market-header">
         
-        {/* ROW 1: [ SELECTED COIN ] [ CHART | ORDER BOOK ] [ MARKET INFO ] */}
-        <div className="flex flex-nowrap items-stretch justify-between gap-1.5 sm:gap-2.5 overflow-x-auto scrollbar-none">
-          {/* Left Side: Selected Coin Display with Dropdown trigger */}
-          <div className="relative shrink-0 flex items-stretch" ref={tokenDropdownRef}>
-            <div 
-              data-terminal-token-trigger="true"
-              onClick={() => setShowTokenDropdown(!showTokenDropdown)}
-              className="h-11 sm:h-12 flex items-center gap-1.5 sm:gap-2.5 bg-brand-overlay-subtle hover:bg-brand-overlay-normal border border-brand-border hover:border-brand-border px-2 sm:px-3 rounded-lg cursor-pointer transition-all select-none whitespace-nowrap"
-              id="token-selector-trigger"
-            >
-              {/* Logo */}
-              <div className="shrink-0">
-                {renderAssetLogo(
-                  symbol,
-                  currentToken?.displayBaseAsset,
-                  currentToken?.sourceCoin,
-                )}
-              </div>
-              
-              {/* Symbols */}
-              <div className="text-left">
-                <div className="flex items-center gap-1 sm:gap-1.5">
-                  <span className="font-display font-bold text-brand-text text-xs sm:text-sm tracking-tight uppercase leading-none">
-                    {headerTicker}
-                  </span>
-                  <ChevronDown className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-400" />
-                </div>
-                <span className="text-[7px] sm:text-[8px] text-accent font-mono font-bold uppercase tracking-wider block leading-none mt-0.5">
-                  {isPerp ? `${leverage}x Perpetual` : "Spot Asset"}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Middle: CHART | ORDER BOOK Segmented Control */}
-          <div className="h-11 sm:h-12 flex items-stretch bg-brand-surface p-0.5 sm:p-1 rounded-lg sm:rounded-xl border border-brand-border select-none shrink-0" id="trading-view-mode-tabs">
-            <button
-              type="button"
-              onClick={() => setTopViewMode("chart")}
-              className={`h-full flex items-center justify-center px-2.5 sm:px-4 rounded-md sm:rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
-                topViewMode === "chart"
-                  ? "bg-accent text-brand-bg font-black shadow-sm"
-                  : "text-brand-text hover:text-brand-text hover:bg-brand-overlay-subtle"
-              }`}
-            >
-              CHART
-            </button>
-            <button
-              type="button"
-              onClick={() => setTopViewMode("orderbook")}
-              className={`h-full flex items-center justify-center px-2.5 sm:px-4 rounded-md sm:rounded-lg text-[10px] sm:text-xs font-black uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
-                topViewMode === "orderbook"
-                  ? "bg-accent text-brand-bg font-black shadow-sm"
-                  : "text-brand-text hover:text-brand-text hover:bg-brand-overlay-subtle"
-              }`}
-            >
-              ORDER BOOK
-            </button>
-          </div>
-
-          {/* Right Side: Market Information with dropdown trigger */}
-          <div className="flex items-stretch gap-1.5 sm:gap-2 select-none shrink-0">
-            {/* Market Info Dropdown Button */}
-            <div className="relative flex items-stretch" ref={marketInfoRef}>
-              <button
-                type="button"
-                onClick={() => setIsMarketInfoOpen(!isMarketInfoOpen)}
-                className="h-11 sm:h-12 flex items-center justify-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 text-[9px] sm:text-xs font-bold text-brand-text hover:text-brand-text bg-brand-surface hover:bg-brand-overlay-subtle rounded-lg border border-brand-border transition-all select-none uppercase tracking-wider cursor-pointer shadow-sm whitespace-nowrap"
-                id="market-info-toggle-btn"
-              >
-                <span>{isMarketInfoOpen ? "▲" : "▼"} {t("market_info")}</span>
-              </button>
-            </div>
-          </div>
-        </div>
+        <HideDexDesktopMarketBar
+          logo={renderAssetLogo(symbol,currentToken?.displayBaseAsset,currentToken?.sourceCoin)}
+          ticker={headerTicker}
+          sublabel={isPerp ? leverage + "x Perpetual" : "Spot Asset"}
+          onMarket={()=>setShowTokenDropdown(v=>!v)}
+          view={topViewMode==="orderbook"?"orderbook":"chart"}
+          onView={setTopViewMode}
+          marketInfoOpen={isMarketInfoOpen}
+          onMarketInfo={()=>setIsMarketInfoOpen(v=>!v)}
+        />
 
         {/* Market Info Dropdown Card */}
         {isMarketInfoOpen && (

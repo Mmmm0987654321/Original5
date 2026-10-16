@@ -16,6 +16,7 @@ import HideDexPositionHeader from "./HideDexPositionHeader";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
 import HideDexOrderBookPanel, {type HideDexBookLevel} from "./HideDexOrderBookPanel";
 import HideDexMobileMarketHeader from "./HideDexMobileMarketHeader";
+import HideDexDesktopMarketBar from "./HideDexDesktopMarketBar";
 import { HideDexSideAndAvailability, HideDexBasicOrderInputs } from "./HideDexTradeEntry";
 import type { TokenMetadata } from "../../types";
 import MarketSelector, { renderAssetLogo } from "./MarketSelector";
@@ -74,6 +75,7 @@ export default function LighterMarketPreview({
   const [orderTypeOpen, setOrderTypeOpen] = useState(false);
   const [authSheetOpen, setAuthSheetOpen] = useState(false);
   const [marginSheetOpen, setMarginSheetOpen] = useState(false);
+  const [isMarketInfoOpen, setIsMarketInfoOpen] = useState(false);
   const [marginMode, setMarginMode] = useState<"cross" | "isolated">("cross");
   const [chosenLeverage, setChosenLeverage] = useState(1);
   const [marginBusy, setMarginBusy] = useState(false);
@@ -842,35 +844,44 @@ export default function LighterMarketPreview({
         switchMode="toggle"
         onSwitchMode={() => switchKind(kind==="perp"?"spot":"perp")}
       />
-      <div id="terminal-unified-market-header" className="hidden md:block rounded-xl border border-brand-border bg-brand-surface p-2 mb-2">
-        <div className="flex flex-wrap justify-between items-center gap-2">
-          <div className="flex items-center gap-2">
-            {selected && <span className="shrink-0">{renderAssetLogo(selected.symbol)}</span>}
-            <button type="button" onClick={() => setMarketSelectorOpen(true)}
-              aria-label="Choose Lighter market"
-              className="border border-brand-border rounded-lg bg-brand-bg px-2 py-2 text-xs font-bold max-w-[160px] truncate">
-              {selected?.symbol ?? "Choose market"}⌄
-            </button>
-            <span className="text-[10px] text-brand-muted">{kind === "perp" ?
-              (selected?.maxLeverage ? selected.maxLeverage + "x Perp" : "Perpetual") : "Spot"}</span>
+      <div id="terminal-unified-market-header"
+        className="hidden md:block relative glass-panel rounded-xl border border-brand-border bg-brand-surface py-1.5 px-2 sm:px-2.5 select-none shadow-sm mb-1.5 md:mb-2">
+        <HideDexDesktopMarketBar
+          logo={selected ? renderAssetLogo(selected.symbol) : null}
+          ticker={selected?.symbol??"SELECT MARKET"}
+          sublabel={kind==="perp" ? (selected?.maxLeverage ? selected.maxLeverage+"x Perpetual":"Perpetual") : "Spot Asset"}
+          onMarket={()=>setMarketSelectorOpen(true)}
+          view={viewMode}
+          onView={setViewMode}
+          marketInfoOpen={isMarketInfoOpen}
+          onMarketInfo={()=>setIsMarketInfoOpen(v=>!v)}
+          rightAddon={<button type="button" role="switch" aria-checked={kind==="perp"}
+            aria-label="Switch Lighter Spot and Perpetual"
+            onClick={()=>switchKind(kind==="perp"?"spot":"perp")}
+            className="self-center shrink-0 w-9 h-5 rounded-full bg-accent p-0.5">
+            <span className={"block w-4 h-4 rounded-full bg-brand-bg transition-transform "+(kind==="perp"?"translate-x-4":"translate-x-0")}/>
+          </button>}
+        />
+        {isMarketInfoOpen && <div data-market-info-dropdown="true" id="market-info-dropdown"
+          className="absolute top-full mt-2 left-2 right-2 sm:left-auto sm:right-2 sm:w-80 max-w-[calc(100vw-24px)] bg-brand-surface border border-brand-border rounded-xl shadow-2xl z-[80] p-3.5 space-y-3">
+          <div className="flex justify-between items-center border-b border-brand-border pb-1.5">
+            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{selected?.symbol??"--"} Market Metrics</span>
+            <span className="px-1.5 py-0.5 bg-accent/10 text-accent rounded text-[9px] font-bold">{kind==="perp"?"PERP":"SPOT"}</span>
           </div>
-          <div className="flex border border-brand-border rounded-lg overflow-hidden">
-            <button type="button" onClick={() => setViewMode("chart")} className={"px-3 py-2 text-[10px] font-bold " + (viewMode === "chart" ? "bg-accent text-brand-bg" : "")}>CHART</button>
-            <button type="button" onClick={() => setViewMode("orderbook")} className={"px-3 py-2 text-[10px] font-bold " + (viewMode === "orderbook" ? "bg-accent text-brand-bg" : "")}>ORDER BOOK</button>
+          <div className="flex flex-col gap-3 font-mono text-xs">
+            <div><span className="block text-gray-500 text-[9px] uppercase font-bold">Last Price</span>
+              <strong className="text-emerald-400 text-sm">{formatPrice(marketPrice)}</strong></div>
+            <div className="border-t border-brand-border/20 pt-2"><span className="block text-gray-500 text-[9px] uppercase font-bold">24H Change</span>
+              <strong className={(selected?.change24h??0)>=0?"text-emerald-400":"text-rose-400"}>
+                {selected?.change24h == null ? "—" : (selected.change24h>=0?"+":"")+formatPrice(selected.change24h,2)+"%"}</strong></div>
+            <div className="border-t border-brand-border/20 pt-2"><span className="block text-gray-500 text-[9px] uppercase font-bold">24H Volume</span>
+              <strong>{selected?.volume24hUsd == null ? "—" : "$"+formatPrice(selected.volume24hUsd,2)}</strong></div>
           </div>
-          <div className="flex items-center gap-3 text-[10px]">
-            <div><div className="text-brand-muted">Last</div><strong>{formatPrice(marketPrice)}</strong></div>
-            <div><div className="text-brand-muted">24h Vol</div><strong>{selected?.volume24hUsd == null ? "—" : "$" + formatPrice(selected.volume24hUsd, 2)}</strong></div>
-            <div><div className="text-brand-muted">24h Change</div><strong>{formatPrice(selected?.change24h, 2)}</strong></div>
-            <button type="button" role="switch" aria-checked={kind === "spot"}
-              aria-label="Switch Lighter Spot and Perpetual" title="Switch Spot / Perpetual"
-              onClick={() => switchKind(kind === "perp" ? "spot" : "perp")}
-              className="ml-2 shrink-0 w-11 h-6 flex items-center bg-white rounded-full p-0.5">
-              <span className={"w-5 h-5 block bg-black rounded-full transition-transform " + (kind === "spot" ? "translate-x-5" : "")}/>
-            </button>
-          </div>
-        </div>
-        {viewMode === "chart" && <div id="market-chart-toolbar-host" className="mt-2 min-h-[28px] w-full border-t border-brand-border" />}
+        </div>}
+        {viewMode==="chart" && <>
+          <div className="w-full h-px bg-brand-border/60 my-1 sm:my-1.5"/>
+          <div id="market-chart-toolbar-host" className="w-full min-w-0 flex items-center min-h-[28px] border-b border-brand-border/40"/>
+        </>}
       </div>
       <div id="terminal-top-chart-panel" className="hidden md:block mb-2 bg-brand-bg border border-brand-border rounded-xl p-1.5">
         {viewMode === "chart" ? selected ? <TVChart key={"lighter-chart-" + selected.id}
