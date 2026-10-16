@@ -23,6 +23,10 @@ jobs:
         with:
           node-version: "22"
           cache: npm
+      - name: Reconcile lockfile only
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+      - name: Print lockfile difference for review
+        run: git diff -- package-lock.json | tail -n 160
       - name: Resolve pinned dependencies
         run: npm ci --ignore-scripts
       - name: Build application
