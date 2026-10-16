@@ -742,6 +742,7 @@ export default function MarketSelector({
   }, [activeCategory, pricesRef, externalPricesOnly]);
 
   const getVolume = useCallback((tok: TokenMetadata): number | null => {
+    if (externalPricesOnly) return typeof tok.volume24h === "number" && Number.isFinite(tok.volume24h) && tok.volume24h >= 0 ? tok.volume24h : null;
     if (activeCategory === "spot") {
       if (tok.spotCtx?.dayNtlVlm !== undefined && tok.spotCtx.dayNtlVlm !== null) {
         const parsed = parseFloat(String(tok.spotCtx.dayNtlVlm));
@@ -752,11 +753,12 @@ export default function MarketSelector({
     const v = tok.volume24h;
     if (typeof v === "number" && !isNaN(v) && v >= 0) return v;
     return null;
-  }, [activeCategory]);
+  }, [activeCategory, externalPricesOnly]);
 
   // Spot 24H change calculated from real current Spot price and prevDayPx (PART 11)
   const getChange24h = useCallback(
     (tok: TokenMetadata): number | null => {
+      if (externalPricesOnly) return typeof tok.change24h === "number" && Number.isFinite(tok.change24h) ? tok.change24h : null;
       if (activeCategory === "spot") {
         const current = getPrice(tok);
         const prevRaw = tok.spotCtx?.prevDayPx;
@@ -780,7 +782,7 @@ export default function MarketSelector({
         ? tok.change24h
         : null;
     },
-    [activeCategory, getPrice]
+    [activeCategory, getPrice, externalPricesOnly]
   );
 
   // Dynamic filtering & sorting using real raw numeric data (PART 6, 9)
