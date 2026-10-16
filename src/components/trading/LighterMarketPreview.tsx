@@ -12,6 +12,7 @@ import { depositLighterUsdcOnEthereum, depositLighterUsdcFromArbitrum, type Ligh
 import TVChart from "./TVChart";
 import MarketsPanel from "../dashboard/MarketsPanel";
 import TradingAccountTabBar, { type TradingTabId } from "./TradingAccountTabBar";
+import HideDexPositionHeader from "./HideDexPositionHeader";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
 import HideDexOrderBookPanel, {type HideDexBookLevel} from "./HideDexOrderBookPanel";
 import HideDexMobileMarketHeader from "./HideDexMobileMarketHeader";
@@ -636,22 +637,17 @@ export default function LighterMarketPreview({
               .map(({a,p,i}) => {
                 const key = a.index + ":" + p.symbol + ":" + i;
                 const isExpanded = expandedPositions[key] ?? false;
-                return <div key={key} className="bg-brand-card border border-brand-border rounded-2xl overflow-hidden text-[11px]">
-                  <button type="button" onClick={() => setExpandedPositions(v => ({...v,[key]: !(v[key] ?? false)}))}
-                    aria-expanded={isExpanded}
-                    className="w-full p-3 flex items-center justify-between gap-2 text-left">
-                    <span className="flex items-center gap-2 min-w-0">
-                      <span className="text-brand-muted">{isExpanded ? "⌄" : "›"}</span>
-                      <span className="font-bold text-sm truncate">{p.symbol}-PERP</span>
-                      <span className="rounded-md border border-brand-border bg-brand-overlay-subtle px-1.5 py-0.5 text-[9px] uppercase">{p.signedSize >= 0 ? "LONG" : "SHORT"}</span>
-                    </span>
-                    <span className="text-right shrink-0">
-                      <span className={"block font-mono font-bold text-sm " + (p.unrealizedPnl === null ? "text-brand-muted" : p.unrealizedPnl < 0 ? "text-rose-400" : "text-emerald-400")}>
-                        {p.unrealizedPnl === null ? "—" : (p.unrealizedPnl < 0 ? "-$" : "+$") + formatPrice(Math.abs(p.unrealizedPnl),2)}
-                      </span>
-                      <span className="block text-brand-muted text-[9px]">Lighter #{a.index}</span>
-                    </span>
-                  </button>
+                return <div key={key} className="bg-brand-card hover:bg-brand-surface border border-brand-border/60 hover:border-brand-primary/30 rounded-xl p-3 md:p-4 transition-all duration-150 shadow-md flex flex-col gap-2.5 w-full text-xs font-mono text-brand-sub">
+                  <HideDexPositionHeader
+                    symbol={p.symbol}
+                    side={p.signedSize>=0?"LONG":"SHORT"}
+                    isExpanded={isExpanded}
+                    onToggle={()=>setExpandedPositions(v=>({...v,[key]:!(v[key]??false)}))}
+                    marginLabel={null}
+                    leverageLabel={null}
+                    pnl={p.unrealizedPnl}
+                    roi={null}
+                  />
                   {isExpanded && <div className="p-3 border-t border-brand-border grid grid-cols-2 gap-3">
                     <div>Position Size<strong className="font-mono block text-brand-text">{formatPrice(Math.abs(p.signedSize),6)} {p.symbol}</strong></div>
                     <div>Entry Price<strong className="font-mono block text-brand-text">{formatPrice(p.entryPrice)}</strong></div>

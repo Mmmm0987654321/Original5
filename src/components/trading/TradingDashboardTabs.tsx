@@ -1,4 +1,5 @@
 import TradingAccountTabBar from "./TradingAccountTabBar";
+import HideDexPositionHeader from "./HideDexPositionHeader";
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -751,59 +752,24 @@ export default function TradingDashboardTabs({
                     className="bg-brand-card hover:bg-brand-surface border border-brand-border/60 hover:border-brand-primary/30 rounded-xl p-3 md:p-4 transition-all duration-150 shadow-md flex flex-col gap-2.5 w-full text-xs font-mono text-brand-sub"
                     id={`pos-card-${pos.id}`}
                   >
-                    {/* Clickable Header Row: Symbol, Size, Direction, Leverage Badge & PnL */}
-                    <div 
-                      onClick={() => {
-                        setExpandedPositionIds(prev => ({
-                          ...prev,
-                          [pos.id]: !isExpanded
-                        }));
-                      }}
-                      className="flex items-center justify-between cursor-pointer select-none pb-1.5"
-                    >
-                      <div className="flex items-center gap-2">
-                        <ChevronDown className={`w-3.5 h-3.5 text-brand-muted transition-transform duration-200 shrink-0 ${isExpanded ? "rotate-180 text-brand-primary" : ""}`} />
-                        <div 
-                          className="w-2 h-2 rounded-full shrink-0" 
-                          style={{ backgroundColor: logoColor }}
-                        />
-                        <span className="font-bold text-[13px] text-brand-text tracking-tight">{pos.symbol}-PERP</span>
-                        <span className={`px-1.5 py-0.2 rounded text-[8px] font-black tracking-wider ${
-                          isLong ? "bg-brand-profit/10 text-brand-profit border border-brand-profit/20" : "bg-brand-loss/10 text-brand-loss border border-brand-loss/20"
-                        }`}>
-                          {pos.type}
-                        </span>
-                        <span className="text-[9px] text-brand-muted font-bold bg-brand-overlay-subtle px-1.5 py-0.2 rounded border border-brand-border/30">
-                          {pos.marginType === 'isolated' ? 'Isolated' : pos.marginType === 'cross' ? 'Cross' : '--'} {Number.isFinite(pos.leverage) && pos.leverage > 0 ? `${pos.leverage}x` : '--'}
-                        </span>
-                      </div>
-
-                      {/* Right side: Real-time Unrealized PnL & ROI with small Share button beside it */}
-                      <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                        {!isFieldHidden("sharePosition") && (
-                          <button
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              setSelectedSharePosition(pos);
-                            }}
-                            id={`share-pos-btn-${pos.id}`}
-                            className="p-1 rounded bg-violet-600/10 hover:bg-violet-600/20 text-violet-400 hover:text-violet-300 border border-violet-500/10 hover:border-violet-500/30 transition-all duration-150 cursor-pointer active:scale-95"
-                            title="Share Position"
-                          >
-                            <Share2 className="w-3 h-3" />
-                          </button>
-                        )}
-                        <div className="text-right flex flex-col items-end shrink-0 select-none">
-                          <span className={`text-[13px] font-bold tracking-tight leading-none ${pos.unrealizedPnl >= 0 ? "text-pnl-profit" : "text-pnl-loss"}`}>
-                            {pos.unrealizedPnl >= 0 ? "+$" : "-$"}{Math.abs(pos.unrealizedPnl).toFixed(2)}
-                          </span>
-                          <span className={`text-[9px] font-bold mt-1 leading-none ${pos.unrealizedPnlPercent >= 0 ? "text-pnl-profit" : "text-pnl-loss"}`}>
-                            ROI: {pos.unrealizedPnlPercent >= 0 ? "+" : ""}{pos.unrealizedPnlPercent.toFixed(2)}%
-                          </span>
-                        </div>
-                      </div>
-                    </div>
+                    <HideDexPositionHeader
+                      symbol={pos.symbol}
+                      side={pos.type}
+                      isExpanded={isExpanded}
+                      onToggle={() => setExpandedPositionIds(prev => ({...prev,[pos.id]:!isExpanded}))}
+                      marginLabel={pos.marginType==="isolated"?"Isolated":pos.marginType==="cross"?"Cross":"--"}
+                      leverageLabel={Number.isFinite(pos.leverage) && pos.leverage>0 ? pos.leverage+"x" : "--"}
+                      pnl={pos.unrealizedPnl}
+                      roi={pos.unrealizedPnlPercent}
+                      shareAction={!isFieldHidden("sharePosition") && <button
+                        type="button"
+                        onClick={e => {e.preventDefault();e.stopPropagation();setSelectedSharePosition(pos);}}
+                        id={`share-pos-btn-${pos.id}`}
+                        className="p-1 rounded bg-violet-600/10 hover:bg-violet-600/20 text-violet-400 hover:text-violet-300 border border-violet-500/10 hover:border-violet-500/30 transition-all duration-150 cursor-pointer active:scale-95"
+                        title="Share Position">
+                        <Share2 className="w-3 h-3"/>
+                      </button>}
+                    />
 
                     {isExpanded && (
                       <div className="flex flex-col gap-3 pt-2.5 border-t border-brand-divider/30 animate-fadeIn duration-150">
