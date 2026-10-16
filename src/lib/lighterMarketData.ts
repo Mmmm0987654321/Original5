@@ -87,9 +87,15 @@ export async function getLighterCandles(
   signal?: AbortSignal
 ): Promise<{ candles: Array<{ t: number; o: number; h: number; l: number; c: number; v: number }> }> {
   if (!Number.isSafeInteger(marketId) || marketId < 0) throw new Error("Invalid Lighter market");
-  const allowed = new Set(["1m","5m","15m","30m","1h","4h","12h","1d","1w"]);
-  if (!allowed.has(resolution)) throw new Error("Lighter does not provide " + resolution + " candles");
-  const validRes = resolution;
+  const direct = new Set(["1m","5m","15m","30m","1h","4h","12h","1d","1w"]);
+  const aggregateFrom: Record<string, string> = {
+    "3m": "1m", "2h": "1h", "8h": "4h", "3d": "1d", "1M": "1d",
+  };
+  if (!direct.has(resolution) && !aggregateFrom[resolution]) {
+    throw new Error("Unsupported Lighter chart timeframe: " + resolution);
+  }
+  // No relabeling: unsupported native intervals are aggregated from real Lighter OHLC.
+  const validRes = aggregateFrom[resolution] ?? resolution;
   const end = Math.floor(endMs / 1000);
   const start = Math.max(0, Math.floor(startMs / 1000));
   if (end <= start) return { candles: [] };
@@ -133,7 +139,30 @@ export async function getLighterCandles(
       if (candles.length >= 30) break;
     }
   }
-  return { candles };
+  if (!aggregateFrom[resolution]) return { candles };
+
+  const intervalMs: Record<string, number> = {
+    "3m": 180_000, "2h": 7_200_000, "8h": 28_800_000, "3d": 259_200_000,
+  };
+  const groupTime = (t: number) => {
+    if (resolution === "1M") {
+      const d = new Date(t);
+      return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1);
+    }
+    return Math.floor(t / intervalMs[resolution]) * intervalMs[resolution];
+  };
+  const grouped = new Map<number, NormalizedCandle>();
+  for (const item of candles) {
+    const time = groupTime(item.t);
+    const old = grouped.get(time);
+    if (!old) grouped.set(time, { ...item, t: time });
+    else grouped.set(time, {
+      t: time, o: old.o, h: Math.max(old.h, item.h),
+      l: Math.min(old.l, item.l), c: item.c, v: old.v + item.v,
+    });
+  }
+  // Only real, returned exchange bars contribute. Missing candles are never invented.
+  return { candles: [...grouped.values()].sort((a, b) => a.t - b.t) };
 }
 
 export async function getLighterAccountIndexes(walletAddress: string, signal?: AbortSignal): Promise<number[]> {
