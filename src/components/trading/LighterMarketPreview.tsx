@@ -282,7 +282,29 @@ export default function LighterMarketPreview({
     )}
 
     {section === "trade" && <>
-      <div id="terminal-unified-market-header" className="rounded-xl border border-brand-border bg-brand-surface p-2 mb-2">
+      {/* The same mobile terminal composition: selected coin, price, mode,
+          then order form/book. The chart lives under Market on small screens. */}
+      <div id="terminal-mobile-trade-header" className="md:hidden bg-brand-bg border border-brand-border rounded-xl p-1.5 mb-1.5 flex items-center justify-between gap-1.5 shadow-xl relative">
+        <button type="button" onClick={() => onSelectSection("markets")} className="flex items-center gap-2 min-w-0 text-left">
+          {selected && <span className="shrink-0">{renderAssetLogo(selected.symbol)}</span>}
+          <span className="min-w-0">
+            <span className="block font-display font-bold text-sm text-brand-text uppercase truncate">{selected?.symbol ?? "—"}⌄</span>
+            <span className="block text-[9px] font-semibold tracking-wider text-accent">{labelKind(kind)}</span>
+          </span>
+        </button>
+        <span className="flex flex-col items-center min-w-0">
+          <span className="font-mono font-bold text-xs text-brand-text whitespace-nowrap">{formatPrice(marketPrice)}</span>
+          <span className={"text-[9px] font-mono font-semibold " +
+            ((selected?.change24h ?? 0) >= 0 ? "text-success" : "text-danger")}>
+            {selected?.change24h == null ? "—" : (selected.change24h >= 0 ? "+" : "") + formatPrice(selected.change24h, 2) + "%"}
+          </span>
+        </span>
+        <button type="button" onClick={() => switchKind(kind === "perp" ? "spot" : "perp")}
+          className="shrink-0 w-9 h-5 rounded-full p-0.5 bg-accent" aria-label="Switch spot or perpetual">
+          <span className="block w-4 h-4 rounded-full bg-brand-bg shadow" />
+        </button>
+      </div>
+      <div id="terminal-unified-market-header" className="hidden md:block rounded-xl border border-brand-border bg-brand-surface p-2 mb-2">
         <div className="flex flex-wrap justify-between items-center gap-2">
           <div className="flex items-center gap-2">
             {selected && <span className="shrink-0">{renderAssetLogo(selected.symbol)}</span>}
@@ -308,7 +330,7 @@ export default function LighterMarketPreview({
         </div>
         {viewMode === "chart" && <div id="market-chart-toolbar-host" className="mt-2 min-h-[28px] w-full border-t border-brand-border" />}
       </div>
-      <div id="terminal-top-chart-panel" className="mb-2 bg-brand-bg border border-brand-border rounded-xl p-1.5">
+      <div id="terminal-top-chart-panel" className="hidden md:block mb-2 bg-brand-bg border border-brand-border rounded-xl p-1.5">
         {viewMode === "chart" ? selected ? <TVChart key={"lighter-chart-" + selected.id}
           symbol={selected.symbol} marketCoin="" lighterMarketId={selected.id}
           isSpot={kind === "spot"} currentPrice={marketPrice}
@@ -323,38 +345,84 @@ export default function LighterMarketPreview({
         )}
       </div>
       <div className="grid grid-cols-12 gap-1.5 md:gap-2 mb-2 items-stretch">
-        <div id="terminal-order-form" className="col-span-7 min-w-0 rounded-xl border border-brand-border bg-brand-bg p-1.5 sm:p-3 space-y-2">
-          <h3 className="text-xs sm:text-sm font-bold">Place Order · {labelKind(kind)}</h3>
-          <div className="grid grid-cols-2 gap-1">
-            <button type="button" onClick={() => setSide("buy")} className={"text-[10px] py-2 rounded font-bold border border-brand-border " +
-              (side === "buy" ? "bg-emerald-500 text-black" : "text-brand-muted")}>{kind === "perp" ? "Long" : "Buy"}</button>
-            <button type="button" onClick={() => setSide("sell")} className={"text-[10px] py-2 rounded font-bold border border-brand-border " +
-              (side === "sell" ? "bg-rose-500 text-white" : "text-brand-muted")}>{kind === "perp" ? "Short" : "Sell"}</button>
-          </div>
-          <label className="block text-[10px] font-semibold">Order type
-            <select value={orderType} onChange={e => setOrderType(e.target.value as "market" | "limit")}
-              className="block w-full mt-1 rounded-lg bg-brand-surface border border-brand-border p-2 text-xs">
+        <div id="terminal-order-form" className="col-span-7 min-w-0 bg-brand-bg border border-brand-border rounded-xl p-1.5 md:p-2.5 flex flex-col h-full shadow-lg relative gap-2">
+          <div className="flex items-center gap-1">
+            <select aria-label="Order type" value={orderType}
+              onChange={e => setOrderType(e.target.value as "market" | "limit")}
+              className="min-w-0 flex-1 p-1.5 rounded-lg border border-brand-border bg-brand-surface text-xs font-bold">
               <option value="market">Market</option><option value="limit">Limit</option>
-            </select></label>
-          {orderType === "limit" && <label className="block text-[10px] font-semibold">Limit price
-            <input type="number" inputMode="decimal" min="0" value={limitPrice} onChange={e => setLimitPrice(e.target.value)}
-              placeholder="Price" className="mt-1 w-full min-w-0 rounded-lg bg-brand-surface border border-brand-border p-2 text-xs" /></label>}
-          <label className="block text-[10px] font-semibold">Size ({selected?.symbol ?? "coin"})
-            <input type="number" inputMode="decimal" min="0" value={amount} onChange={e => setAmount(e.target.value)}
-              placeholder="Quantity" className="mt-1 w-full min-w-0 rounded-lg bg-brand-surface border border-brand-border p-2 text-xs" /></label>
-          <p className="text-[9px] text-brand-muted">Estimated notional: {marketPrice && Number(amount) > 0 ?
-            "$" + formatPrice((orderType === "limit" && Number(limitPrice) > 0 ? Number(limitPrice) : marketPrice) * Number(amount), 2)
-            : "—"}</p>
+            </select>
+            {kind === "perp" && <span title="Lighter margin configuration not connected"
+              className="min-w-0 flex-1 text-center truncate p-1.5 rounded-lg border border-brand-border bg-brand-surface text-xs text-brand-muted">
+              Margin —
+            </span>}
+            {kind === "perp" && <span title="Lighter leverage configuration not connected"
+              className="shrink-0 text-center px-2 py-1.5 rounded-lg border border-brand-border bg-brand-surface text-xs text-brand-muted">
+              —x
+            </span>}
+          </div>
+          <div className="flex bg-brand-overlay-subtle rounded-lg p-0.5 border border-brand-border">
+            <button type="button" onClick={() => setSide("buy")} className={"flex-1 py-2 rounded-md font-bold text-[10px] md:text-xs " +
+              (side === "buy" ? "bg-[#18c29c] text-[#030610]" : "text-brand-text")}>
+              {kind === "perp" ? "LONG" : "BUY"}
+            </button>
+            <button type="button" onClick={() => setSide("sell")} className={"flex-1 py-2 rounded-md font-bold text-[10px] md:text-xs " +
+              (side === "sell" ? "bg-[#f25c5c] text-white" : "text-brand-text")}>
+              {kind === "perp" ? "SHORT" : "SELL"}
+            </button>
+          </div>
+          <div className="flex justify-between text-[9px] sm:text-xs font-semibold text-brand-muted">
+            <span>Avail. to Trade</span>
+            <span className="font-mono text-brand-text">
+              {publicAccounts && publicAccounts.every(a => a.availableBalance !== null)
+                ? formatPrice(publicAccounts.reduce((sum,a)=>sum+(a.availableBalance??0),0),5)+" USDC" : "—"}
+            </span>
+          </div>
+          <div className="flex items-center justify-between border border-brand-border bg-brand-surface rounded-lg p-2 text-[10px]">
+            <span className="font-bold text-brand-muted">PRICE</span>
+            {orderType === "market" ? <span className="font-mono text-brand-text font-bold">Market Price</span> :
+              <input value={limitPrice} onChange={e => setLimitPrice(e.target.value)}
+                type="number" inputMode="decimal" min="0" placeholder="Limit price"
+                className="bg-transparent text-right min-w-0 w-[60%] font-mono text-brand-text focus:outline-none" />}
+          </div>
+          <div className="flex items-center justify-between border border-brand-border bg-brand-surface rounded-lg p-2 text-[10px]">
+            <label htmlFor="lighter-trade-size" className="font-bold text-brand-muted">SIZE ({selected?.symbol ?? "COIN"})</label>
+            <input id="lighter-trade-size" value={amount} onChange={e => setAmount(e.target.value)}
+              type="number" inputMode="decimal" min="0" placeholder="0.00"
+              className="min-w-0 w-[45%] bg-transparent text-right font-mono text-brand-text focus:outline-none"/>
+          </div>
+          <div className="grid grid-cols-5 gap-1">
+            {[10,25,50,75,100].map(percent => <button type="button" key={percent}
+              disabled={!marketPrice || !publicAccounts?.every(a=>a.availableBalance!==null)}
+              onClick={() => {
+                const available = publicAccounts?.reduce((sum,a)=>sum+(a.availableBalance??0),0)??0;
+                const price = orderType==="limit" ? Number(limitPrice) : marketPrice;
+                if (price && price>0 && available>0) setAmount(String(Math.floor(available*percent/100/price*1000000)/1000000));
+              }} className="border border-brand-border rounded-lg py-1.5 text-[9px] font-bold text-brand-muted disabled:opacity-40">{percent}%</button>)}
+          </div>
+          <div className="border-t border-brand-border pt-3 flex items-center gap-2">
+            <input type="checkbox" disabled aria-label="Reduce Only not available" className="w-4 h-4"/>
+            <span className="font-bold text-[10px] text-brand-muted">Reduce Only (signer required)</span>
+          </div>
+          <div className="border-t border-brand-border pt-3 flex items-center gap-2">
+            <input type="checkbox" disabled aria-label="TP/SL not available" className="w-4 h-4"/>
+            <span className="font-bold text-[10px] text-brand-muted">Take Profit / Stop Loss (signer required)</span>
+          </div>
+          <div className="bg-brand-bg/50 border border-brand-border rounded-lg p-1.5 font-mono text-[9px] space-y-1 mt-auto">
+            {kind === "perp" && <div className="flex justify-between text-brand-muted"><span>Liq. Price</span><span>—</span></div>}
+            <div className="flex justify-between text-brand-muted"><span>Order Value</span>
+              <span>{Number(amount)>0 && marketPrice
+                ? "$"+formatPrice(Number(amount)*(orderType==="limit"&&Number(limitPrice)>0?Number(limitPrice):marketPrice),2):"—"}</span>
+            </div>
+            {kind === "perp" && <div className="flex justify-between text-brand-muted"><span>Margin</span><span>—</span></div>}
+          </div>
           <button type="button" disabled aria-disabled="true"
-            title="Lighter API key authorization and official WASM signer are not configured"
-            className="w-full p-2 rounded-lg bg-brand-overlay-normal border border-brand-border text-[10px] font-bold text-brand-muted cursor-not-allowed">
-            {side === "buy" ? "Place Long / Buy" : "Place Short / Sell"} — Signer required
+            title="Real Lighter trading requires the official WASM signer and account authorization"
+            className={"w-full py-2 rounded-lg text-[10px] md:text-xs font-display font-black uppercase disabled:opacity-50 cursor-not-allowed " +
+              (side === "buy" ? "bg-[#18c29c] text-[#030610]" : "bg-[#f25c5c] text-white")}>
+            PLACE {side === "buy" ? (kind === "perp" ? "LONG" : "BUY") : (kind === "perp" ? "SHORT" : "SELL")}
           </button>
-          <p className="text-[9px] text-amber-500 leading-relaxed">
-            Real Lighter order signing is not connected. Orders cannot be submitted here. No Hyperliquid order will be sent.
-          </p>
-          <a href="https://app.lighter.xyz/" target="_blank" rel="noopener noreferrer"
-            className="inline-block text-[10px] text-accent underline">Trade via official Lighter ↗</a>
+          <p className="text-[9px] leading-tight text-amber-600">Lighter signing is not connected. This form cannot place a real order.</p>
         </div>
         <div id="terminal-order-book" className="col-span-5 min-w-0 rounded-xl border border-brand-border bg-brand-bg p-1.5 sm:p-3">
           <div className="text-xs font-bold mb-2">Order Book</div>
