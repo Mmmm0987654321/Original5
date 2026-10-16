@@ -5,6 +5,7 @@ import HideDexFundsOverview from "../dashboard/HideDexFundsOverview";
 import HideDexAssetAllocation from "../dashboard/HideDexAssetAllocation";
 import HideDexFundsPerformance, {type HideDexPerformancePeriod, type HideDexPerformanceMarket} from "../dashboard/HideDexFundsPerformance";
 import HideDexFundsModalHeader from "../dashboard/HideDexFundsModalHeader";
+import { DailyFillVolumeBars } from "../dashboard/AnalyticsPanel";
 import {
   registerLighterTradingKey, reconnectLighterTradingKey, getActiveLighterSigner,
   clearLighterTradingKey, submitLighterOrder, withdrawLighterUsdc,
@@ -1112,10 +1113,13 @@ export default function LighterMarketPreview({
             <span className="text-[10px] text-brand-muted mt-1">No historical PnL or trading volume is estimated.</span>
           </div>}
         />
-        <section className="rounded-2xl border border-brand-border bg-brand-surface p-3.5 sm:p-5">
-          <h3 className="text-sm sm:text-base font-black uppercase mb-2">DAILY TRADING VOLUME <span className="text-xs font-normal text-brand-muted">(LOADED FILLS)</span></h3>
-          <p className="text-xs text-brand-muted">Verified Lighter historical fills are not yet loaded; volume is not estimated.</p>
-        </section>
+        <DailyFillVolumeBars
+          fills={[]}
+          period={performancePeriod}
+          walletConnected={Boolean(walletAddress)}
+          sensitiveHidden={hideBalance}
+          unavailableMessage="Verified Lighter fills for this wallet are not loaded. No volume is inferred from Hyperliquid or prices."
+        />
         {lighterAssetCards}
       </div>;
     })()}

@@ -121,12 +121,13 @@ export default function AnalyticsPanel({
  * Respects the Funds period; never labels this sample as complete lifetime data.
  */
 export function DailyFillVolumeBars({
-  fills, period, walletConnected, sensitiveHidden = false
+  fills, period, walletConnected, sensitiveHidden = false, unavailableMessage
 }: {
   fills: readonly unknown[];
   period: Period;
   walletConnected: boolean;
   sensitiveHidden?: boolean;
+  unavailableMessage?: string;
 }) {
   const bars = useMemo(() => {
     const days = period === "day" ? 1 : period === "week" ? 7 : period === "month" ? 30 : null;
@@ -154,6 +155,8 @@ export function DailyFillVolumeBars({
       </h3>
       {sensitiveHidden ? (
         <p className="text-xs text-brand-muted">Hidden by privacy settings.</p>
+      ) : unavailableMessage ? (
+        <p className="text-xs text-brand-muted">{unavailableMessage}</p>
       ) : !walletConnected ? (
         <p className="text-xs text-brand-muted">Connect your wallet to see daily volume.</p>
       ) : bars.length === 0 ? (
