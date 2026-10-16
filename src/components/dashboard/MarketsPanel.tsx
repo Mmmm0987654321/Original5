@@ -76,6 +76,8 @@ interface MarketsPanelProps {
   lighterMarketId?: number;
   lighterLastPrice?: number | null;
   lighterBook?: LighterMarketFeed;
+  lighterMultiplier?: number;
+  lighterPriceDecimals?: number;
   lighterAccountSummary?: React.ReactNode;
 }
 
@@ -111,6 +113,8 @@ export default function MarketsPanel({
   lighterMarketId,
   lighterLastPrice,
   lighterBook,
+  lighterMultiplier = 1,
+  lighterPriceDecimals,
   lighterAccountSummary,
 }: MarketsPanelProps) {
   // Navigation tabs inside the terminal
@@ -457,10 +461,11 @@ export default function MarketsPanel({
 
   const isCurrentTokenPerp = currentToken?.openInterest !== undefined;
   const lighterDepth = React.useMemo(() => {
+    const mul = Number.isFinite(lighterMultiplier) && lighterMultiplier > 0 ? lighterMultiplier : 1;
     const convert = (levels: LighterMarketFeed["bids"] | undefined, reverse: boolean) => {
       let sum = 0;
       const rows = (levels ?? []).map(level => {
-        const price = Number(level.price), size = Number(level.size);
+        const price = Number(level.price) / mul, size = Number(level.size) * mul;
         if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(size) || size <= 0) return null;
         sum += size;
         return { price, size, total: sum };
@@ -468,7 +473,7 @@ export default function MarketsPanel({
       return reverse ? rows.reverse() : rows;
     };
     return { asks: convert(lighterBook?.asks, true), bids: convert(lighterBook?.bids, false) };
-  }, [lighterBook?.asks, lighterBook?.bids]);
+  }, [lighterBook?.asks, lighterBook?.bids, lighterMultiplier]);
 
   // Switch active token
   const handleSelectAsset = (
@@ -529,6 +534,7 @@ export default function MarketsPanel({
                 onClose={() => setIsSelectorOpen(false)}
                 favorites={watchlist ?? []}
                 onToggleFavorite={onToggleWatchlist}
+                externalPricesOnly={lighterMarketId !== undefined}
               />
             )}
           </div>
@@ -715,6 +721,7 @@ export default function MarketsPanel({
               {lighterMarketId !== undefined && currentToken ? (
                 <TopOrderBookView symbol={selectedSymbol} currentToken={{...currentToken, price: marketsCurrentPrice}}
                   asks={lighterDepth.asks} bids={lighterDepth.bids}
+                  priceDecimals={lighterPriceDecimals}
                   onSelectPrice={price => onSelectOrderBookPrice(price, chartIsSpot ? "spot" : "perp")} />
               ) : (
               <OrderBook 

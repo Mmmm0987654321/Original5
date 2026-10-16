@@ -12,6 +12,7 @@ interface TopOrderBookViewProps {
   asks: { price: number; size: number; total: number }[];
   bids: { price: number; size: number; total: number }[];
   onSelectPrice?: (price: number) => void;
+  priceDecimals?: number;
 }
 
 export const TopOrderBookView: React.FC<TopOrderBookViewProps> = React.memo(({
@@ -20,9 +21,10 @@ export const TopOrderBookView: React.FC<TopOrderBookViewProps> = React.memo(({
   asks,
   bids,
   onSelectPrice,
+  priceDecimals,
 }) => {
   const isPurr = symbol.toUpperCase() === "PURR";
-  const decimals = isPurr ? 4 : 2;
+  const decimals = priceDecimals !== undefined && Number.isInteger(priceDecimals) && priceDecimals >= 0 && priceDecimals <= 12 ? priceDecimals : isPurr ? 4 : 2;
 
   const hasAsks = asks.length > 0;
   const hasBids = bids.length > 0;

@@ -228,6 +228,8 @@ export default function LighterMarketPreview({
         lighterMarketId={selected?.id}
         lighterLastPrice={marketPrice}
         lighterBook={feed}
+        lighterMultiplier={selected?.multiplier}
+        lighterPriceDecimals={selected?.priceDecimals}
         lighterAccountSummary={accountCards}
       />
     )}

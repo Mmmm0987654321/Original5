@@ -184,6 +184,7 @@ interface MarketSelectorProps {
   initialCategory?: MainCategory;
   favorites?: string[];
   onToggleFavorite?: (symbol: string) => void;
+  externalPricesOnly?: boolean;
 }
 
 export function getDisplaySymbol(
@@ -610,6 +611,7 @@ export default function MarketSelector({
   initialCategory,
   favorites = [],
   onToggleFavorite,
+  externalPricesOnly = false,
 }: MarketSelectorProps) {
   const pricesRef = usePricesRef();
   const [searchQuery, setSearchQuery] = useState("");
@@ -697,6 +699,7 @@ export default function MarketSelector({
   }, [tokens]);
 
   const getPrice = useCallback((tok: TokenMetadata): number | null => {
+    if (externalPricesOnly) return typeof tok.price === "number" && Number.isFinite(tok.price) && tok.price > 0 ? tok.price : null;
     if (activeCategory === "spot") {
       // Display the same exact Spot-pair midpoint as the trading terminal.
       // markPx is an index/mark estimate, not necessarily the current tradable price.
@@ -736,7 +739,7 @@ export default function MarketSelector({
         tok.price > 0
       ? tok.price
       : null;
-  }, [activeCategory, pricesRef]);
+  }, [activeCategory, pricesRef, externalPricesOnly]);
 
   const getVolume = useCallback((tok: TokenMetadata): number | null => {
     if (activeCategory === "spot") {
