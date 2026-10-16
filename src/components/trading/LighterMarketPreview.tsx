@@ -53,7 +53,11 @@ export default function LighterMarketPreview({
   const [amount, setAmount] = useState("");
   const [limitPrice, setLimitPrice] = useState("");
 
-  useEffect(() => { setKind(initialKind); }, [initialKind]);
+  // Market/Funds/Account navigation must not reset the user's selected Lighter spot/perp kind.
+  // Explicit Trade routing is the only place where App's chosen mode takes precedence.
+  useEffect(() => {
+    if (section === "trade") setKind(initialKind);
+  }, [initialKind, section]);
 
   useEffect(() => {
     const ac = new AbortController();
