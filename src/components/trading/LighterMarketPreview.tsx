@@ -1,6 +1,12 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Layers, Wallet, TrendingUp, Unlock, Lock, ArrowUpRight, ArrowDownRight, ChevronRight, Copy, Check, Eye, EyeOff, BarChart3 } from "lucide-react";
 import { TrustShieldValue } from "../common/TrustShieldValue";
+import {
+  registerLighterTradingKey, reconnectLighterTradingKey, getActiveLighterSigner,
+  clearLighterTradingKey, submitLighterOrder, withdrawLighterUsdc,
+  getLighterSignedOpenOrders, cancelLighterSignedOrder,
+  verifyLighterTradingKey, type LighterTradingIdentity,
+} from "../../lib/lighterTrading";
 import { depositLighterUsdcOnEthereum, depositLighterUsdcFromArbitrum, type LighterWalletProvider } from "../../lib/lighterFunding";
 import TVChart from "./TVChart";
 import MarketsPanel from "../dashboard/MarketsPanel";
@@ -72,6 +78,149 @@ export default function LighterMarketPreview({
   const [fundingBusy, setFundingBusy] = useState(false);
   const [fundingStatus, setFundingStatus] = useState("");
   const [accountReload, setAccountReload] = useState(0);
+  const [tradingIdentity, setTradingIdentity] = useState<LighterTradingIdentity | null>(
+    () => getActiveLighterSigner(walletAddress));
+  const [tradingBusy, setTradingBusy] = useState(false);
+  const [tradingNotice, setTradingNotice] = useState("");
+  const [recoveryKey, setRecoveryKey] = useState("");
+  const [showExistingKey, setShowExistingKey] = useState(false);
+  const [existingKey, setExistingKey] = useState("");
+  const [existingAccountIndex, setExistingAccountIndex] = useState("");
+  const [existingApiKeyIndex, setExistingApiKeyIndex] = useState("");
+  const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [reduceOnly, setReduceOnly] = useState(false);
+  const [liveOrders, setLiveOrders] = useState<Awaited<ReturnType<typeof getLighterSignedOpenOrders>> | null>(null);
+
+  useEffect(() => {
+    if (!getActiveLighterSigner(walletAddress)) {
+      clearLighterTradingKey();
+      setTradingIdentity(null); setRecoveryKey(""); setLiveOrders(null);
+    } else {
+      setTradingIdentity(getActiveLighterSigner(walletAddress));
+    }
+    setTradingNotice("");
+  }, [walletAddress]);
+
+  const beginLighterAuthorization = async () => {
+    if (!walletAddress || tradingBusy) return;
+    setTradingBusy(true); setTradingNotice("Generating a session-only Lighter trading key…");
+    try {
+      const { identity, recoveryKey: secret, txHash } = await registerLighterTradingKey({
+        walletAddress, getWalletProvider,
+      });
+      setTradingIdentity(identity);
+      setRecoveryKey(secret);
+      setTradingNotice("Lighter registration submitted" + (txHash ? ": " + txHash : "") +
+        ". Keep a secure backup of the API key below; this browser does not store it.");
+      setAccountReload(v => v + 1);
+    } catch (e) {
+      setTradingNotice(e instanceof Error ? e.message : "Lighter authorization failed.");
+    } finally { setTradingBusy(false); }
+  };
+  const reconnectExistingLighterKey = async () => {
+    if (!walletAddress || tradingBusy) return;
+    setTradingBusy(true); setTradingNotice("");
+    try {
+      const identity = await reconnectLighterTradingKey({
+        walletAddress, accountIndex: Number(existingAccountIndex),
+        apiKeyIndex: Number(existingApiKeyIndex), apiPrivateKey: existingKey.trim(),
+      });
+      setTradingIdentity(identity);
+      setExistingKey(""); setShowExistingKey(false);
+      setTradingNotice("Existing Lighter API key verified for this connected wallet.");
+    } catch (e) {
+      setTradingNotice(e instanceof Error ? e.message : "Trading key verification failed.");
+    } finally { setTradingBusy(false); }
+  };
+  const submitTrade = async () => {
+    if (!walletAddress || !selected || !tradingIdentity || tradingBusy) return;
+    if (!marketPrice || feed.status !== "live" || !(sizeInCoin > 0) ||
+        (orderType === "limit" && !(Number(limitPrice) > 0))) {
+      setTradingNotice("Choose a live Lighter market with a valid order size and limit price.");
+      return;
+    }
+    const orderSide = side === "buy" ? (kind === "perp" ? "LONG" : "BUY") : (kind === "perp" ? "SHORT" : "SELL");
+    if (!window.confirm("LIVE LIGHTER MAINNET " + orderSide + " " + selected.symbol +
+      "\nSize: " + sizeInCoin + "\nType: " + orderType +
+      "\nApprox. value: $" + formatPrice(orderValueUsd, 2) +
+      "\nProceed with a REAL signed order?")) return;
+    setTradingBusy(true); setTradingNotice("Signing and submitting real Lighter mainnet order…");
+    try {
+      const tx = await submitLighterOrder({
+        walletAddress, market: selected, side, type: orderType,
+        coinSize: sizeInCoin, limitPrice: Number(limitPrice),
+        referencePrice: marketPrice, reduceOnly,
+      });
+      setTradingNotice("Lighter accepted order. Transaction: " + tx + ". Confirm fills in Positions/Orders.");
+      setAmount("");
+      setAccountReload(v => v + 1);
+    } catch (e) {
+      setTradingNotice(e instanceof Error ? e.message : "Lighter rejected order.");
+    } finally { setTradingBusy(false); }
+  };
+  const submitWithdrawal = async () => {
+    if (!walletAddress || !tradingIdentity || fundingBusy) return;
+    const n = Number(withdrawAmount);
+    if (!Number.isFinite(n) || n <= 0) { setFundingStatus("Enter a valid USDC amount."); return; }
+    if (!window.confirm("REAL LIGHTER MAINNET WITHDRAWAL\n" + withdrawAmount +
+      " USDC to the ORIGINAL wallet: " + walletAddress +
+      "\nNo arbitrary destination. Proceed?")) return;
+    setFundingBusy(true); setFundingStatus("Verifying Lighter owner and available USDC…");
+    try {
+      const tx = await withdrawLighterUsdc({ walletAddress, amount: withdrawAmount });
+      setFundingStatus("Lighter accepted standard withdrawal: " + tx + ". Final settlement may take time.");
+      setWithdrawAmount(""); setAccountReload(v => v + 1);
+    } catch (e) {
+      setFundingStatus(e instanceof Error ? e.message : "Lighter withdrawal failed.");
+    } finally { setFundingBusy(false); }
+  };
+
+  const authorizationPanel = (
+    <div className="space-y-2 text-[10px] sm:text-xs">
+      {tradingIdentity ? <div className="flex justify-between gap-2 items-center border border-brand-border rounded-lg p-2">
+        <span className="text-emerald-500 font-bold">Lighter signing key · Account #{tradingIdentity.accountIndex} · Slot {tradingIdentity.apiKeyIndex}</span>
+        <button type="button" onClick={() => {
+          clearLighterTradingKey(); setTradingIdentity(null); setRecoveryKey(""); setLiveOrders(null);
+          setTradingNotice("Session key disconnected. Your registered key remains on Lighter.");
+        }} className="underline text-brand-muted">Disconnect</button>
+      </div> : <>
+        <button type="button" disabled={!walletAddress || tradingBusy} onClick={beginLighterAuthorization}
+          className="w-full border border-accent/40 rounded-lg p-2 font-bold text-accent disabled:opacity-40">
+          {tradingBusy ? "Authorize in wallet…" : "Enable real Lighter trading & withdrawal"}
+        </button>
+        <p className="text-brand-muted leading-relaxed">One wallet signature authorizes a personal trading key. That key can also make secure withdrawals to your original wallet. No key is sent to HideDex servers.</p>
+        <button type="button" className="underline text-brand-muted" onClick={() => setShowExistingKey(v => !v)}>
+          {showExistingKey ? "Hide" : "Reconnect an existing Lighter API key"}
+        </button>
+        {showExistingKey && <div className="space-y-2 rounded-lg border border-brand-border p-2">
+          <div className="grid grid-cols-2 gap-1">
+            <input type="number" value={existingAccountIndex} onChange={e => setExistingAccountIndex(e.target.value)}
+              placeholder="Account index" aria-label="Lighter account index" className="min-w-0 bg-brand-bg border border-brand-border p-2 rounded"/>
+            <input type="number" value={existingApiKeyIndex} onChange={e => setExistingApiKeyIndex(e.target.value)}
+              placeholder="API key slot (4+)" aria-label="Lighter API key index" className="min-w-0 bg-brand-bg border border-brand-border p-2 rounded"/>
+          </div>
+          <input type="password" autoComplete="off" value={existingKey} onChange={e => setExistingKey(e.target.value)}
+            placeholder="Existing API private key (only entered here)" aria-label="Existing Lighter API private key"
+            className="w-full bg-brand-bg border border-brand-border p-2 rounded"/>
+          <button type="button" disabled={tradingBusy || !existingKey.trim()} onClick={reconnectExistingLighterKey}
+            className="rounded bg-brand-overlay-normal p-2 font-bold disabled:opacity-40">Verify & reconnect</button>
+        </div>}
+      </>}
+      {recoveryKey && <div className="rounded-lg border border-amber-500/40 p-2 space-y-2">
+        <p className="text-amber-500 font-bold">Save this API key securely now: it will disappear on reload. It permits trades and secure withdrawals.</p>
+        <input type="password" readOnly value={recoveryKey} aria-label="One-time Lighter trading key backup"
+          className="w-full p-2 rounded border border-brand-border bg-brand-bg"/>
+        <button type="button" onClick={async () => {
+          try {
+            await navigator.clipboard.writeText(recoveryKey);
+            setTradingNotice("API key copied. Store it in a secure password manager, not in chats.");
+          } catch { setTradingNotice("Clipboard unavailable. Save the key securely before leaving."); }
+        }} className="underline text-accent">Copy recovery key</button>
+        <button type="button" onClick={() => setRecoveryKey("")} className="ml-3 underline text-brand-muted">Hide backup</button>
+      </div>}
+    </div>
+  );
+
 
   // Market/Funds/Account navigation must not reset the user's selected Lighter spot/perp kind.
   // Explicit Trade routing is the only place where App's chosen mode takes precedence.
@@ -575,7 +724,8 @@ export default function LighterMarketPreview({
           </div>
           {kind === "perp" && <>
             <div className="border-t border-brand-border pt-3 flex items-center gap-2">
-              <input type="checkbox" disabled aria-label="Reduce Only unavailable until Lighter signer registration" className="w-4 h-4"/>
+              <input type="checkbox" checked={reduceOnly} disabled={!tradingIdentity || tradingBusy}
+                onChange={e => setReduceOnly(e.target.checked)} aria-label="Reduce Only" className="w-4 h-4"/>
               <span className="font-bold text-[10px] text-brand-muted">Reduce Only</span>
             </div>
             <div className="border-t border-brand-border pt-3 flex items-center gap-2">
@@ -590,13 +740,15 @@ export default function LighterMarketPreview({
             </div>
             {kind === "perp" && <div className="flex justify-between text-brand-muted"><span>Margin</span><span>—</span></div>}
           </div>
-          <button type="button" disabled aria-disabled="true"
-            title="Real Lighter trading requires the official WASM signer and account authorization"
-            className={"w-full py-2 rounded-lg text-[10px] md:text-xs font-display font-black uppercase disabled:opacity-50 cursor-not-allowed " +
+          <button type="button" onClick={submitTrade}
+            disabled={!tradingIdentity || tradingBusy || !selected || feed.status !== "live" || !(sizeInCoin > 0)}
+            title={!tradingIdentity ? "Authorize your Lighter account below" : "Confirm a real Lighter mainnet order"}
+            className={"w-full py-2 rounded-lg text-[10px] md:text-xs font-display font-black uppercase disabled:opacity-50 " +
               (side === "buy" ? "bg-[#18c29c] text-[#030610]" : "bg-[#f25c5c] text-white")}>
-            PLACE {side === "buy" ? (kind === "perp" ? "LONG" : "BUY") : (kind === "perp" ? "SHORT" : "SELL")}
+            {tradingBusy ? "Processing…" : "PLACE " + (side === "buy" ? (kind === "perp" ? "LONG" : "BUY") : (kind === "perp" ? "SHORT" : "SELL"))}
           </button>
-          <p className="text-[9px] leading-tight text-amber-600">Lighter signing is not connected. This form cannot place a real order.</p>
+          {authorizationPanel}
+          {tradingNotice && <p role="status" className="text-[10px] text-amber-500 break-all">{tradingNotice}</p>
         </div>
         <div id="terminal-order-book" className="col-span-5 min-w-0 self-start rounded-xl border border-brand-border bg-brand-bg p-1.5 sm:p-3">
           <div className="flex items-center justify-between gap-1 mb-2">
@@ -803,8 +955,19 @@ export default function LighterMarketPreview({
               {fundingBusy ? "Confirm in wallet…" : "Deposit USDC"}
             </button>
           </> : <>
-            <p className="text-xs text-brand-muted">A secure withdrawal must be signed by a registered per-user Lighter API key and confirmed on Lighter mainnet. Your existing wallet connection alone cannot authorize it.</p>
-            <p className="text-xs text-amber-500">Withdrawals are not yet enabled. No funds will be moved, and you will not be redirected to another website.</p>
+            <p className="text-xs text-brand-muted">Secure STANDARD USDC withdrawal to the L1 wallet that owns this Lighter account. No external website and no arbitrary recipient. Wallet and Lighter ownership are verified before submission.</p>
+            {!tradingIdentity && authorizationPanel}
+            <label className="block text-xs font-bold" htmlFor="lighter-withdraw-amount">Withdrawal amount (USDC)</label>
+            <input id="lighter-withdraw-amount" type="text" inputMode="decimal" autoComplete="off"
+              disabled={!tradingIdentity || fundingBusy} value={withdrawAmount}
+              onChange={e => setWithdrawAmount(e.target.value)} placeholder="USDC amount"
+              className="w-full border border-brand-border bg-brand-bg p-3 rounded-lg font-mono text-sm"/>
+            <p className="text-[10px] text-brand-muted">Destination: {walletAddress || "Connect wallet"}. Network fees, account minimums and final timing are determined by Lighter.</p>
+            <button type="button" disabled={!tradingIdentity || fundingBusy || !withdrawAmount.trim()}
+              onClick={submitWithdrawal}
+              className="w-full bg-accent text-brand-bg font-bold rounded-lg p-3 disabled:opacity-40">
+              {fundingBusy ? "Submitting…" : "Confirm real Lighter withdrawal"}
+            </button>
           </>}
           {fundingStatus && <p role="status" className="text-xs break-all rounded-lg border border-brand-border p-2">{fundingStatus}</p>}
         </section>
