@@ -1,0 +1,8 @@
+{
+  "name": "HideDex",
+  "description": "HideDex (hidedex.com) — wallet-connected spot and perpetual trading interface",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

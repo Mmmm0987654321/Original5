@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <script>
+      (function() {
+        if (typeof window !== 'undefined') {
+          if (typeof window.global === 'undefined') {
+            window.global = window;
+          }
+          if (typeof window.process === 'undefined') {
+            window.process = { env: {}, nextTick: function(fn) { setTimeout(fn, 0); } };
+          }
+          try {
+            var _fetch = window.fetch;
+            Object.defineProperty(window, 'fetch', {
+              configurable: true,
+              enumerable: true,
+              get: function() { return _fetch; },
+              set: function(fn) { _fetch = fn; }
+            });
+          } catch (e) {
+            console.warn('Fetch setter patch error:', e);
+          }
+        }
+      })();
+    </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#080b10" />
+    <!-- Keep canonical host consistent with the verified Vercel 308 apex-to-www redirect. -->
+    <link rel="canonical" href="https://www.hidedex.com/" />
+    <!-- Original HideDex artwork: lossless square PNG favicons. -->
+    <!-- 48px is offered for Google Search; 28px/32px preserve prior favicon dimensions. -->
+    <link rel="icon" type="image/png" sizes="28x28" href="/hidedex-google-28x28.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/hidedex-browser-32x32.png?v=20261016" />
+    <link rel="icon" type="image/png" sizes="48x48" href="/hidedex-google-48x48.png" />
+    <link rel="apple-touch-icon" sizes="32x32" href="/hidedex-browser-32x32.png?v=20261016" />
+    <meta name="msapplication-TileImage" content="/hidedex-wallet-icon-20261013.png" />
+    <title>HideDex</title>
+    <meta name="description" content="HideDex is a next generation trading platform with high security and privacy for users. Trade across supported crypto, stock, forex, commodity and index markets with Spot and Perpetual trading." />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+    <meta name="author" content="HideDex" />
+    <meta name="application-name" content="HideDex" />
+    <meta name="apple-mobile-web-app-title" content="HideDex" />
+
+    <!-- Site identity and share-card: use the original HideDex logo, never old landing artwork. -->
+    <meta property="og:site_name" content="HideDex" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://www.hidedex.com/" />
+    <meta property="og:title" content="HideDex" />
+    <meta property="og:description" content="HideDex is a next generation trading platform with high security and privacy for users. Trade across supported crypto, stock, forex, commodity and index markets with Spot and Perpetual trading." />
+    <meta property="og:image" content="https://www.hidedex.com/IMG_20261014_171156.png" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="816" />
+    <meta property="og:image:height" content="816" />
+    <meta property="og:image:alt" content="HideDex official logo" />
+
+    <meta name="twitter:site" content="@HideDex_Com" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:url" content="https://www.hidedex.com/" />
+    <meta name="twitter:title" content="HideDex" />
+    <meta name="twitter:description" content="HideDex is a next generation trading platform with high security and privacy for users. Trade across supported crypto, stock, forex, commodity and index markets with Spot and Perpetual trading." />
+    <meta name="twitter:image" content="https://www.hidedex.com/IMG_20261014_171156.png" />
+    <meta name="twitter:image:alt" content="HideDex official logo" />
+
+    <!-- Explicit website name to help Google distinguish HideDex from similarly named terms. -->
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@graph": [
+          {
+            "@type": "WebSite",
+            "@id": "https://www.hidedex.com/#website",
+            "url": "https://www.hidedex.com/",
+            "name": "HideDex",
+            "alternateName": "Hidedex",
+            "description": "HideDex is a next generation trading platform with high security and privacy for users. Trade across supported crypto, stock, forex, commodity and index markets with Spot and Perpetual trading.",
+            "inLanguage": "en"
+          },
+          {
+            "@type": "Organization",
+            "@id": "https://www.hidedex.com/#organization",
+            "name": "HideDex",
+            "url": "https://www.hidedex.com/",
+            "logo": "https://www.hidedex.com/IMG_20261014_171156.png",
+            "sameAs": ["https://x.com/HideDex_Com", "https://t.me/Hidedex_official", "https://discord.gg/sZ8ZS98Psg"]
+          }
+        ]
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

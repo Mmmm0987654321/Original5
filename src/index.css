@@ -1,0 +1,320 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600;700&display=swap');
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root, :root.dark, .dark, html.dark {
+  /* Default: Dark Mode */
+  --bg-main: #040812;
+  --bg-secondary: #111827; /* Surface */
+  --bg-card: #162033; /* Card */
+  --bg-elevated: #162033;
+  --border-brand: #223247; /* Border */
+  --accent-primary: #00E878;
+  --accent-secondary: #003868;
+  --text-primary: #FFFFFF;
+  --text-secondary: #CBD5E1;
+  --text-muted: #94A3B8;
+  --divider-brand: #223247;
+
+  --bg-overlay-subtle: rgba(255, 255, 255, 0.02);
+  --bg-overlay-normal: rgba(255, 255, 255, 0.05);
+  --bg-overlay-active: rgba(255, 255, 255, 0.1);
+
+  --color-profit: #00E878;
+  --color-loss: #FF5C7A;
+
+  --pnl-profit: #00E878;
+  --pnl-loss: #FF5C7A;
+}
+
+:root.light, .light, html.light {
+  /* Light Mode overrides */
+  --bg-main: #FFFFFF;
+  --bg-secondary: #F7F9FC; /* Surface */
+  --bg-card: #FFFFFF; /* Card */
+  --bg-elevated: #FFFFFF;
+  --border-brand: #D9E3EE; /* Border */
+  --accent-primary: #3B82F6;
+  --accent-secondary: #EFF6FF;
+  --text-primary: #000000;
+  --text-secondary: #334155;
+  --text-muted: #64748B;
+  --divider-brand: #D9E3EE;
+
+  --bg-overlay-subtle: rgba(15, 23, 42, 0.02);
+  --bg-overlay-normal: rgba(15, 23, 42, 0.05);
+  --bg-overlay-active: rgba(15, 23, 42, 0.1);
+
+  --color-profit: #00D06B; /* optimized green for white backgrounds */
+
+  --pnl-profit: #047857;
+  --pnl-loss: #BE123C;
+}
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --color-brand-primary: var(--accent-primary);
+  --color-brand-accent: var(--accent-secondary);
+  --color-brand-profit: var(--color-profit);
+  --color-brand-loss: var(--color-loss);
+
+  --color-pnl-profit: var(--pnl-profit);
+  --color-pnl-loss: var(--pnl-loss);
+  
+  --color-brand-bg: var(--bg-main);
+  --color-brand-surface: var(--bg-secondary);
+  --color-brand-card: var(--bg-card);
+  --color-brand-border: var(--border-brand);
+  --color-brand-text: var(--text-primary);
+  --color-brand-sub: var(--text-secondary);
+  --color-brand-muted: var(--text-muted);
+  --color-brand-divider: var(--divider-brand);
+
+  --color-brand-overlay-subtle: var(--bg-overlay-subtle);
+  --color-brand-overlay-normal: var(--bg-overlay-normal);
+  --color-brand-overlay-active: var(--bg-overlay-active);
+
+  /* Centralized Theme Token System (Explicitly requested semantic tokens) */
+  --color-background: var(--bg-main);
+  --color-surface: var(--bg-card);
+  --color-surfaceSecondary: var(--bg-secondary);
+  --color-surfaceHover: var(--bg-overlay-normal);
+  --color-border: var(--border-brand);
+  --color-borderHover: var(--accent-primary);
+  --color-textPrimary: var(--text-primary);
+  --color-textSecondary: var(--text-secondary);
+  --color-textMuted: var(--text-muted);
+  --color-accent: var(--accent-primary);
+  --color-accentHover: var(--accent-primary);
+  --color-success: var(--color-profit);
+  --color-danger: var(--color-loss);
+  --color-warning: #F59E0B;
+  --color-info: #3B82F6;
+
+  /* Overriding standard Slate/Gray/Zinc background scales for automatic light/dark adaptation */
+  --color-slate-950: var(--bg-main);
+  --color-slate-900: var(--bg-secondary);
+  --color-slate-800: var(--bg-card);
+  --color-slate-700: var(--border-brand);
+  
+  --color-gray-950: var(--bg-main);
+  --color-gray-900: var(--bg-secondary);
+  --color-gray-800: var(--bg-card);
+  --color-gray-700: var(--border-brand);
+
+  --color-zinc-950: var(--bg-main);
+  --color-zinc-900: var(--bg-secondary);
+  --color-zinc-800: var(--bg-card);
+  --color-zinc-700: var(--border-brand);
+
+  /* Overriding standard Slate/Gray text scales for automatic text color scaling */
+  --color-slate-50: var(--text-primary);
+  --color-slate-100: var(--text-primary);
+  --color-slate-200: var(--text-primary);
+  --color-slate-300: var(--text-secondary);
+  --color-slate-400: var(--text-secondary);
+  --color-slate-500: var(--text-muted);
+  --color-slate-600: var(--text-muted);
+  --color-slate-700: var(--text-muted);
+
+  --color-gray-50: var(--text-primary);
+  --color-gray-100: var(--text-primary);
+  --color-gray-200: var(--text-primary);
+  --color-gray-300: var(--text-secondary);
+  --color-gray-400: var(--text-secondary);
+  --color-gray-500: var(--text-muted);
+  --color-gray-600: var(--text-muted);
+  --color-gray-700: var(--text-muted);
+
+  /* Redefining existing color tokens used in UI components to eliminate purple and apply official green/blue */
+  --color-indigo-50: var(--text-primary);
+  --color-indigo-100: var(--bg-secondary);
+  --color-indigo-200: var(--text-secondary);
+  --color-indigo-300: var(--text-muted);
+  --color-indigo-400: var(--accent-primary);
+  --color-indigo-500: var(--accent-primary);
+  --color-indigo-600: var(--accent-primary);
+  --color-indigo-700: var(--accent-secondary);
+  --color-indigo-800: var(--accent-secondary);
+  --color-indigo-900: var(--bg-secondary);
+  --color-indigo-950: var(--bg-main);
+
+  --color-violet-50: var(--text-primary);
+  --color-violet-100: var(--bg-secondary);
+  --color-violet-200: var(--text-secondary);
+  --color-violet-300: var(--text-muted);
+  --color-violet-400: var(--accent-primary);
+  --color-violet-500: var(--accent-primary);
+  --color-violet-600: var(--accent-primary);
+  --color-violet-700: var(--accent-secondary);
+  --color-violet-800: var(--accent-secondary);
+  --color-violet-900: var(--bg-secondary);
+  --color-violet-950: var(--bg-main);
+
+  --color-purple-50: var(--text-primary);
+  --color-purple-100: var(--bg-secondary);
+  --color-purple-200: var(--text-secondary);
+  --color-purple-300: var(--text-muted);
+  --color-purple-400: var(--accent-primary);
+  --color-purple-500: var(--accent-primary);
+  --color-purple-600: var(--accent-primary);
+  --color-purple-700: var(--accent-secondary);
+  --color-purple-800: var(--accent-secondary);
+  --color-purple-900: var(--bg-secondary);
+  --color-purple-950: var(--bg-main);
+
+  --color-fuchsia-50: var(--text-primary);
+  --color-fuchsia-100: var(--bg-secondary);
+  --color-fuchsia-200: var(--text-secondary);
+  --color-fuchsia-300: var(--text-muted);
+  --color-fuchsia-400: var(--accent-primary);
+  --color-fuchsia-500: var(--accent-primary);
+  --color-fuchsia-600: var(--accent-primary);
+  --color-fuchsia-700: var(--accent-secondary);
+  --color-fuchsia-800: var(--accent-secondary);
+  --color-fuchsia-900: var(--bg-secondary);
+  --color-fuchsia-950: var(--bg-main);
+
+  --color-cyan-50: var(--text-primary);
+  --color-cyan-100: var(--bg-secondary);
+  --color-cyan-200: var(--text-secondary);
+  --color-cyan-300: var(--text-muted);
+  --color-cyan-400: var(--accent-primary);
+  --color-cyan-500: var(--accent-primary);
+  --color-cyan-600: var(--accent-primary);
+  --color-cyan-700: var(--accent-secondary);
+  --color-cyan-800: var(--accent-secondary);
+  --color-cyan-900: var(--bg-secondary);
+  --color-cyan-950: var(--bg-main);
+}
+
+/* Base modifications for luxury theme */
+html, body {
+  background-color: var(--bg-main);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  transition: none;
+}
+
+/* Custom modern scrollbars */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--bg-main);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border-brand);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-primary);
+}
+
+/* Custom premium classes */
+.glass-panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-brand);
+  border-radius: 16px;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.glass-panel-neon {
+  background: var(--bg-secondary);
+  border: 1px solid var(--accent-secondary);
+  border-top: 2px solid var(--accent-primary);
+  border-radius: 16px;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.glow-primary {
+  box-shadow: 0 0 20px rgba(0, 232, 120, 0.15);
+}
+
+.glow-profit {
+  box-shadow: 0 0 20px rgba(0, 232, 120, 0.1);
+}
+
+.glow-loss {
+  box-shadow: 0 0 20px rgba(255, 92, 122, 0.1);
+}
+
+/* Dynamic grid flashing animation */
+@keyframes flash-green {
+  0% { background-color: rgba(0, 232, 120, 0.2); }
+  100% { background-color: transparent; }
+}
+
+@keyframes flash-red {
+  0% { background-color: rgba(255, 92, 122, 0.2); }
+  100% { background-color: transparent; }
+}
+
+.animate-flash-green {
+  animation: flash-green 0.5s ease-out forwards;
+}
+
+.animate-flash-red {
+  animation: flash-red 0.5s ease-out forwards;
+}
+
+/* Dynamic border classes to enforce correct colors */
+.border-brand-border {
+  border-color: var(--border-brand) !important;
+}
+
+.bg-brand-bg {
+  background-color: var(--bg-main) !important;
+}
+
+.bg-brand-surface {
+  background-color: var(--bg-secondary) !important;
+}
+
+.bg-brand-card {
+  background-color: var(--bg-card) !important;
+}
+
+.text-brand-text {
+  color: var(--text-primary) !important;
+}
+
+.text-brand-sub {
+  color: var(--text-secondary) !important;
+}
+
+.text-brand-muted {
+  color: var(--text-muted) !important;
+}
+
+.text-white-absolute {
+  color: #FFFFFF !important;
+}
+
+/* Hide scrollbar utility class */
+.scrollbar-none::-webkit-scrollbar {
+  display: none !important;
+}
+.scrollbar-none {
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
+}
+
+/* Theme updates must paint as a single complete palette, never animate
+   text, backgrounds and selected controls through mismatched colors. */
+html.hidedex-theme-commit,
+html.hidedex-theme-commit *,
+html.hidedex-theme-commit *::before,
+html.hidedex-theme-commit *::after {
+  transition: none !important;
+  animation: none !important;
+}
