@@ -12,3 +12,11 @@ export function HideDexOrderForm({children}:{children:React.ReactNode}) {
     {children}
   </div>;
 }
+
+/** Original desktop/tablet chart and Order Book host shared by all venues. */
+export function HideDexTopMarketPane({children}:{children:React.ReactNode}) {
+  return <div id="terminal-top-chart-panel"
+    className="hidden md:block mb-1.5 md:mb-2 bg-brand-bg border border-brand-border rounded-xl p-1 md:p-2 shadow-xl overflow-visible">
+    {children}
+  </div>;
+}

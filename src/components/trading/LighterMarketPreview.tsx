@@ -14,6 +14,7 @@ import {
 } from "../../lib/lighterTrading";
 import { depositLighterUsdcOnEthereum, depositLighterUsdcFromArbitrum, type LighterWalletProvider } from "../../lib/lighterFunding";
 import TVChart from "./TVChart";
+import TopOrderBookView from "./TopOrderBookView";
 import MarketsPanel from "../dashboard/MarketsPanel";
 import TradingAccountTabBar, { type TradingTabId } from "./TradingAccountTabBar";
 import HideDexPositionHeader from "./HideDexPositionHeader";
@@ -22,7 +23,7 @@ import HideDexTradeHistory from "./HideDexTradeHistory";
 import HideDexOpenOrders, {type HideDexOpenOrderRow} from "./HideDexOpenOrders";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
 import HideDexOrderBookPanel, {type HideDexBookLevel} from "./HideDexOrderBookPanel";
-import {HideDexTradeGrid,HideDexOrderForm} from "./HideDexTradeLayout";
+import {HideDexTradeGrid,HideDexOrderForm,HideDexTopMarketPane} from "./HideDexTradeLayout";
 import {HideDexTradePercentPresets,HideDexTradeOptionToggle} from "./HideDexTradeOptions";
 import HideDexMobileMarketHeader from "./HideDexMobileMarketHeader";
 import HideDexDesktopMarketBar from "./HideDexDesktopMarketBar";
@@ -529,40 +530,6 @@ export default function LighterMarketPreview({
   const hasReduciblePosition = Boolean(selected && tradingIdentity && publicAccounts?.some(a =>
     a.index === tradingIdentity.accountIndex && a.positions.some(p =>
       p.symbol === selected.symbol && (side === "sell" ? p.signedSize > 0 : p.signedSize < 0))));
-  const bookLevels = (levels: LighterMarketFeed["bids"], sideName: "bid" | "ask") => {
-    // Sum real exchange sizes into rounded price groups; never synthesize levels.
-    const decimalPrecision = Math.min(10, selected?.priceDecimals ?? 2);
-    const tick = Math.pow(10, -decimalPrecision) * bookGroup;
-    const buckets = new Map<number, number>();
-    for (const l of levels) {
-      const px = displayPrice(l.price), sz = displaySize(l.size);
-      if (px === null || sz === null || px <= 0 || sz < 0) continue;
-      const key = Number(((sideName === "ask" ? Math.ceil(px / tick - 1e-7) : Math.floor(px / tick + 1e-7)) * tick).toFixed(decimalPrecision));
-      buckets.set(key, (buckets.get(key) ?? 0) + sz);
-    }
-    const visible = [...buckets.entries()].sort((a,b) => sideName === "ask" ? a[0]-b[0] : b[0]-a[0]).slice(0, 6);
-    const totalSize = Math.max(1, visible.reduce((sum, row) => sum + row[1], 0));
-    let cumulative = 0;
-    return <div className="space-y-0.5 w-full">
-      {visible.length === 0 && <div className="py-2 text-[10px] text-brand-muted">Waiting for live {sideName}s…</div>}
-      {visible.map((level, i) => {
-        const [px, sz] = level;
-        cumulative += Math.max(0, sz ?? 0);
-        const depth = Math.max(0, Math.min(100, cumulative / totalSize * 100));
-        const value = sz !== null && px !== null && orderBookSizeUnit === "USD" ? sz * px : sz;
-        return <button type="button" key={px + "-" + i}
-          onClick={() => { if (px !== null) setLimitPrice(String(px)); }}
-          className="relative w-full grid grid-cols-2 gap-1 text-[9px] sm:text-[11px] font-mono py-1 text-left overflow-hidden rounded hover:bg-brand-overlay-subtle">
-          <span aria-hidden="true" className={"absolute right-0 top-0 bottom-0 rounded-r pointer-events-none " +
-            (sideName === "bid" ? "bg-emerald-500/20" : "bg-rose-500/20")} style={{ width: depth + "%" }}/>
-          <span className={"relative z-10 font-bold " + (sideName === "bid" ? "text-emerald-500" : "text-rose-400")}>{formatPrice(px, selected?.priceDecimals ?? 8)}</span>
-          <span className="relative z-10 text-right text-brand-text truncate">{value === null ? "—" :
-            (orderBookSizeUnit === "USD" ? "$" : "") + formatPrice(value, orderBookSizeUnit === "USD" ? 2 : 5)}</span>
-        </button>;
-      })}
-    </div>;
-  };
-
   const makeLighterBookRows = (levels:LighterMarketFeed["bids"],side:"bid"|"ask"):HideDexBookLevel[] => {
     const decimals=Math.min(10,selected?.priceDecimals??2);
     const tick=Math.pow(10,-decimals)*bookGroup;
@@ -938,7 +905,7 @@ export default function LighterMarketPreview({
           <div id="market-chart-toolbar-host" className="w-full min-w-0 flex items-center min-h-[28px] border-b border-brand-border/40"/>
         </>}
       </div>
-      <div id="terminal-top-chart-panel" className="hidden md:block mb-2 bg-brand-bg border border-brand-border rounded-xl p-1.5">
+      <HideDexTopMarketPane>
         {viewMode === "chart" ? selected ? <TVChart key={"lighter-chart-" + selected.id}
           symbol={selected.symbol} marketCoin="" lighterMarketId={selected.id}
           isSpot={kind === "spot"} currentPrice={marketPrice}
@@ -946,12 +913,17 @@ export default function LighterMarketPreview({
           volume24h={selected.volume24hUsd} change24h={selected.change24h}
           tradeHistory={[]} toolbarHostId="market-chart-toolbar-host"
         /> : <p className="p-5 text-xs text-brand-muted">Choose a Lighter market.</p> : (
-          <div className="p-2">
-            <h3 className="text-xs font-bold mb-3">Live Lighter Order Book · {selected?.symbol}</h3>
-            <div className="grid grid-cols-2 gap-2"><div>{bookLevels(feed.bids, "bid")}</div><div>{bookLevels(feed.asks, "ask")}</div></div>
-          </div>
+          selected && lighterTokens.find(t=>t.symbol===lighterSelectedSymbol) ?
+          <TopOrderBookView
+            symbol={selected.symbol.split("/")[0]}
+            currentToken={{...lighterTokens.find(t=>t.symbol===lighterSelectedSymbol)!,price:marketPrice}}
+            asks={makeLighterBookRows(feed.asks,"ask").reverse()}
+            bids={makeLighterBookRows(feed.bids,"bid")}
+            priceDecimals={Math.min(8,selected.priceDecimals)}
+            onSelectPrice={price=>setLimitPrice(String(price))}
+          /> : <p className="p-5 text-xs text-brand-muted">Choose a Lighter market.</p>
         )}
-      </div>
+      </HideDexTopMarketPane>
       <HideDexTradeGrid>
         <HideDexOrderForm>
           <HideDexTradeSelectors

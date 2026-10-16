@@ -75,7 +75,7 @@ import { useLanguage } from "../../lib/LanguageContext";
 import TradingDashboardTabs from "./TradingDashboardTabs";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
 import HideDexOrderBookPanel from "./HideDexOrderBookPanel";
-import {HideDexTradeGrid,HideDexOrderForm} from "./HideDexTradeLayout";
+import {HideDexTradeGrid,HideDexOrderForm,HideDexTopMarketPane} from "./HideDexTradeLayout";
 import {HideDexTradePercentPresets,HideDexTradeOptionToggle} from "./HideDexTradeOptions";
 import HideDexMobileMarketHeader from "./HideDexMobileMarketHeader";
 import HideDexDesktopMarketBar from "./HideDexDesktopMarketBar";
@@ -4610,7 +4610,7 @@ export default function RedesignedTerminal({
       )}
 
       {/* 2.5 FEATURED VIEW PANEL AT TOP (Matching laptop/desktop/tablet layout, hidden on mobile) */}
-      <div className="hidden md:block mb-1.5 md:mb-2 bg-brand-bg border border-brand-border rounded-xl p-1 md:p-2 shadow-xl overflow-visible" id="terminal-top-chart-panel">
+      <HideDexTopMarketPane>
         {topViewMode === "chart" && (
           <TVChart
             symbol={symbol}
@@ -4649,7 +4649,7 @@ export default function RedesignedTerminal({
             liveTrades={liveTrades}
           />
         )}
-      </div>
+      </HideDexTopMarketPane>
 
       {/* 3. TWO-COLUMN SPLIT PANEL LAYOUT (Order Form Left | Order Book Right - Side by Side even on Mobile!) */}
       <HideDexTradeGrid>
