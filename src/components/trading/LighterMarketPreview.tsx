@@ -12,7 +12,7 @@ type Props = {
   walletAddress: string;
   section: Section;
   initialKind?: Kind;
-  onSelectSection: (section: Section) => void;
+  onSelectSection: (section: Section, marketKind?: Kind) => void;
 };
 
 const emptyBook: LighterMarketFeed = {
@@ -112,7 +112,7 @@ export default function LighterMarketPreview({
     setKind(m.kind);
     setAmount("");
     setLimitPrice("");
-    if (navigate) onSelectSection("trade");
+    if (navigate) onSelectSection("trade", m.kind);
   };
   const switchKind = (next: Kind) => {
     setKind(next);

@@ -4149,10 +4149,11 @@ export default function App() {
                 "trade"
               }
               initialKind={activeTab === ActiveTab.Spot ? "spot" : "perp"}
-              onSelectSection={(section) => setActiveTab(
+              onSelectSection={(section, marketKind) => setActiveTab(
                 section === "markets" ? ActiveTab.Markets :
                 section === "funds" ? ActiveTab.Portfolio :
-                section === "account" ? ActiveTab.Profile : ActiveTab.Perp
+                section === "account" ? ActiveTab.Profile :
+                marketKind === "spot" ? ActiveTab.Spot : ActiveTab.Perp
               )}
             />
           )}
