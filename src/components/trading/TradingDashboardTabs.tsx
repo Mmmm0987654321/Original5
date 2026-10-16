@@ -1,6 +1,7 @@
 import TradingAccountTabBar from "./TradingAccountTabBar";
 import HideDexPositionHeader from "./HideDexPositionHeader";
 import HideDexPositionDetails from "./HideDexPositionDetails";
+import HideDexTradeHistory from "./HideDexTradeHistory";
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -1162,142 +1163,15 @@ export default function TradingDashboardTabs({
           )
         )}
 
-        {/* TAB 5: TRADE_HISTORY */}
-        {activeBottomTab === "TRADE_HISTORY" && !isFieldHidden("tradeHistory") && (
-          (!walletConnected || tradeHistory.length === 0) ? (
-            <div className="flex flex-col items-center justify-center py-8 text-brand-muted text-center">
-              <Layers className="w-6 h-6 text-brand-text/5 mb-2" />
-              <p className="text-xs font-mono font-medium text-brand-sub">No historical trades found for this address.</p>
-            </div>
-          ) : (
-            <>
-              {/* Mobile Card View */}
-              <div className="block md:hidden flex flex-col gap-3 w-full max-h-[360px] overflow-y-auto pr-1">
-                {tradeHistory.slice(0, 15).map((hist) => {
-                  const isBuy = hist.side === "BUY";
-                  const feeVal = typeof hist.fee === 'number' && Number.isFinite(hist.fee) ? hist.fee : 0;
-                  
-                  const hasPnl = hist.pnl !== undefined;
-                  const displayPnl = hasPnl && Number.isFinite(hist.pnl) ? hist.pnl! : 0;
-                  const displayRoi =
-                    typeof hist.pnlPercent === "number" &&
-                    Number.isFinite(hist.pnlPercent)
-                      ? hist.pnlPercent
-                      : 0;
-
-                  return (
-                    <div key={hist.id} className="bg-brand-card hover:bg-brand-surface border border-brand-border/60 hover:border-brand-primary/30 rounded-xl p-3 flex flex-col gap-2.5 transition-all duration-150 shadow-md text-brand-sub">
-                      <div className="flex items-center justify-between border-b border-brand-divider/30 pb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-[12px] text-brand-text">
-                            {hist.isSpot === true ? `${hist.symbol}-SPOT` : `${hist.symbol}-PERP`}
-                          </span>
-                          <span className={`px-1.5 py-0.2 rounded text-[8px] font-black tracking-wider ${
-                            isBuy ? "bg-brand-profit/10 text-brand-profit border border-brand-profit/20" : "bg-brand-loss/10 text-brand-loss border border-brand-loss/20"
-                          }`}>
-                            {hist.side}
-                          </span>
-                          <span className="text-[8px] text-brand-muted font-bold font-mono">
-                            ID: {hist.id.slice(0, 6)}
-                          </span>
-                        </div>
-                        
-                        {/* Show Realized PNL & ROI */}
-                        {(displayPnl !== 0) && (
-                          <div className="text-right font-mono">
-                            <span className={`text-[11px] font-bold block ${displayPnl >= 0 ? "text-pnl-profit" : "text-pnl-loss"}`}>
-                              {displayPnl >= 0 ? "+" : ""}${displayPnl.toFixed(2)}
-                            </span>
-                            <span className={`text-[8px] font-bold block ${displayRoi >= 0 ? "text-pnl-profit" : "text-pnl-loss"}`}>
-                              ROI: {displayRoi >= 0 ? "+" : ""}{displayRoi.toFixed(1)}%
-                            </span>
-                          </div>
-                        )}
-                      </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] text-brand-sub font-mono">
-                        <div>
-                          <span className="text-brand-muted block text-[8px] font-bold uppercase tracking-wider">Price</span>
-                          <span className="font-semibold text-brand-text">${hist.price.toLocaleString(undefined, { minimumFractionDigits: 1 })}</span>
-                        </div>
-                        <div>
-                          <span className="text-brand-muted block text-[8px] font-bold uppercase tracking-wider">Size / Value</span>
-                          <span className="font-semibold text-brand-text">
-                            {hist.size} {hist.symbol} <span className="text-brand-muted text-[9px]">(${(hist.value).toFixed(1)})</span>
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-brand-muted block text-[8px] font-bold uppercase tracking-wider">Fees Paid</span>
-                          <span className="font-semibold text-brand-loss/80">${feeVal.toFixed(4)} USDC</span>
-                        </div>
-                        <div>
-                          <span className="text-brand-muted block text-[8px] font-bold uppercase tracking-wider">Executed At</span>
-                          <span className="font-semibold text-brand-sub">{hist.timestamp}</span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Desktop Table View */}
-              <div className="hidden md:block max-h-[360px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-brand-border/60 scrollbar-track-transparent">
-                <table className="w-full text-left border-collapse text-xs font-mono">
-                  <thead>
-                    <tr className="text-[10px] font-mono text-brand-muted uppercase border-b border-brand-border pb-2">
-                      <th className="py-2.5">ID</th>
-                      <th className="py-2.5">Symbol</th>
-                      <th className="py-2.5">Direction</th>
-                      <th className="py-2.5">Size</th>
-                      <th className="py-2.5">Price</th>
-                      <th className="py-2.5">Value</th>
-                      <th className="py-2.5">Realized PnL</th>
-                      <th className="py-2.5">ROI</th>
-                      <th className="py-2.5">Fees</th>
-                      <th className="py-2.5 text-right">Time</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-brand-divider/30 text-brand-sub">
-                    {tradeHistory.slice(0, 15).map((hist) => {
-                      const isBuy = hist.side === "BUY";
-                      const feeVal = typeof hist.fee === 'number' && Number.isFinite(hist.fee) ? hist.fee : 0;
-                      const hasPnl = hist.pnl !== undefined;
-                      const displayPnl = hasPnl && Number.isFinite(hist.pnl) ? hist.pnl! : 0;
-                      const displayRoi =
-                        typeof hist.pnlPercent === "number" &&
-                        Number.isFinite(hist.pnlPercent)
-                          ? hist.pnlPercent
-                          : 0;
-
-                      return (
-                        <tr key={hist.id} className="hover:bg-brand-overlay-subtle transition-colors">
-                          <td className="py-2.5 text-[10px] text-brand-muted">#{hist.id.slice(0, 6)}</td>
-                          <td className="py-2.5 font-bold text-brand-text">
-                            {hist.isSpot === true ? `${hist.symbol}-SPOT` : `${hist.symbol}-PERP`}
-                          </td>
-                          <td className="py-2.5">
-                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${isBuy ? "bg-brand-profit/10 text-brand-profit border border-brand-profit/20" : "bg-brand-loss/10 text-brand-loss border border-brand-loss/20"}`}>
-                              {hist.side}
-                            </span>
-                          </td>
-                          <td className="py-2.5">{hist.size} {hist.symbol}</td>
-                          <td className="py-2.5 font-semibold">${hist.price.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
-                          <td className="py-2.5 text-brand-sub">${hist.value.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
-                          <td className={`py-2.5 font-bold ${displayPnl > 0 ? "text-pnl-profit" : displayPnl < 0 ? "text-pnl-loss" : "text-brand-muted"}`}>
-                            {displayPnl !== 0 ? `${displayPnl >= 0 ? "+" : ""}$${displayPnl.toFixed(2)}` : "—"}
-                          </td>
-                          <td className={`py-2.5 font-bold ${displayRoi > 0 ? "text-pnl-profit" : displayRoi < 0 ? "text-pnl-loss" : "text-brand-muted"}`}>
-                            {displayRoi !== 0 ? `${displayRoi >= 0 ? "+" : ""}${displayRoi.toFixed(1)}%` : "—"}
-                          </td>
-                          <td className="py-2.5 text-brand-loss/80">${feeVal.toFixed(4)}</td>
-                          <td className="py-2.5 text-right text-brand-muted">{hist.timestamp}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )
+        {/* TAB 5: TRADE_HISTORY — original shared UI for both venues */}
+        {activeBottomTab==="TRADE_HISTORY" && !isFieldHidden("tradeHistory") && (
+          <HideDexTradeHistory
+            items={walletConnected ? tradeHistory.map(hist=>({
+              id:hist.id,symbol:hist.symbol,side:hist.side,isSpot:hist.isSpot===true,
+              price:hist.price,size:hist.size,value:hist.value,
+              realizedPnl:hist.pnl,roi:hist.pnlPercent,fee:hist.fee,timestamp:hist.timestamp
+            })) : []}
+          />
         )}
 
         {/* TAB 6: FUNDING_HISTORY */}

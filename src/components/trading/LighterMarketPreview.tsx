@@ -16,6 +16,7 @@ import MarketsPanel from "../dashboard/MarketsPanel";
 import TradingAccountTabBar, { type TradingTabId } from "./TradingAccountTabBar";
 import HideDexPositionHeader from "./HideDexPositionHeader";
 import HideDexPositionDetails from "./HideDexPositionDetails";
+import HideDexTradeHistory from "./HideDexTradeHistory";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
 import HideDexOrderBookPanel, {type HideDexBookLevel} from "./HideDexOrderBookPanel";
 import HideDexMobileMarketHeader from "./HideDexMobileMarketHeader";
@@ -712,8 +713,8 @@ export default function LighterMarketPreview({
           })}
         </div>}
         {accountTab === "TRADE_HISTORY" && (
-          <p className="text-xs text-brand-muted">Lighter fills and historical fees are not integrated.
-            No Hyperliquid history or fabricated fills are shown.</p>
+          <HideDexTradeHistory items={null}
+            noDataMessage="Verified Lighter fills and historical fees have not been loaded. No trade history from Hyperliquid is substituted."/>
         )}
       </div>
     </div>
