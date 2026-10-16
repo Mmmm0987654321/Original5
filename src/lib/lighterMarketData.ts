@@ -305,7 +305,7 @@ export function subscribeLighterBook(
       return;
     }
     if (frameTimer) return;
-    const delay = Math.max(0, 125 - (Date.now() - lastPaint));
+    const delay = Math.max(0, 250 - (Date.now() - lastPaint));
     frameTimer = setTimeout(paint, delay);
   };
   const channel = `order_book/${marketId}`;

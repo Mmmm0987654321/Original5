@@ -90,7 +90,6 @@ export default function LighterMarketPreview({
   const [marginBusy, setMarginBusy] = useState(false);
   const [marginStatus, setMarginStatus] = useState("");
   const [marginUpdateMarketId, setMarginUpdateMarketId] = useState<number | null>(null);
-  const authPromptedWallet = useRef("");
   const [amount, setAmount] = useState("");
   const [sizeUnit, setSizeUnit] = useState<"USD" | "COIN">("USD");
   const [hideBalance, setHideBalance] = useState(false);
@@ -130,27 +129,33 @@ export default function LighterMarketPreview({
     }
     setTradingNotice("");
     setAuthSheetOpen(false);
-    authPromptedWallet.current = "";
-  }, [walletAddress]);
-
-  // Use the same one-time bottom-sheet style as HideDex's existing Enable Trading flow.
-  // Never auto-sign or send a transaction: the user must explicitly tap the primary action.
-  useEffect(() => {
-    if (section === "trade" && walletAddress && !tradingIdentity &&
-        authPromptedWallet.current !== walletAddress) {
-      authPromptedWallet.current = walletAddress;
-      setAuthSheetOpen(true);
+    // Private signer stays in volatile memory; switching views must never create
+    // a second registration prompt. On reload users may reconnect their saved key.
+    if (walletAddress && !getActiveLighterSigner(walletAddress)) {
+      try {
+        const saved = JSON.parse(localStorage.getItem("hidedex:lighter:key-ref:"+walletAddress.toLowerCase())||"null");
+        if (saved && Number.isSafeInteger(saved.accountIndex) && Number.isSafeInteger(saved.apiKeyIndex)) {
+          setExistingAccountIndex(String(saved.accountIndex));
+          setExistingApiKeyIndex(String(saved.apiKeyIndex));
+          setShowExistingKey(true);
+        }
+      } catch { /* Invalid reference: ask user to authorize normally. */ }
     }
-  }, [section, walletAddress, tradingIdentity]);
+  }, [walletAddress]);
 
   const beginLighterAuthorization = async () => {
     if (!walletAddress || tradingBusy) return;
-    setTradingBusy(true); setTradingNotice("Generating a session-only Lighter trading key…");
+    setTradingBusy(true); setTradingNotice("");
     try {
       const { identity, recoveryKey: secret, txHash } = await registerLighterTradingKey({
         walletAddress, getWalletProvider,
       });
       setTradingIdentity(identity);
+      try {
+        localStorage.setItem("hidedex:lighter:key-ref:"+walletAddress.toLowerCase(), JSON.stringify({
+          accountIndex:identity.accountIndex,apiKeyIndex:identity.apiKeyIndex,
+        }));
+      } catch { /* Optional public reference only; key remains memory-only. */ }
       setRecoveryKey(secret);
       setAuthSheetOpen(true); // Keep one-time backup visible only inside the secure sheet.
       setTradingNotice("Lighter registration submitted" + (txHash ? ": " + txHash : "") +
@@ -171,18 +176,26 @@ export default function LighterMarketPreview({
       setTradingIdentity(identity);
       setExistingKey(""); setShowExistingKey(false);
       setAuthSheetOpen(false);
+      try { localStorage.setItem("hidedex:lighter:key-ref:"+walletAddress.toLowerCase(),JSON.stringify({
+        accountIndex:identity.accountIndex,apiKeyIndex:identity.apiKeyIndex,
+      })); } catch { /* Continue without storing a public reference. */ }
       setTradingNotice("Existing Lighter API key verified for this connected wallet.");
     } catch (e) {
       setTradingNotice(e instanceof Error ? e.message : "Trading key verification failed.");
     } finally { setTradingBusy(false); }
   };
   const submitTrade = async () => {
-    if (!walletAddress || !selected || !tradingIdentity || tradingBusy) return;
+    if (!walletAddress || !selected || tradingBusy) return;
     if (!marketPrice || feed.status !== "live" || !(sizeInCoin > 0) ||
         (reduceOnly && !hasReduciblePosition) ||
         (attachTpSl && (!takeProfit.trim() && !stopLoss.trim())) ||
         (orderType === "limit" && !(Number(limitPrice) > 0))) {
       setTradingNotice("Choose a live Lighter market with a valid order size and limit price.");
+      return;
+    }
+    if (!tradingIdentity) {
+      setTradingNotice("");
+      setAuthSheetOpen(true);
       return;
     }
     const orderSide = side === "buy" ? (kind === "perp" ? "LONG" : "BUY") : (kind === "perp" ? "SHORT" : "SELL");
@@ -494,6 +507,7 @@ export default function LighterMarketPreview({
     if (section === "trade") onSelectSection("trade", next);
   };
 
+  const signedAccount = publicAccounts?.find(account=>account.index===tradingIdentity?.accountIndex) ?? null;
   const inputPrice = orderType === "limit" ? Number(limitPrice) : marketPrice;
   const inputAmount = Number(amount);
   const sizeInCoin = Number.isFinite(inputAmount) && inputAmount > 0 && inputPrice !== null && inputPrice > 0
@@ -565,6 +579,7 @@ export default function LighterMarketPreview({
                 <div className="min-w-0">
                   <p className="font-semibold">{asset.symbol} <span className="text-brand-muted font-normal">· Account #{a.index}</span></p>
                   {asset.lockedBalance !== null && <p className="text-[10px] text-brand-muted">Locked: {formatPrice(asset.lockedBalance, 8)} {asset.symbol}</p>}
+                  {asset.marginBalance !== null && <p className="text-[10px] text-brand-muted">Reported margin balance: {formatPrice(asset.marginBalance,8)} {asset.symbol}</p>}
                 </div>
                 <div className="font-mono font-bold">{formatPrice(asset.balance, 8)}</div>
               </div>
@@ -724,6 +739,14 @@ export default function LighterMarketPreview({
   );
 
   return <div className="w-full min-w-0 text-brand-text pb-1" data-exchange="lighter">
+    {tradingNotice && !authSheetOpen && (
+      <div role="status" aria-live="polite"
+        className="fixed bottom-[94px] right-3 left-3 sm:left-auto sm:max-w-sm z-[150] flex items-start justify-between gap-2 rounded-xl bg-brand-surface border border-brand-border p-3 shadow-2xl text-xs text-brand-text break-words">
+        <span className="line-clamp-3">{tradingNotice}</span>
+        <button type="button" aria-label="Dismiss notice" onClick={()=>setTradingNotice("")}
+          className="shrink-0 rounded border border-brand-border px-2 py-1">×</button>
+      </div>
+    )}
     {authSheetOpen && (
       <div role="presentation" className="fixed inset-0 z-[160] flex items-end justify-center bg-black/75 backdrop-blur-[2px]"
         onMouseDown={e => { if (e.target === e.currentTarget && !tradingBusy && !recoveryKey) setAuthSheetOpen(false); }}>
@@ -916,8 +939,8 @@ export default function LighterMarketPreview({
           </div>
         )}
       </div>
-      <div className="grid grid-cols-12 gap-1.5 md:gap-2 mb-1.5 items-stretch">
-        <div id="terminal-order-form" className="col-span-7 min-w-0 bg-brand-bg border border-brand-border rounded-xl p-1.5 md:p-2.5 flex flex-col h-full shadow-lg relative gap-2">
+      <div className="grid grid-cols-12 gap-1.5 md:gap-2 mb-1.5 items-start">
+        <div id="terminal-order-form" className="col-span-7 min-w-0 bg-brand-bg border border-brand-border rounded-xl p-1.5 md:p-2.5 flex flex-col shadow-lg relative gap-2">
           <HideDexTradeSelectors
             isPerp={kind === "perp"}
             orderType={orderType.toUpperCase() as TradeOrderType}
@@ -934,8 +957,8 @@ export default function LighterMarketPreview({
             isPerp={kind==="perp"}
             side={side==="buy"?"BUY":"SELL"}
             onSide={next=>{setSide(next==="BUY"?"buy":"sell");setReduceOnly(false);}}
-            available={publicAccounts && publicAccounts.every(a => a.availableBalance !== null)
-              ? formatPrice(publicAccounts.reduce((sum,a)=>sum+(a.availableBalance??0),0),5)+" USDC" : "—"}
+            available={signedAccount?.availableBalance != null
+              ? formatPrice(signedAccount.availableBalance,5)+" USDC" : "—"}
           />
                     <HideDexBasicOrderInputs
             type={orderType==="market"?"MARKET":"LIMIT"}
@@ -954,9 +977,9 @@ export default function LighterMarketPreview({
           />
                     <div className="grid grid-cols-5 gap-1">
             {[10,25,50,75,100].map(percent => <button type="button" key={percent}
-              disabled={!marketPrice || !publicAccounts?.every(a=>a.availableBalance!==null)}
+              disabled={!marketPrice || signedAccount?.availableBalance == null || !tradingIdentity}
               onClick={() => {
-                const available = publicAccounts?.reduce((sum,a)=>sum+(a.availableBalance??0),0)??0;
+                const available = signedAccount?.availableBalance??0;
                 const price = orderType==="limit" ? Number(limitPrice) : marketPrice;
                 if (price && price>0 && available>0) setAmount(String(Number((sizeUnit === "USD"
                   ? available*percent/100 : available*percent/100/price).toFixed(6))));
@@ -997,15 +1020,12 @@ export default function LighterMarketPreview({
             {kind === "perp" && <div className="flex justify-between text-brand-muted"><span>Margin</span><span>—</span></div>}
           </div>
           <button type="button" onClick={submitTrade}
-            disabled={!tradingIdentity || tradingBusy || !selected || feed.status !== "live" || !(sizeInCoin > 0)}
-            title={!tradingIdentity ? "Authorize your Lighter account below" : "Confirm a real Lighter mainnet order"}
+            disabled={tradingBusy || !walletAddress || !selected || feed.status !== "live" || !(sizeInCoin > 0)}
+            title={!tradingIdentity ? "Fill the order and tap Place to enable trading" : "Confirm a real Lighter mainnet order"}
             className={"w-full py-2 rounded-lg text-[10px] md:text-xs font-display font-black uppercase disabled:opacity-50 " +
               (side === "buy" ? "bg-[#18c29c] text-[#030610]" : "bg-[#f25c5c] text-white")}>
             {tradingBusy ? "Processing…" : "PLACE " + (side === "buy" ? (kind === "perp" ? "LONG" : "BUY") : (kind === "perp" ? "SHORT" : "SELL"))}
           </button>
-          {!tradingIdentity && <button type="button" onClick={() => setAuthSheetOpen(true)}
-            className="text-[10px] text-accent font-semibold py-1 underline">Enable trading</button>}
-          {tradingNotice && <p role="status" className="text-[9px] text-amber-500 line-clamp-2 break-words">{tradingNotice}</p>}
         </div>
         <HideDexOrderBookPanel
           asks={makeLighterBookRows(feed.asks,"ask")}
@@ -1024,21 +1044,21 @@ export default function LighterMarketPreview({
           group={String(bookGroup)}
           groupOptions={["1","10","100"]}
           onGroup={v => setBookGroup(Number(v))}
-          shrinkOnTpSl={attachTpSl}
+          shrinkOnTpSl={false}
         />
       </div>
       {lighterAccountTabs}
     </>}
 
     {section === "funds" && (() => {
-      const verifiedCollateral = publicAccounts !== null && publicAccounts.every(a => a.collateral !== null)
+      const verifiedCollateral = publicAccounts !== null && publicAccounts.length > 0 && publicAccounts.every(a => a.collateral !== null)
         ? publicAccounts.reduce((total, a) => total + (a.collateral ?? 0), 0) : null;
-      const verifiedAvailable = publicAccounts !== null && publicAccounts.every(a => a.availableBalance !== null)
+      const verifiedAvailable = publicAccounts !== null && publicAccounts.length > 0 && publicAccounts.every(a => a.availableBalance !== null)
         ? publicAccounts.reduce((total, a) => total + (a.availableBalance ?? 0), 0) : null;
       const showBalance = (value: number | null) =>
         <TrustShieldValue fieldKey="portfolio" value={hideBalance ? "••••••" : value === null ? "—" : formatPrice(value, 2) + " USDC"} hideEyeIcon />;
       const spotAssets = publicAccounts?.flatMap(a => a.assets ?? []) ?? [];
-      const spotAvailable = publicAccounts !== null && publicAccounts.every(a => a.assets !== null)
+      const spotAvailable = publicAccounts !== null && publicAccounts.length > 0 && publicAccounts.every(a => a.assets !== null)
         ? spotAssets.filter(a => a.symbol === "USDC").reduce((sum, a) => sum + a.balance, 0)
         : null;
       const unrealizedPnl = publicAccounts !== null && publicAccounts.every(a => a.positions.every(p => p.unrealizedPnl !== null))
@@ -1121,6 +1141,7 @@ export default function LighterMarketPreview({
           unavailableMessage="Verified Lighter fills for this wallet are not loaded. No volume is inferred from Hyperliquid or prices."
         />
         {lighterAssetCards}
+        {accountCards}
       </div>;
     })()}
 
