@@ -1,5 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import TVChart from "./TVChart";
+import MarketsPanel from "../dashboard/MarketsPanel";
+import type { TokenMetadata } from "../../types";
 import { renderAssetLogo } from "./MarketSelector";
 import {
   getLighterAccountIndexes, getLighterMarkets, getLighterPublicAccounts,
@@ -107,6 +109,25 @@ export default function LighterMarketPreview({
   const lastPrice = feed.recentTradePrice
     ? displayPrice(feed.recentTradePrice) : selected?.lastTradePrice ?? null;
   const marketPrice = lastPrice !== null && lastPrice > 0 ? lastPrice : null;
+  const lighterTokens = useMemo<TokenMetadata[]>(() =>
+    markets.map(m => ({
+      symbol: m.kind === "spot" ? m.symbol + "-SPOT" : m.symbol,
+      name: m.symbol,
+      price: m.lastTradePrice,
+      change24h: m.change24h,
+      volume24h: m.volume24hUsd,
+      high24h: m.high24h,
+      low24h: m.low24h,
+      openInterest: m.kind === "perp" ? null : undefined,
+      isSpotOnly: m.kind === "spot",
+      category: m.kind === "spot" ? "spot" : "perps",
+      displayBaseAsset: m.symbol,
+      sourceCoin: m.symbol,
+    })), [markets]);
+  const lighterSelectedSymbol = selected
+    ? selected.kind === "spot" ? selected.symbol + "-SPOT" : selected.symbol
+    : "";
+
 
   const chooseMarket = (m: LighterMarket, navigate: boolean) => {
     setSelectedMarketId(m.id);
@@ -181,33 +202,35 @@ export default function LighterMarketPreview({
       </span>
     </div>
 
-    {section === "markets" && <div className="border border-brand-border rounded-xl bg-brand-bg p-3">
-      <div className="flex justify-between items-center gap-2 mb-3">
-        <h2 className="font-bold text-sm sm:text-base">Markets</h2>
-        <span className="text-[10px] text-brand-muted">{markets.length} Lighter mainnet markets</span>
-      </div>
-      <div className="flex gap-2 mb-3">
-        {(["perp", "spot"] as const).map(k => <button key={k} type="button" onClick={() => switchKind(k)}
-          className={"px-3 py-1.5 rounded-lg text-xs border border-brand-border " +
-            (kind === k ? "text-accent font-bold bg-brand-overlay-subtle" : "text-brand-muted")}>
-          {labelKind(k)}</button>)}
-      </div>
-      {loading && <p className="text-xs text-brand-muted">Loading Lighter markets…</p>}
-      <div className="overflow-auto max-h-[65vh]">
-        <table className="w-full min-w-[350px] text-xs">
-          <thead><tr className="border-b border-brand-border text-brand-muted text-left">
-            <th className="p-2">Market</th><th className="p-2 text-right">Last price</th><th className="p-2 text-right">24h Volume</th><th className="p-2 text-right">24h Change</th>
-          </tr></thead>
-          <tbody>{available.map(m => <tr key={m.id} className="border-b border-brand-border/40 cursor-pointer hover:bg-brand-overlay-subtle"
-            onClick={() => chooseMarket(m, true)}>
-              <td className="p-2 font-semibold"><span className="inline-flex items-center gap-2"><span className="shrink-0">{renderAssetLogo(m.symbol)}</span>{m.symbol}</span></td>
-              <td className="p-2 font-mono text-right">{formatPrice(m.lastTradePrice)}</td>
-              <td className="p-2 font-mono text-right">{m.volume24hUsd === null ? "—" : "$" + formatPrice(m.volume24hUsd, 2)}</td>
-              <td className="p-2 font-mono text-right">{m.change24h === null ? "—" : formatPrice(m.change24h, 3)}</td>
-            </tr>)}</tbody>
-        </table>
-      </div>
-    </div>}
+    {section === "markets" && (
+      <MarketsPanel
+        tokens={lighterTokens}
+        selectedSymbol={lighterSelectedSymbol}
+        setSelectedSymbol={sym => {
+          const match = lighterTokens.find(t => t.symbol === sym);
+          if (match) {
+            const market = markets.find(m => m.symbol === match.sourceCoin &&
+              (m.kind === (match.isSpotOnly ? "spot" : "perp")));
+            if (market) chooseMarket(market, false);
+          }
+        }}
+        onSelectToken={(sym, marketKind) => {
+          const found = lighterTokens.find(t => t.symbol === sym);
+          const market = markets.find(m => m.symbol === found?.sourceCoin &&
+            m.kind === (marketKind === "spot" ? "spot" : "perp"));
+          if (market) chooseMarket(market, true);
+        }}
+        walletConnected={Boolean(walletAddress)}
+        balanceUSDC={publicAccounts?.reduce((sum,a) => sum + (a.availableBalance ?? 0), 0) ?? 0}
+        positions={[]}
+        openOrders={[]}
+        tradeHistory={[]}
+        lighterMarketId={selected?.id}
+        lighterLastPrice={marketPrice}
+        lighterBook={feed}
+        lighterAccountSummary={accountCards}
+      />
+    )}
 
     {section === "trade" && <>
       <div id="terminal-unified-market-header" className="rounded-xl border border-brand-border bg-brand-surface p-2 mb-2">
