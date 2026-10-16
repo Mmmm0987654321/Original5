@@ -73,6 +73,7 @@ import {
 import { useTrustShield } from "../../lib/TrustShieldManager";
 import { useLanguage } from "../../lib/LanguageContext";
 import TradingDashboardTabs from "./TradingDashboardTabs";
+import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
 import MarketSelector, {
   renderAssetLogo,
 } from "./MarketSelector";
@@ -4864,199 +4865,27 @@ export default function RedesignedTerminal({
 
           <form onSubmit={handleSubmitOrder} className="flex flex-1 flex-col gap-2 md:gap-3">
             
-            {/* Top row controls: Limit, Cross, 20x dropdowns */}
-            <div
-              className={`gap-1 md:gap-1.5 text-[10px] md:text-xs items-start ${
-                isPerp
-                  ? "grid grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,0.8fr)]"
-                  : "flex"
-              }`}
-            >
-              {/* Limit selector */}
-              <div
-                className={
-                  isPerp
-                    ? "relative min-w-0"
-                    : "relative shrink-0"
-                }
-                ref={orderTypeDropdownRef}
-              >
-                <button
-                  type="button"
-                  onClick={() => setShowOrderTypeDropdown(!showOrderTypeDropdown)}
-                  className={`flex items-center gap-1 px-1.5 py-1 bg-brand-overlay-subtle hover:bg-brand-overlay-normal border border-brand-border rounded-lg text-gray-300 font-bold hover:text-brand-text transition-colors ${
-                    isPerp
-                      ? "w-full min-w-0 justify-between"
-                      : ""
-                  }`}
-                >
-                  <span className="text-[10px] truncate whitespace-nowrap">
-                    {orderType === "LIMIT" ? "Limit" :
-                     orderType === "MARKET" ? "Market" :
-                     orderType === "STOP_LIMIT" ? "Stop Limit" :
-                     orderType === "STOP_MARKET" ? "Stop Market" :
-                     orderType === "TAKE_LIMIT" ? "Take Limit" :
-                     orderType === "TAKE_MARKET" ? "Take Market" : "Limit"}
-                  </span>
-                  <ChevronDown className="w-3 h-3 text-gray-500 shrink-0" />
-                </button>
-                {showOrderTypeDropdown && (
-                  <div className="absolute left-0 mt-1 w-28 bg-brand-bg border border-brand-border rounded-lg shadow-xl z-30 p-0.5">
-                    {(isPerp 
-                      ? ["LIMIT", "MARKET", "STOP_LIMIT", "STOP_MARKET", "TAKE_LIMIT", "TAKE_MARKET"] as const
-                      : ["LIMIT", "MARKET"] as const
-                    ).map((t) => (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => {
-                          setOrderType(t);
-                          setShowOrderTypeDropdown(false);
-                        }}
-                        className={`w-full text-left px-2 py-1 text-[10px] rounded transition-colors font-bold ${
-                          orderType === t ? "text-cyan-400 bg-brand-overlay-normal" : "text-gray-400 hover:text-brand-text"
-                        }`}
-                      >
-                        {t === "LIMIT" ? "Limit" :
-                         t === "MARKET" ? "Market" :
-                         t === "STOP_LIMIT" ? "Stop Limit" :
-                         t === "STOP_MARKET" ? "Stop Market" :
-                         t === "TAKE_LIMIT" ? "Take Limit" :
-                         t === "TAKE_MARKET" ? "Take Market" : t}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
- 
-              {/* Margin mode selector (Only if Perp) */}
-              {isPerp && (
-                <div className="relative min-w-0" ref={marginDropdownRef}>
-                  <button
-                    type="button"
-                    onClick={() => setShowMarginDropdown(!showMarginDropdown)}
-                    className="w-full min-w-0 justify-between flex items-center gap-1 px-1.5 py-1 bg-brand-overlay-subtle hover:bg-brand-overlay-normal border border-brand-border rounded-lg text-gray-300 font-bold hover:text-brand-text transition-colors"
-                  >
-                    <span className="capitalize text-[10px] truncate whitespace-nowrap">{marginMode}</span>
-                    <ChevronDown className="w-3 h-3 text-gray-500 shrink-0" />
-                  </button>
-                  {showMarginDropdown && (
-                    <div className="absolute left-0 mt-1 w-24 bg-brand-bg border border-brand-border rounded-lg shadow-xl z-30 p-0.5">
-                      {(["CROSS", "ISOLATED"] as const).map((m) => {
-                        const crossUnavailable =
-                          m === "CROSS" &&
-                          !effectiveSupportsCross;
+            {/* The exact same original HideDex selectors are used by both venues. */}
+            <HideDexTradeSelectors
+              isPerp={isPerp}
+              orderType={orderType as TradeOrderType}
+              onOrderType={next => setOrderType(next)}
+              marginMode={marginMode}
+              onMarginMode={next => {
+                setMarginMode(next);
+                saveMarginTypeForWeb(marginOwner, perpOrderCoin,
+                  next === "CROSS" ? "cross" : "isolated", effectiveSupportsCross);
+              }}
+              disabledMarginModes={[
+                ...(!effectiveSupportsCross ? ["CROSS" as const] : []),
+                ...(lockedMarginMode ? (["CROSS","ISOLATED"] as const).filter(m => m !== lockedMarginMode) : []),
+              ]}
+              leverage={leverage}
+              maxLeverage={maxLeverage}
+              leverageDisabled={isLeverageLocked}
+              onLeverage={next => {setLeverage(next); localStorage.setItem(`leverage_${symbol}`, String(next));}}
+            />
 
-                        const isOptionDisabled = !!(
-                          crossUnavailable ||
-                          (
-                            lockedMarginMode &&
-                            m !== lockedMarginMode
-                          )
-                        );
-                        return (
-                          <button
-                            key={m}
-                            type="button"
-                            disabled={isOptionDisabled}
-                            onClick={() => {
-                              if (isOptionDisabled) return;
-                              setMarginMode(m);
-                              saveMarginTypeForWeb(
-                                marginOwner,
-                                perpOrderCoin,
-                                m === "CROSS" ? "cross" : "isolated",
-                                effectiveSupportsCross
-                              );
-                              setShowMarginDropdown(false);
-                            }}
-                            className={`w-full text-left px-2 py-1 text-[10px] rounded transition-colors font-bold ${
-                              marginMode === m
-                                ? "text-cyan-400 bg-brand-overlay-normal"
-                                : isOptionDisabled
-                                ? "text-gray-600 cursor-not-allowed opacity-50"
-                                : "text-gray-400 hover:text-brand-text cursor-pointer"
-                            }`}
-                          >
-                            {m}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
- 
-              {/* Leverage selector (Only if Perp) */}
-              {isPerp && (
-                <div className="relative min-w-0" ref={leverageDropdownRef}>
-                  <button
-                    type="button"
-                    disabled={isLeverageLocked}
-                    onClick={() => {
-                      if (!isLeverageLocked) {
-                        setShowLeverageDropdown(!showLeverageDropdown);
-                      }
-                    }}
-                    className={`w-full min-w-0 justify-between flex items-center gap-1 px-1.5 py-1 bg-brand-overlay-subtle hover:bg-brand-overlay-normal border border-brand-border rounded-lg text-gray-300 font-bold hover:text-brand-text transition-colors ${
-                      isLeverageLocked ? "opacity-60 cursor-not-allowed" : ""
-                    }`}
-                  >
-                    <span className="text-[10px] whitespace-nowrap">{leverage}x</span>
-                    <ChevronDown className="w-3 h-3 text-gray-500 shrink-0" />
-                  </button>
-                  {showLeverageDropdown && !isLeverageLocked && (
-                    <div className="absolute left-0 mt-1 w-44 bg-brand-bg border border-brand-border rounded-lg shadow-xl z-30 p-2.5 space-y-2">
-                      <div className="flex justify-between items-center text-[9px] font-bold text-gray-400 font-mono">
-                        <span>Leverage Factor</span>
-                        <span className="text-accent">{leverage}x</span>
-                      </div>
-                      <input
-                        type="range"
-                        min="1"
-                        max={maxLeverage}
-                        value={leverage}
-                        disabled={isLeverageLocked}
-                        onChange={(e) => {
-                          if (isLeverageLocked) return;
-                          const val = parseInt(e.target.value);
-                          setLeverage(val);
-                          localStorage.setItem(`leverage_${symbol}`, val.toString());
-                        }}
-                        className="w-full h-1 bg-brand-overlay-normal rounded cursor-pointer accent-accent disabled:opacity-50 disabled:cursor-not-allowed"
-                      />
-                      <div className="flex justify-between text-[8px] text-gray-500 font-mono">
-                        <span>1x</span>
-                        <span>{maxLeverage}x Max</span>
-                      </div>
-                      <div className="grid grid-cols-4 gap-1">
-                        {[2, 5, 10, maxLeverage].filter((v, i, self) => self.indexOf(v) === i && v <= maxLeverage).map((l) => (
-                          <button
-                            key={l}
-                            type="button"
-                            disabled={isLeverageLocked}
-                            onClick={() => {
-                              if (isLeverageLocked) return;
-                              setLeverage(l);
-                              localStorage.setItem(`leverage_${symbol}`, l.toString());
-                              setShowLeverageDropdown(false);
-                            }}
-                            className={`py-0.5 rounded text-[8px] text-center font-bold border disabled:opacity-50 disabled:cursor-not-allowed ${
-                              leverage === l 
-                                ? "bg-accent/10 border-accent text-accent" 
-                                : "bg-brand-overlay-subtle border-brand-border text-gray-400 hover:text-brand-text"
-                            }`}
-                          >
-                            {l === maxLeverage ? "Max" : `${l}x`}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
- 
             {/* Buy / Long and Sell / Short Side Switcher (Compact Labels) */}
             <div className="flex bg-brand-overlay-subtle rounded-lg p-0.5 border border-brand-border">
               <button

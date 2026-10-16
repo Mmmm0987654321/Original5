@@ -11,6 +11,7 @@ import { depositLighterUsdcOnEthereum, depositLighterUsdcFromArbitrum, type Ligh
 import TVChart from "./TVChart";
 import MarketsPanel from "../dashboard/MarketsPanel";
 import TradingAccountTabBar, { type TradingTabId } from "./TradingAccountTabBar";
+import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
 import type { TokenMetadata } from "../../types";
 import MarketSelector, { renderAssetLogo } from "./MarketSelector";
 import {
@@ -886,52 +887,18 @@ export default function LighterMarketPreview({
       </div>
       <div className="grid grid-cols-12 gap-1.5 md:gap-2 mb-1.5 items-stretch">
         <div id="terminal-order-form" className="col-span-7 min-w-0 bg-brand-bg border border-brand-border rounded-xl p-1.5 md:p-2.5 flex flex-col h-full shadow-lg relative gap-2">
-          <div className="flex gap-1 items-center">
-            <div className="relative min-w-0 flex-[1.1] z-[35]">
-              <button type="button" aria-label="Order type" aria-haspopup="menu" aria-expanded={orderTypeOpen}
-                onClick={() => setOrderTypeOpen(v => !v)}
-                className="w-full h-9 flex items-center justify-between gap-1 rounded-xl border border-brand-border bg-brand-surface px-2 text-xs font-bold text-brand-text">
-                <span className="truncate">{orderType === "market" ? "Market" : "Limit"}</span>
-                <ChevronDown className="w-3.5 h-3.5 shrink-0"/>
-              </button>
-              {orderTypeOpen && <>
-                <button type="button" aria-label="Close order type menu"
-                  className="fixed inset-0 z-[34] cursor-default" onClick={() => setOrderTypeOpen(false)}/>
-                <div role="menu" aria-label="Choose order type"
-                  className="absolute z-[36] top-full left-0 mt-1 min-w-[142px] w-max max-w-[80vw] rounded-xl border border-brand-border bg-brand-bg shadow-2xl p-1">
-                  {([
-                    {id:"limit",label:"Limit",available:true},
-                    {id:"market",label:"Market",available:true},
-                    {id:"stop_limit",label:"Stop Limit",available:false},
-                    {id:"stop_market",label:"Stop Market",available:false},
-                    {id:"take_limit",label:"Take Limit",available:false},
-                    {id:"take_market",label:"Take Market",available:false},
-                  ] as const).map(opt =>
-                    <button type="button" key={opt.id} role="menuitem"
-                      disabled={!opt.available}
-                      title={!opt.available ? "Native Lighter conditional order not enabled: cannot submit an unverified action" : ""}
-                      onClick={() => { if (opt.id === "limit" || opt.id === "market") setOrderType(opt.id); setOrderTypeOpen(false); }}
-                      className={"w-full flex items-center justify-between text-left text-xs py-2 px-2 rounded-lg " +
-                        (orderType === opt.id ? "bg-brand-overlay-normal font-bold text-brand-text" : "text-brand-text hover:bg-brand-overlay-subtle") +
-                        (!opt.available ? " opacity-40 cursor-not-allowed" : "")}>
-                      {opt.label}
-                    </button>)}
-                </div>
-              </>}
-            </div>
-            {kind === "perp" && <button type="button" onClick={() => setMarginSheetOpen(true)}
-              aria-label="Change Cross or Isolated margin"
-              className="flex-[1] min-w-0 h-9 px-1.5 border border-brand-border bg-brand-surface rounded-xl flex items-center justify-between gap-0.5 text-xs font-bold text-brand-text">
-              <span className="truncate">{marginMode === "isolated" ? "Isolated" : "Cross"}</span>
-              <ChevronDown className="w-3 h-3 shrink-0"/>
-            </button>}
-            {kind === "perp" && <button type="button" onClick={() => setMarginSheetOpen(true)}
-              aria-label="Change Lighter leverage"
-              className="shrink-0 h-9 px-1.5 border border-brand-border bg-brand-surface rounded-xl flex items-center gap-0.5 text-xs font-bold text-brand-text">
-              <span>{selected?.maxLeverage ? chosenLeverage + "x" : "—x"}</span>
-              <ChevronDown className="w-3 h-3"/>
-            </button>}
-          </div>
+          <HideDexTradeSelectors
+            isPerp={kind === "perp"}
+            orderType={orderType.toUpperCase() as TradeOrderType}
+            availableOrderTypes={["MARKET","LIMIT"]}
+            onOrderType={next => {if(next === "MARKET" || next === "LIMIT") setOrderType(next.toLowerCase() as "market"|"limit");}}
+            marginMode={marginMode.toUpperCase() as "CROSS"|"ISOLATED"}
+            onMarginMode={next => {setMarginMode(next.toLowerCase() as "cross"|"isolated");setMarginSheetOpen(true);}}
+            leverage={chosenLeverage}
+            maxLeverage={selected?.maxLeverage ?? null}
+            onLeverage={next => {setChosenLeverage(next);setMarginSheetOpen(true);}}
+            leverageDisabled={!selected?.maxLeverage}
+          />
           <div className="flex bg-brand-overlay-subtle rounded-lg p-0.5 border border-brand-border">
             <button type="button" onClick={() => {setSide("buy");setReduceOnly(false);}} className={"flex-1 py-2 rounded-md font-bold text-[10px] md:text-xs " +
               (side === "buy" ? "bg-[#18c29c] text-[#030610]" : "text-brand-text")}>
