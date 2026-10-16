@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Layers, Wallet, TrendingUp, Unlock, Lock, ArrowUpRight, ArrowDownRight, ChevronRight, ChevronDown, X, ShieldCheck, Copy, Check, Eye, EyeOff, BarChart3 } from "lucide-react";
 import { TrustShieldValue } from "../common/TrustShieldValue";
 import HideDexFundsOverview from "../dashboard/HideDexFundsOverview";
+import HideDexAssetAllocation from "../dashboard/HideDexAssetAllocation";
 import {
   registerLighterTradingKey, reconnectLighterTradingKey, getActiveLighterSigner,
   clearLighterTradingKey, submitLighterOrder, withdrawLighterUsdc,
@@ -1059,21 +1060,16 @@ export default function LighterMarketPreview({
           ]}
           note="Spot and perpetual balances are distinct. Only verified Lighter values are shown; no Hyperliquid figures or invented margin."
         />
-        <section className="rounded-2xl border border-brand-border bg-brand-surface p-3.5 sm:p-5 space-y-4">
-          <h3 className="text-sm sm:text-base font-black uppercase flex items-center gap-2"><Layers className="w-4 h-4 text-accent"/> ASSET ALLOCATION</h3>
-          <div className="flex gap-4 sm:gap-6 items-center">
-            <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-full border-[15px] sm:border-[19px] border-emerald-500 flex flex-col items-center justify-center shrink-0">
-              <span className="text-[9px] text-brand-muted font-bold">PERP</span>
-              <strong className="font-mono">{hideBalance ? "••••" : formatPrice(verifiedCollateral, 2)}</strong>
-              <span className="text-[9px] text-brand-muted">USDC</span>
-            </div>
-            <div className="flex-1 min-w-0 space-y-3 text-[11px]">
-              <div className="flex justify-between gap-2 border-b border-brand-border pb-2"><span className="text-brand-muted">Perp Collateral</span><strong>{showBalance(verifiedCollateral)}</strong></div>
-              <div className="flex justify-between gap-2"><span className="text-brand-muted">Spot USDC</span><strong>{showBalance(spotAvailable)}</strong></div>
-              <p className="text-brand-muted">Other Spot asset quantities appear below; unsupported USD valuations are omitted.</p>
-            </div>
-          </div>
-        </section>
+        <HideDexAssetAllocation
+          totalLabel="KNOWN"
+          totalValue={hideBalance ? "••••" : "—"}
+          chartValues={[]}
+          rows={[
+            {label:"Perp Collateral",color:"#18c29c",amount:showBalance(verifiedCollateral),percentage:null},
+            {label:"Spot USDC",color:"#717b8b",amount:showBalance(spotAvailable),percentage:null},
+          ]}
+          footnote="Lighter does not supply a verified combined Spot + Perp asset valuation here. No percentage chart or synthetic allocation is shown."
+        />
         <section className="rounded-2xl border border-brand-border bg-brand-surface p-3.5 sm:p-5 space-y-4">
           <h3 className="text-sm sm:text-base font-black uppercase">PERFORMANCE ANALYTICS & FEES</h3>
           <p className="text-[11px] text-brand-muted flex gap-2 items-center"><BarChart3 className="w-4 h-4"/> Verified Lighter account data only</p>

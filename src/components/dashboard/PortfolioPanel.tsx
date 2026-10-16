@@ -5,6 +5,7 @@
 
 import React, { useState, useMemo, useEffect } from "react";
 import HideDexFundsOverview from "./HideDexFundsOverview";
+import HideDexAssetAllocation from "./HideDexAssetAllocation";
 import { 
   Wallet, 
   Eye, 
@@ -999,74 +1000,16 @@ export default function PortfolioPanel({
                 Perpetual Equity includes open-position PnL. These amounts are not supposed to be equal.</>}
             />
 
-            {/* 4. ASSET ALLOCATION CARD (Compact side-by-side on mobile, no fake chevron, no PnL) */}
-            <div className="bg-brand-surface border border-brand-border/60 rounded-xl sm:rounded-2xl p-3 sm:p-4 shadow-xs" id="asset-allocation-section">
-              <div className="flex items-center justify-between mb-2.5 sm:mb-3">
-                <h3 className="text-brand-text text-[11px] sm:text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 sm:gap-2">
-                  <Coins className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-accent" />
-                  <span>{t("asset_allocation")}</span>
-                </h3>
-              </div>
-
-              <div className="grid grid-cols-[100px_minmax(0,1fr)] sm:grid-cols-[125px_minmax(0,1fr)] gap-3 sm:gap-6 items-center">
-                {/* Donut Chart */}
-                <div className="w-[100px] h-[100px] sm:w-[120px] sm:h-[120px] relative flex items-center justify-center shrink-0 select-none">
-                  {pieChartData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={pieChartData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={36}
-                          outerRadius={48}
-                          paddingAngle={pieChartData.length > 1 ? 2 : 0}
-                          dataKey="value"
-                          strokeWidth={0}
-                        >
-                          {pieChartData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.color} />
-                          ))}
-                        </Pie>
-                      </PieChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="w-[96px] h-[96px] sm:w-[110px] sm:h-[110px] rounded-full border-4 border-brand-border/40" />
-                  )}
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
-                    <span className="text-[7px] sm:text-[8px] text-brand-muted font-bold uppercase tracking-wider">TOTAL</span>
-                    <span className="text-[11px] sm:text-xs font-black text-brand-text font-mono truncate max-w-[85px]">
-                      {shouldHideBalances
-                        ? "••••"
-                        : formatAmount(allocationTotal, false)}
-                    </span>
-                    <span className="text-[7px] sm:text-[8px] text-brand-muted font-mono font-bold">USDC</span>
-                  </div>
-                </div>
-
-                {/* Legend Rows (Accurate Math, No PnL) */}
-                <div className="flex-1 w-full space-y-1.5 sm:space-y-2 font-mono text-[11px] sm:text-xs min-w-0">
-                  {assetDistributionData.map((item, idx) => (
-                    <div key={idx} className="flex items-center justify-between py-1 border-b border-brand-border/20 last:border-b-0">
-                      <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-                        {idx === 0
-                          ? <HoldingAssetLogo symbol="USDC" compact />
-                          : <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: item.color }} />}
-                        <span className="text-brand-sub font-sans text-[11px] sm:text-xs truncate">{item.name}</span>
-                      </div>
-                      <div className="flex items-center gap-2 sm:gap-3 shrink-0 ml-2">
-                        <span className="font-bold text-brand-text text-[11px] sm:text-xs">
-                          {formatAmount(item.displayVal)}
-                        </span>
-                        <span className="w-10 sm:w-12 text-right text-brand-muted font-semibold text-[10px] sm:text-xs">
-                          {shouldHideBalances ? "--%" : `${item.pct.toFixed(1)}%`}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
+            <HideDexAssetAllocation
+              totalLabel="TOTAL"
+              totalValue={shouldHideBalances ? "••••" : formatAmount(allocationTotal,false)}
+              chartValues={shouldHideBalances ? [] : pieChartData}
+              rows={assetDistributionData.map((row,index)=>({
+                label:row.name,color:row.color,amount:formatAmount(row.displayVal),
+                percentage:shouldHideBalances ? null : row.pct,
+                logo:index===0 ? <HoldingAssetLogo symbol="USDC" compact/> : undefined,
+              }))}
+            />
 
             {/* PERFORMANCE CARD */}
             <div className="bg-brand-surface border border-brand-border/60 rounded-xl sm:rounded-2xl p-3 sm:p-4 shadow-xs" id="performance-section">
