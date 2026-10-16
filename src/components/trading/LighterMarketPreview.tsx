@@ -4,6 +4,7 @@ import { TrustShieldValue } from "../common/TrustShieldValue";
 import HideDexFundsOverview from "../dashboard/HideDexFundsOverview";
 import HideDexAssetAllocation from "../dashboard/HideDexAssetAllocation";
 import HideDexFundsPerformance, {type HideDexPerformancePeriod, type HideDexPerformanceMarket} from "../dashboard/HideDexFundsPerformance";
+import HideDexFundsModalHeader from "../dashboard/HideDexFundsModalHeader";
 import {
   registerLighterTradingKey, reconnectLighterTradingKey, getActiveLighterSigner,
   clearLighterTradingKey, submitLighterOrder, withdrawLighterUsdc,
@@ -1120,28 +1121,29 @@ export default function LighterMarketPreview({
     })()}
 
     {fundsModal && section === "funds" && (
-      <div role="presentation" className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-3 sm:p-5"
-        onMouseDown={event => { if (event.target === event.currentTarget && !fundingBusy) setFundsModal(null); }}>
-        <section role="dialog" aria-modal="true" aria-label={fundsModal === "deposit" ? "Deposit to Lighter" : "Withdraw from Lighter"}
-          className="w-full max-w-md rounded-2xl border border-brand-border bg-brand-surface text-brand-text p-4 sm:p-5 space-y-3 shadow-2xl">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-base font-bold">{fundsModal === "deposit" ? "Deposit · Lighter" : "Withdrawal · Lighter"}</h2>
-            <button type="button" disabled={fundingBusy} onClick={() => setFundsModal(null)} aria-label="Close"
-              className="p-1.5 rounded-lg border border-brand-border disabled:opacity-50">✕</button>
-          </div>
+      <div role="presentation" className="fixed inset-0 z-[120] flex items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-xs"
+        onMouseDown={event=>{if(event.target===event.currentTarget&&!fundingBusy)setFundsModal(null);}}>
+        <section role="dialog" aria-modal="true" aria-label={fundsModal==="deposit"?"Deposit to Lighter":"Withdraw from Lighter"}
+          className="relative bg-brand-surface border-0 sm:border border-brand-border rounded-none sm:rounded-[24px] w-screen sm:w-full h-[100dvh] sm:h-auto sm:max-h-[90dvh] sm:max-w-[32rem] shadow-2xl flex flex-col overflow-hidden pt-safe pb-safe">
+          <HideDexFundsModalHeader deposit={fundsModal==="deposit"} disabled={fundingBusy}
+            onClose={()=>setFundsModal(null)}
+            subtitle={fundsModal==="deposit"
+              ?"Add real USDC to your Lighter account directly from HideDex."
+              :"Withdraw verified Lighter USDC to your original connected wallet."}/>
+          <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-6 pb-[max(env(safe-area-inset-bottom),1.25rem)] space-y-4">
           {fundsModal === "deposit" ? <>
             <p className="text-xs text-brand-muted">Real USDC → Lighter Perps. Your connected wallet signs on HideDex; no external exchange page.</p>
             <label className="block text-xs font-semibold" htmlFor="lighter-deposit-network">Deposit network</label>
             <select id="lighter-deposit-network" value={depositNetwork} disabled={fundingBusy}
               onChange={event => { setDepositNetwork(event.target.value as "arbitrum" | "ethereum"); setFundingStatus(""); }}
-              className="w-full bg-brand-bg border border-brand-border rounded-lg p-3 text-sm">
+              className="w-full rounded-xl border border-brand-border bg-brand-overlay-subtle p-3 text-sm">
               <option value="arbitrum">Arbitrum One · Native USDC</option>
               <option value="ethereum">Ethereum Mainnet · USDC</option>
             </select>
             <label className="block text-xs font-semibold" htmlFor="lighter-deposit-amount">USDC amount (minimum {depositNetwork === "arbitrum" ? "5" : "1"})</label>
             <input id="lighter-deposit-amount" type="text" inputMode="decimal" autoComplete="off"
               value={depositAmount} disabled={fundingBusy} onChange={event => setDepositAmount(event.target.value)}
-              placeholder="1.00" className="w-full bg-brand-bg border border-brand-border rounded-lg p-3 text-sm font-mono disabled:opacity-50"/>
+              placeholder="1.00" className="w-full bg-brand-bg border border-brand-border rounded-xl px-3.5 py-2.5 text-xl font-bold font-mono disabled:opacity-50"/>
             <p className="text-[11px] text-brand-muted">
               {depositNetwork === "arbitrum"
                 ? "Requires Arbitrum native USDC and ETH gas. The official CCTP bridge may credit Lighter after 15–20 minutes."
@@ -1167,7 +1169,7 @@ export default function LighterMarketPreview({
                   setFundingBusy(false);
                 }
               }}
-              className="w-full p-3 rounded-lg bg-accent text-brand-bg font-bold text-sm disabled:opacity-50">
+              className="w-full py-3.5 px-4 rounded-xl bg-accent hover:opacity-90 text-brand-bg font-bold text-sm shadow-md disabled:opacity-50">
               {fundingBusy ? "Confirm in wallet…" : "Deposit USDC"}
             </button>
           </> : <>
@@ -1178,15 +1180,16 @@ export default function LighterMarketPreview({
             <input id="lighter-withdraw-amount" type="text" inputMode="decimal" autoComplete="off"
               disabled={!tradingIdentity || fundingBusy} value={withdrawAmount}
               onChange={e => setWithdrawAmount(e.target.value)} placeholder="USDC amount"
-              className="w-full border border-brand-border bg-brand-bg p-3 rounded-lg font-mono text-sm"/>
+              className="w-full bg-brand-bg border border-brand-border rounded-xl px-3.5 py-2.5 text-xl font-bold font-mono"/>
             <p className="text-[10px] text-brand-muted">Destination: {walletAddress || "Connect wallet"}. Network fees, account minimums and final timing are determined by Lighter.</p>
             <button type="button" disabled={!tradingIdentity || fundingBusy || !withdrawAmount.trim()}
               onClick={submitWithdrawal}
-              className="w-full bg-accent text-brand-bg font-bold rounded-lg p-3 disabled:opacity-40">
+              className="w-full py-3.5 px-4 bg-accent text-brand-bg font-bold rounded-xl shadow-md disabled:opacity-40">
               {fundingBusy ? "Submitting…" : "Confirm real Lighter withdrawal"}
             </button>
           </>}
           {fundingStatus && <p role="status" className="text-xs break-all rounded-lg border border-brand-border p-2">{fundingStatus}</p>}
+          </div>
         </section>
       </div>
     )}

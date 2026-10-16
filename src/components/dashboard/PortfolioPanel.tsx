@@ -7,6 +7,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import HideDexFundsOverview from "./HideDexFundsOverview";
 import HideDexAssetAllocation from "./HideDexAssetAllocation";
 import HideDexFundsPerformance from "./HideDexFundsPerformance";
+import HideDexFundsModalHeader from "./HideDexFundsModalHeader";
 import { 
   Wallet, 
   Eye, 
@@ -1326,36 +1327,7 @@ export default function PortfolioPanel({
                   transition={{ type: "spring", duration: 0.25 }}
                   className="relative bg-brand-surface border-0 sm:border border-brand-border rounded-none sm:rounded-[24px] w-screen sm:w-full h-[100dvh] sm:h-auto sm:max-h-[90dvh] sm:max-w-[32rem] shadow-2xl flex flex-col overflow-hidden pt-safe pb-safe"
                 >
-                  {/* Header */}
-                  <div className="p-4 sm:p-6 pb-2 sm:pb-3 shrink-0">
-                    <div className="flex items-center justify-between">
-                      <div className="w-10 h-10 rounded-xl bg-accent/10 border border-accent/30 flex items-center justify-center text-accent shadow-xs">
-                        {isDeposit ? (
-                          <Coins className="w-5 h-5" />
-                        ) : (
-                          <ArrowUpRight className="w-5 h-5" />
-                        )}
-                      </div>
-                      <button 
-                        type="button"
-                        onClick={() => setActiveModal(null)}
-                        className="w-9 h-9 rounded-full bg-brand-overlay-subtle hover:bg-brand-overlay-normal text-brand-muted hover:text-brand-text flex items-center justify-center transition-colors cursor-pointer"
-                        id="modal-close-btn"
-                        aria-label="Close"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-
-                    <h3 className="text-xl sm:text-2xl font-bold text-brand-text tracking-tight mt-3">
-                      {isDeposit ? "Deposit Collateral" : "Withdraw Assets"}
-                    </h3>
-                    <p className="text-xs sm:text-sm text-brand-sub mt-1">
-                      {isDeposit
-                        ? "Add funds to your HideDex trading account."
-                        : "Withdraw your assets to your connected wallet."}
-                    </p>
-                  </div>
+                  <HideDexFundsModalHeader deposit={isDeposit} onClose={()=>setActiveModal(null)}/>
 
                   {/* Scrollable Content Container */}
                   <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-6 pb-[max(env(safe-area-inset-bottom),1.25rem)] space-y-4">
