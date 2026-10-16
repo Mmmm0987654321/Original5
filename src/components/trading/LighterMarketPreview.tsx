@@ -14,6 +14,7 @@ import MarketsPanel from "../dashboard/MarketsPanel";
 import TradingAccountTabBar, { type TradingTabId } from "./TradingAccountTabBar";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
 import HideDexOrderBookPanel, {type HideDexBookLevel} from "./HideDexOrderBookPanel";
+import { HideDexSideAndAvailability, HideDexBasicOrderInputs } from "./HideDexTradeEntry";
 import type { TokenMetadata } from "../../types";
 import MarketSelector, { renderAssetLogo } from "./MarketSelector";
 import {
@@ -917,46 +918,29 @@ export default function LighterMarketPreview({
             onLeverage={next => {setChosenLeverage(next);setMarginSheetOpen(true);}}
             leverageDisabled={!selected?.maxLeverage}
           />
-          <div className="flex bg-brand-overlay-subtle rounded-lg p-0.5 border border-brand-border">
-            <button type="button" onClick={() => {setSide("buy");setReduceOnly(false);}} className={"flex-1 py-2 rounded-md font-bold text-[10px] md:text-xs " +
-              (side === "buy" ? "bg-[#18c29c] text-[#030610]" : "text-brand-text")}>
-              {kind === "perp" ? "LONG" : "BUY"}
-            </button>
-            <button type="button" onClick={() => {setSide("sell");setReduceOnly(false);}} className={"flex-1 py-2 rounded-md font-bold text-[10px] md:text-xs " +
-              (side === "sell" ? "bg-[#f25c5c] text-white" : "text-brand-text")}>
-              {kind === "perp" ? "SHORT" : "SELL"}
-            </button>
-          </div>
-          <div className="flex justify-between text-[9px] sm:text-xs font-semibold text-brand-muted">
-            <span>Avail. to Trade</span>
-            <span className="font-mono text-brand-text">
-              {publicAccounts && publicAccounts.every(a => a.availableBalance !== null)
-                ? formatPrice(publicAccounts.reduce((sum,a)=>sum+(a.availableBalance??0),0),5)+" USDC" : "—"}
-            </span>
-          </div>
-          <div className="flex items-center justify-between border border-brand-border bg-brand-surface rounded-lg p-2 text-[10px]">
-            <span className="font-bold text-brand-muted">PRICE</span>
-            {orderType === "market" ? <span className="font-mono text-brand-text font-bold">Market Price</span> :
-              <input value={limitPrice} onChange={e => setLimitPrice(e.target.value)}
-                type="number" inputMode="decimal" min="0" placeholder="Limit price"
-                className="bg-transparent text-right min-w-0 w-[60%] font-mono text-brand-text focus:outline-none" />}
-          </div>
-          <div className="flex items-center justify-between border border-brand-border bg-brand-surface rounded-lg p-2 text-[10px]">
-            <label htmlFor="lighter-trade-size" className="font-bold text-brand-muted truncate">SIZE ({sizeUnit === "USD" ? "USDC" : selected?.symbol.split("/")[0] ?? "COIN"})</label>
-            <div className="min-w-0 flex items-center justify-end gap-1">
-              <input id="lighter-trade-size" value={amount} onChange={e => setAmount(e.target.value)}
-                type="number" inputMode="decimal" min="0" placeholder="0.00"
-                className="min-w-0 w-[54%] bg-transparent text-right font-mono text-brand-text focus:outline-none"/>
-              <button type="button" className="shrink-0 border border-brand-border rounded px-1 py-1"
-                onClick={() => {
-                  if (inputPrice && inputPrice > 0 && inputAmount > 0)
-                    setAmount(String(Number((sizeUnit === "USD" ? inputAmount / inputPrice : inputAmount * inputPrice).toFixed(6))));
-                  else setAmount("");
-                  setSizeUnit(v => v === "USD" ? "COIN" : "USD");
-                }}>{sizeUnit === "USD" ? "USDC" : "COIN"}</button>
-            </div>
-          </div>
-          <div className="grid grid-cols-5 gap-1">
+          <HideDexSideAndAvailability
+            isPerp={kind==="perp"}
+            side={side==="buy"?"BUY":"SELL"}
+            onSide={next=>{setSide(next==="BUY"?"buy":"sell");setReduceOnly(false);}}
+            available={publicAccounts && publicAccounts.every(a => a.availableBalance !== null)
+              ? formatPrice(publicAccounts.reduce((sum,a)=>sum+(a.availableBalance??0),0),5)+" USDC" : "—"}
+          />
+                    <HideDexBasicOrderInputs
+            type={orderType==="market"?"MARKET":"LIMIT"}
+            price={limitPrice}
+            onPrice={setLimitPrice}
+            midPrice={marketPrice}
+            size={amount}
+            onSize={setAmount}
+            sizeUnit={sizeUnit==="USD"?"USDC":selected?.symbol.split("/")[0] ?? "COIN"}
+            onToggleUnit={()=>{
+              if(inputPrice && inputPrice>0 && inputAmount>0)
+                setAmount(String(Number((sizeUnit==="USD"?inputAmount/inputPrice:inputAmount*inputPrice).toFixed(6))));
+              else setAmount("");
+              setSizeUnit(v=>v==="USD"?"COIN":"USD");
+            }}
+          />
+                    <div className="grid grid-cols-5 gap-1">
             {[10,25,50,75,100].map(percent => <button type="button" key={percent}
               disabled={!marketPrice || !publicAccounts?.every(a=>a.availableBalance!==null)}
               onClick={() => {

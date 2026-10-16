@@ -75,6 +75,7 @@ import { useLanguage } from "../../lib/LanguageContext";
 import TradingDashboardTabs from "./TradingDashboardTabs";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
 import HideDexOrderBookPanel from "./HideDexOrderBookPanel";
+import { HideDexSideAndAvailability, HideDexBasicOrderInputs } from "./HideDexTradeEntry";
 import MarketSelector, {
   renderAssetLogo,
 } from "./MarketSelector";
@@ -4887,116 +4888,28 @@ export default function RedesignedTerminal({
               onLeverage={next => {setLeverage(next); localStorage.setItem(`leverage_${symbol}`, String(next));}}
             />
 
-            {/* Buy / Long and Sell / Short Side Switcher (Compact Labels) */}
-            <div className="flex bg-brand-overlay-subtle rounded-lg p-0.5 border border-brand-border">
-              <button
-                type="button"
-                onClick={() => setOrderSide("BUY")}
-                className={`flex-1 py-1.5 rounded-md text-[10px] md:text-xs font-black tracking-wider uppercase transition-all duration-150 cursor-pointer ${
-                  orderSide === "BUY"
-                    ? "bg-[#18c29c] text-[#030610] shadow-md shadow-[#18c29c]/10"
-                    : "text-gray-400 hover:text-brand-text"
-                }`}
-              >
-                {isPerp ? "Long" : "Buy"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setOrderSide("SELL")}
-                className={`flex-1 py-1.5 rounded-md text-[10px] md:text-xs font-black tracking-wider uppercase transition-all duration-150 cursor-pointer ${
-                  orderSide === "SELL"
-                    ? "bg-[#f25c5c] text-brand-text shadow-md shadow-[#f25c5c]/10"
-                    : "text-gray-400 hover:text-brand-text"
-                }`}
-              >
-                {isPerp ? "Short" : "Sell"}
-              </button>
-            </div>
- 
-            {/* Available to Trade readout */}
-            <div className="flex justify-between items-center text-[9px] md:text-[10px] text-gray-500 font-bold px-1">
-              <span>Avail. to Trade</span>
-              <span className="font-mono text-gray-300">
-                {isFieldHidden("balance")
-                  ? `•••• ${availToTradeUnit}`
-                  : isPerp && !showOrderAvailableAmount
-                  ? "--"
-                  : !isPerp && !spotBalancesHydrated
-                  ? "--"
-                  : `${availToTradeVal.toLocaleString(undefined, { minimumFractionDigits: availToTradeUnit === "USDC" ? 2 : 2, maximumFractionDigits: availToTradeUnit === "USDC" ? 2 : 4 })} ${availToTradeUnit}`}
-              </span>
-            </div>
-                       {/* Conditional input panels based on selected orderType */}
+            <HideDexSideAndAvailability
+              isPerp={isPerp}
+              side={orderSide}
+              onSide={setOrderSide}
+              available={isFieldHidden("balance")
+                ? `•••• ${availToTradeUnit}`
+                : isPerp && !showOrderAvailableAmount ? "--"
+                : !isPerp && !spotBalancesHydrated ? "--"
+                : `${availToTradeVal.toLocaleString(undefined, {minimumFractionDigits:2,maximumFractionDigits:availToTradeUnit==="USDC"?2:4})} ${availToTradeUnit}`}
+            />
+                        {/* Conditional input panels based on selected orderType */}
             {(orderType === "LIMIT" || orderType === "MARKET") && (
-              <>
-                {/* Price (USDC) Input Field */}
-                <div className="flex items-center bg-brand-bg border border-brand-border hover:border-brand-border rounded-lg px-2.5 py-1 md:py-1.5 focus-within:border-cyan-500/50 transition-all gap-1.5">
-                  <span className="text-[9px] md:text-[10px] text-gray-500 font-bold uppercase tracking-wider w-12 md:w-16 shrink-0 select-none">
-                    Price
-                  </span>
-                  {orderType === "MARKET" ? (
-                    <input
-                      type="text"
-                      disabled
-                      value="Market Price"
-                      className="bg-transparent text-right flex-grow font-mono font-bold outline-none text-gray-500 min-w-0 text-[11px] md:text-xs select-none cursor-not-allowed"
-                    />
-                  ) : (
-                    <input
-                      type="number"
-                      step="any"
-                      value={priceInput}
-                      onChange={(e) => {
-                        setPriceInput(e.target.value);
-                        setSelectedPercentage(0);
-                      }}
-                      className="bg-transparent text-right flex-grow font-mono font-bold outline-none text-brand-text min-w-0 text-[11px] md:text-xs"
-                      placeholder="0.00"
-                    />
-                  )}
-                  {orderType !== "MARKET" && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (typeof realCurrentPrice === "number" && Number.isFinite(realCurrentPrice) && realCurrentPrice > 0) {
-                          setPriceInput(realCurrentPrice.toString());
-                        }
-                      }}
-                      className="px-1.5 py-0.5 rounded bg-accent/10 text-accent text-[8px] md:text-[9px] font-black uppercase hover:bg-accent/20 transition-colors shrink-0 cursor-pointer"
-                    >
-                      Mid
-                    </button>
-                  )}
-                </div>
-
-                {/* Size Input Field with BTC/USDC suffix dropdown */}
-                <div className="flex items-center bg-brand-bg border border-brand-border hover:border-brand-border rounded-lg px-2.5 py-1 md:py-1.5 focus-within:border-cyan-500/50 transition-all gap-1.5">
-                  <span className="text-[9px] md:text-[10px] text-gray-500 font-bold uppercase tracking-wider shrink-0 select-none">
-                    Size ({sizeUnit})
-                  </span>
-                  <input
-                    type="number"
-                    step="any"
-                    value={sizeInput}
-                    onChange={(e) => {
-                      setSizeInput(e.target.value);
-                      setSelectedPercentage(0);
-                    }}
-                    className="bg-transparent text-right flex-grow font-mono font-bold outline-none text-brand-text min-w-0 text-[11px] md:text-xs"
-                    placeholder="0.00"
-                  />
-                  {/* Unit Switcher */}
-                  <div className="flex items-center select-none shrink-0">
-                    <button
-                      type="button"
-                      onClick={handleToggleSizeUnit}
-                      className="text-[8px] md:text-[9px] font-black uppercase bg-brand-overlay-normal hover:bg-brand-overlay-active border border-brand-border px-1.5 py-0.5 rounded text-gray-300 transition-colors cursor-pointer"
-                    >
-                      {sizeUnit}
-                    </button>
-                  </div>
-                </div>
-              </>
+              <HideDexBasicOrderInputs
+                type={orderType}
+                price={priceInput}
+                onPrice={v => {setPriceInput(v);setSelectedPercentage(0);}}
+                midPrice={realCurrentPrice}
+                size={sizeInput}
+                onSize={v => {setSizeInput(v);setSelectedPercentage(0);}}
+                sizeUnit={sizeUnit}
+                onToggleUnit={handleToggleSizeUnit}
+              />
             )}
 
             {(orderType === "STOP_LIMIT" || orderType === "TAKE_LIMIT") && (
