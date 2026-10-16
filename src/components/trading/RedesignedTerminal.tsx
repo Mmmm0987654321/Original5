@@ -74,6 +74,7 @@ import { useTrustShield } from "../../lib/TrustShieldManager";
 import { useLanguage } from "../../lib/LanguageContext";
 import TradingDashboardTabs from "./TradingDashboardTabs";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
+import HideDexOrderBookPanel from "./HideDexOrderBookPanel";
 import MarketSelector, {
   renderAssetLogo,
 } from "./MarketSelector";
@@ -5566,144 +5567,23 @@ export default function RedesignedTerminal({
           </form>
         </div>
 
-        {/* RIGHT COLUMN: PROFESSIONAL COMPACT ORDER BOOK PANEL (5 of 12 cols - Side by Side even on Mobile!) */}
-        <div
-          className={`col-span-5 bg-brand-bg border border-brand-border rounded-xl p-1.5 md:p-2.5 flex flex-col justify-between shadow-lg relative ${
-            isTpSlEnabled
-              ? "self-start h-auto md:self-stretch md:h-full"
-              : "h-full"
-          }`}
-          id="terminal-order-book"
-        >
-          <div
-            className={`flex flex-col min-h-0 overflow-hidden ${
-              isTpSlEnabled
-                ? "h-auto md:flex-grow md:h-full"
-                : "flex-grow h-full"
-            }`}
-          >
-            {/* Header / Table labels */}
-            <div className="grid grid-cols-2 text-[8px] md:text-[10px] font-sans font-black uppercase tracking-wider text-gray-500 border-b border-brand-border pb-1 md:pb-1.5 mb-1 md:mb-1.5 flex-shrink-0 items-center">
-              <span>Price</span>
-              <button
-                type="button"
-                onClick={() => setOrderBookSizeUnit((prev) => (prev === "USD" ? "COIN" : "USD"))}
-                className="text-right hover:text-brand-text transition-colors flex items-center justify-end gap-0.5 cursor-pointer select-none"
-                title="Toggle Size in USD / Coins"
-              >
-                <span>Size</span>
-                <span className="text-[7px] md:text-[8px] font-mono text-cyan-400 bg-cyan-500/10 px-1 py-0.2 rounded border border-cyan-500/30">
-                  {orderBookSizeUnit === "USD" ? "$" : orderBookBaseLabel}
-                </span>
-              </button>
-            </div>
-
-            {/* ASKS (SELLS) - Red */}
-            <div className="flex-1 flex flex-col justify-end overflow-hidden min-h-0 pr-0.5" id="orderbook-asks-container" ref={terminalAsksRef}>
-              <div className="space-y-0.5 w-full">
-                {asks.map((ask, idx) => {
-                  const maxTotal = Math.max(asks[asks.length - 1]?.total || 1, bids[bids.length - 1]?.total || 1, 10);
-                  const depthPercent = Math.min(100, Math.max(8, (ask.total / maxTotal) * 100));
-                  const isFlashing = activeFlashingPrices[ask.price.toString()] === "SELL";
-                  return (
-                    <button
-                      key={`ask-${idx}`}
-                      type="button"
-                      onClick={() => handleOrderBookRowClick(ask.price)}
-                      className={`w-full grid grid-cols-2 text-[9px] md:text-[11px] font-mono py-0.5 hover:bg-rose-500/10 rounded transition-all text-left relative overflow-hidden group ${
-                        isFlashing ? "bg-rose-500/30 text-rose-300 font-extrabold ring-1 ring-rose-500/50" : ""
-                      }`}
-                    >
-                      {/* Depth Bar Background */}
-                      <div 
-                        className="absolute right-0 top-0 bottom-0 bg-[#e2445c]/25 border-l-2 border-[#e2445c]/40 group-hover:bg-[#e2445c]/35 transition-all pointer-events-none rounded-r"
-                        style={{ width: `${depthPercent}%` }}
-                      />
-                      <span className="text-[#ff4d4d] font-bold z-10 pl-0.5">{ask.price.toLocaleString(undefined, { minimumFractionDigits: symbol === "PURR" ? 3 : 1 })}</span>
-                      <span className="text-right text-gray-200 font-semibold z-10 pr-0.5 truncate">{formatTerminalOrderBookSize(ask.price, ask.size)}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* SPREAD / LAST VALUED PRICE MIDDLE BLOCK */}
-            <div className="border-y border-brand-border py-1 my-0.5 text-center flex flex-col items-center justify-center bg-brand-bg/50 rounded-lg flex-shrink-0" id="orderbook-spread-row">
-              <span className="font-mono font-bold text-xs md:text-base text-[#18c29c] leading-none">
-                {typeof realCurrentPrice === "number" && Number.isFinite(realCurrentPrice) && realCurrentPrice > 0 
-                  ? `$${realCurrentPrice.toLocaleString(undefined, { minimumFractionDigits: symbol === "PURR" ? 4 : 2 })}`
-                  : "--"}
-              </span>
-              <span className="text-[7px] md:text-[9px] font-bold text-gray-500 uppercase tracking-widest mt-0.5">
-                Mark Price
-              </span>
-            </div>
-
-            {/* BIDS (BUYS) - Green */}
-            <div className="flex-1 flex flex-col justify-start overflow-hidden min-h-0 pr-0.5" id="orderbook-bids-container">
-              <div className="space-y-0.5 w-full">
-                {bids.map((bid, idx) => {
-                  const maxTotal = Math.max(asks[asks.length - 1]?.total || 1, bids[bids.length - 1]?.total || 1, 10);
-                  const depthPercent = Math.min(100, Math.max(8, (bid.total / maxTotal) * 100));
-                  const isFlashing = activeFlashingPrices[bid.price.toString()] === "BUY";
-                  return (
-                    <button
-                      key={`bid-${idx}`}
-                      type="button"
-                      onClick={() => handleOrderBookRowClick(bid.price)}
-                      className={`w-full grid grid-cols-2 text-[9px] md:text-[11px] font-mono py-0.5 hover:bg-emerald-500/10 rounded transition-all text-left relative overflow-hidden group ${
-                        isFlashing ? "bg-emerald-500/30 text-emerald-300 font-extrabold ring-1 ring-emerald-500/50" : ""
-                      }`}
-                    >
-                      {/* Depth Bar Background */}
-                      <div 
-                        className="absolute right-0 top-0 bottom-0 bg-[#18c29c]/25 border-l-2 border-[#18c29c]/40 group-hover:bg-[#18c29c]/35 transition-all pointer-events-none rounded-r"
-                        style={{ width: `${depthPercent}%` }}
-                      />
-                      <span className="text-[#18c29c] font-bold z-10 pl-0.5">{bid.price.toLocaleString(undefined, { minimumFractionDigits: symbol === "PURR" ? 3 : 1 })}</span>
-                      <span className="text-right text-gray-200 font-semibold z-10 pr-0.5 truncate">{formatTerminalOrderBookSize(bid.price, bid.size)}</span>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Aggregation Scale Dropdown Picker at bottom (Matches "1 v" at screenshot bottom) */}
-          <div className="border-t border-brand-border pt-1 md:pt-2 flex justify-between items-center text-[9px] md:text-xs">
-            <span className="text-gray-500 font-bold uppercase tracking-wider">Group</span>
-            <div className="relative shrink-0" ref={aggDropdownRef}>
-              <button
-                type="button"
-                onClick={() => setShowAggregationDropdown(!showAggregationDropdown)}
-                className="flex items-center gap-1 px-1.5 py-0.5 bg-brand-overlay-subtle border border-brand-border rounded text-gray-300 hover:text-brand-text transition-colors font-mono font-bold"
-              >
-                <span>{aggregation}</span>
-                <ChevronDown className="w-3 h-3 text-gray-500" />
-              </button>
-              {showAggregationDropdown && (
-                <div className="absolute right-0 bottom-full mb-1 w-20 bg-brand-bg border border-brand-border rounded-lg shadow-xl z-30 p-0.5">
-                  {["0.01", "0.1", "1", "2", "5", "10"].map((v) => (
-                    <button
-                      key={v}
-                      type="button"
-                      onClick={() => {
-                        setAggregation(v);
-                        setShowAggregationDropdown(false);
-                      }}
-                      className={`w-full text-left px-1.5 py-1 text-[9px] rounded transition-colors font-mono font-bold ${
-                        aggregation === v ? "text-cyan-400 bg-brand-overlay-normal" : "text-gray-400 hover:text-brand-text"
-                      }`}
-                    >
-                      {v}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-        </div>
+        <HideDexOrderBookPanel
+          asks={asks}
+          bids={bids}
+          midPrice={realCurrentPrice}
+          midLabel="Mark Price"
+          sizeUnit={orderBookSizeUnit}
+          baseSymbol={orderBookBaseLabel}
+          onToggleSizeUnit={() => setOrderBookSizeUnit(v=>v==="USD"?"COIN":"USD")}
+          onSelectPrice={handleOrderBookRowClick}
+          formatPrice={p => p.toLocaleString(undefined,{minimumFractionDigits:symbol==="PURR"?3:1})}
+          formatSize={(p,size)=>formatTerminalOrderBookSize(p,size)}
+          group={aggregation}
+          groupOptions={["0.01","0.1","1","2","5","10"]}
+          onGroup={setAggregation}
+          flashingPrices={activeFlashingPrices}
+          shrinkOnTpSl={isTpSlEnabled}
+        />
       </div>
 
       {/* 4. BOTTOM TABS: POSITIONS, OPEN ORDERS, BALANCES, TRADE HISTORY (Unified Component) */}

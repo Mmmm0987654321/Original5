@@ -13,6 +13,7 @@ import TVChart from "./TVChart";
 import MarketsPanel from "../dashboard/MarketsPanel";
 import TradingAccountTabBar, { type TradingTabId } from "./TradingAccountTabBar";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
+import HideDexOrderBookPanel, {type HideDexBookLevel} from "./HideDexOrderBookPanel";
 import type { TokenMetadata } from "../../types";
 import MarketSelector, { renderAssetLogo } from "./MarketSelector";
 import {
@@ -521,6 +522,22 @@ export default function LighterMarketPreview({
     </div>;
   };
 
+  const makeLighterBookRows = (levels:LighterMarketFeed["bids"],side:"bid"|"ask"):HideDexBookLevel[] => {
+    const decimals=Math.min(10,selected?.priceDecimals??2);
+    const tick=Math.pow(10,-decimals)*bookGroup;
+    const map=new Map<number,number>();
+    for(const row of levels) {
+      const p=displayPrice(row.price),sz=displaySize(row.size);
+      if(p===null||sz===null||p<=0||sz<0)continue;
+      const bucket=(side==="ask"?Math.ceil(p/tick-1e-7):Math.floor(p/tick+1e-7))*tick;
+      const key=Number(bucket.toFixed(decimals));
+      map.set(key,(map.get(key)??0)+sz);
+    }
+    let cumulative=0;
+    const sorted=[...map.entries()].sort((a,b)=>side==="ask"?a[0]-b[0]:b[0]-a[0]).slice(0,10);
+    return sorted.map(([price,size])=>({price,size,total:(cumulative+=size)}));
+  };
+
   const lighterAssetCards = (
     <div className="rounded-xl border border-brand-border bg-brand-surface p-3 space-y-2">
       <h3 className="text-xs font-bold">Lighter asset balances</h3>
@@ -994,25 +1011,25 @@ export default function LighterMarketPreview({
             className="text-[10px] text-accent font-semibold py-1 underline">Enable trading</button>}
           {tradingNotice && <p role="status" className="text-[9px] text-amber-500 line-clamp-2 break-words">{tradingNotice}</p>}
         </div>
-        <div id="terminal-order-book" className="col-span-5 min-w-0 self-start rounded-xl border border-brand-border bg-brand-bg p-1.5 sm:p-3">
-          <div className="flex items-center justify-between gap-1 mb-2">
-            <strong className="text-[9px] text-brand-muted uppercase">Price</strong>
-            <button type="button" onClick={() => setOrderBookSizeUnit(v => v === "USD" ? "COIN" : "USD")}
-              className="text-[9px] uppercase font-bold text-brand-muted">Size <span className="text-cyan-500 border border-brand-border rounded px-1">{orderBookSizeUnit === "USD" ? "$" : selected?.symbol ?? "COIN"}</span></button>
-          </div>
-          <div className="max-h-[470px] overflow-y-auto overflow-x-hidden">{bookLevels(feed.asks.slice(0, 10).reverse(), "ask")}
-            <div className="text-center py-2 border-y border-brand-border font-mono text-[10px] text-accent">
-              {formatPrice(marketPrice)}
-              <span className="block text-[9px] uppercase text-brand-muted">Last price</span>
-            </div>{bookLevels(feed.bids.slice(0, 10), "bid")}</div>
-          <div className="mt-2 pt-2 border-t border-brand-border flex justify-between items-center text-[9px] font-bold text-brand-muted">
-            <span>GROUP</span>
-            <select aria-label="Lighter order book grouping" value={bookGroup} onChange={e => setBookGroup(Number(e.target.value))}
-              className="bg-brand-bg border border-brand-border rounded px-1 py-1 text-brand-text">
-              <option value={1}>1</option><option value={10}>10</option><option value={100}>100</option>
-            </select>
-          </div>
-        </div>
+        <HideDexOrderBookPanel
+          asks={makeLighterBookRows(feed.asks,"ask")}
+          bids={makeLighterBookRows(feed.bids,"bid")}
+          midPrice={marketPrice}
+          midLabel="Last Price"
+          sizeUnit={orderBookSizeUnit}
+          baseSymbol={selected?.symbol.split("/")[0] ?? "COIN"}
+          onToggleSizeUnit={() => setOrderBookSizeUnit(v=>v==="USD"?"COIN":"USD")}
+          onSelectPrice={price => setLimitPrice(String(price))}
+          formatPrice={price => formatPrice(price,Math.min(8,selected?.priceDecimals??2))}
+          formatSize={(price,size) => {
+            const v = orderBookSizeUnit === "USD" ? price*size : size;
+            return (orderBookSizeUnit === "USD" ? "$" : "") + formatPrice(v,orderBookSizeUnit==="USD"?2:5);
+          }}
+          group={String(bookGroup)}
+          groupOptions={["1","10","100"]}
+          onGroup={v => setBookGroup(Number(v))}
+          shrinkOnTpSl={attachTpSl}
+        />
       </div>
       {lighterAccountTabs}
     </>}
