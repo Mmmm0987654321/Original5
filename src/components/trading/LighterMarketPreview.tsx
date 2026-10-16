@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Layers, Wallet, TrendingUp, Unlock, Lock, ArrowUpRight, ArrowDownRight, ChevronRight } from "lucide-react";
 import { TrustShieldValue } from "../common/TrustShieldValue";
-import { depositLighterUsdcOnEthereum, type LighterWalletProvider } from "../../lib/lighterFunding";
+import { depositLighterUsdcOnEthereum, depositLighterUsdcFromArbitrum, type LighterWalletProvider } from "../../lib/lighterFunding";
 import TVChart from "./TVChart";
 import MarketsPanel from "../dashboard/MarketsPanel";
 import TradingAccountTabBar, { type TradingTabId } from "./TradingAccountTabBar";
@@ -59,6 +59,7 @@ export default function LighterMarketPreview({
   const [orderBookSizeUnit, setOrderBookSizeUnit] = useState<"USD" | "COIN">("USD");
   const [fundsModal, setFundsModal] = useState<"deposit" | "withdraw" | null>(null);
   const [depositAmount, setDepositAmount] = useState("");
+  const [depositNetwork, setDepositNetwork] = useState<"arbitrum" | "ethereum">("arbitrum");
   const [fundingBusy, setFundingBusy] = useState(false);
   const [fundingStatus, setFundingStatus] = useState("");
   const [accountReload, setAccountReload] = useState(0);
@@ -570,19 +571,32 @@ export default function LighterMarketPreview({
               className="p-1.5 rounded-lg border border-brand-border disabled:opacity-50">✕</button>
           </div>
           {fundsModal === "deposit" ? <>
-            <p className="text-xs text-brand-muted">USDC · Ethereum mainnet → Lighter Perps. Transactions are approved and signed by your connected wallet, without leaving HideDex.</p>
-            <label className="block text-xs font-semibold" htmlFor="lighter-deposit-amount">USDC amount (minimum 1)</label>
+            <p className="text-xs text-brand-muted">Real USDC → Lighter Perps. Your connected wallet signs on HideDex; no external exchange page.</p>
+            <label className="block text-xs font-semibold" htmlFor="lighter-deposit-network">Deposit network</label>
+            <select id="lighter-deposit-network" value={depositNetwork} disabled={fundingBusy}
+              onChange={event => { setDepositNetwork(event.target.value as "arbitrum" | "ethereum"); setFundingStatus(""); }}
+              className="w-full bg-brand-bg border border-brand-border rounded-lg p-3 text-sm">
+              <option value="arbitrum">Arbitrum One · Native USDC</option>
+              <option value="ethereum">Ethereum Mainnet · USDC</option>
+            </select>
+            <label className="block text-xs font-semibold" htmlFor="lighter-deposit-amount">USDC amount (minimum {depositNetwork === "arbitrum" ? "5" : "1"})</label>
             <input id="lighter-deposit-amount" type="text" inputMode="decimal" autoComplete="off"
               value={depositAmount} disabled={fundingBusy} onChange={event => setDepositAmount(event.target.value)}
               placeholder="1.00" className="w-full bg-brand-bg border border-brand-border rounded-lg p-3 text-sm font-mono disabled:opacity-50"/>
-            <p className="text-[11px] text-brand-muted">Your wallet needs Ethereum-mainnet USDC and ETH for gas. A separate exact-amount approval may be required.</p>
+            <p className="text-[11px] text-brand-muted">
+              {depositNetwork === "arbitrum"
+                ? "Requires Arbitrum native USDC and ETH gas. The official CCTP bridge may credit Lighter after 15–20 minutes."
+                : "Requires Ethereum-mainnet USDC and ETH gas. An exact-amount USDC approval may be required."}
+            </p>
             <button type="button" disabled={fundingBusy || !walletAddress || !depositAmount.trim()}
               onClick={async () => {
                 if (fundingBusy) return;
                 setFundingBusy(true);
                 setFundingStatus("");
                 try {
-                  await depositLighterUsdcOnEthereum({
+                  const depositFn = depositNetwork === "arbitrum"
+                    ? depositLighterUsdcFromArbitrum : depositLighterUsdcOnEthereum;
+                  await depositFn({
                     walletAddress, amount: depositAmount, getWalletProvider,
                     onStage: setFundingStatus,
                   });
