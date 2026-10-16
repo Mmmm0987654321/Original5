@@ -77,7 +77,7 @@ export async function getLighterMarkets(signal?: AbortSignal): Promise<LighterMa
   list(data.order_book_details).forEach(m => add(m, "perp"));
   list(data.spot_order_book_details).forEach(m => add(m, "spot"));
   if (!result.length) throw new Error("Lighter returned no verifiable active markets");
-  return result.sort((x, y) => x.kind.localeCompare(y.kind) || x.symbol.localeCompare(y.symbol));
+  return result.sort((x, y) => x.kind.localeCompare(y.kind) || (y.volume24hUsd ?? -1) - (x.volume24hUsd ?? -1) || x.symbol.localeCompare(y.symbol));
 }
 
 
@@ -123,14 +123,14 @@ export async function getLighterCandles(
   // copying Hyperliquid candles. This also avoids a chart with indicators
   // from older data but zero visible candlesticks.
   let candles = await loadWindow(start);
-  if (candles.length < 2) {
+  if (candles.length < 30) {
     const earliest = Math.max(0, end - 90 * 86400);
     for (const factor of [6, 24]) {
       const from = Math.max(earliest, end - spanSeconds * factor);
       if (from >= start || from >= end) continue;
       const extended = await loadWindow(from);
       if (extended.length > candles.length) candles = extended;
-      if (candles.length >= 2) break;
+      if (candles.length >= 30) break;
     }
   }
   return { candles };

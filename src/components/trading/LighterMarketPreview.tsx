@@ -119,6 +119,7 @@ export default function LighterMarketPreview({
   const lastPrice = feed.recentTradePrice
     ? displayPrice(feed.recentTradePrice) : selected?.lastTradePrice ?? null;
   const marketPrice = lastPrice !== null && lastPrice > 0 ? lastPrice : null;
+  const hasSpotMarkets = markets.some(m => m.kind === "spot");
   const lighterTokens = useMemo<TokenMetadata[]>(() =>
     markets.map(m => ({
       symbol: m.kind === "spot" ? m.symbol + "-SPOT" : m.symbol,
@@ -282,6 +283,11 @@ export default function LighterMarketPreview({
     {marketError && <div role="alert" className="mb-2 p-3 border border-rose-500/40 rounded-lg text-xs text-rose-400">
       Lighter market API unavailable: {marketError}. Hyperliquid prices are never substituted.
     </div>}
+    {!loading && !marketError && !hasSpotMarkets && kind === "spot" && (
+      <p role="status" className="mb-2 p-2 text-[11px] rounded-lg border border-amber-500/40 text-brand-muted">
+        No verified active Lighter Spot markets were returned. Hyperliquid markets are never substituted.
+      </p>
+    )}
     {section === "markets" && (
       <MarketsPanel
         tokens={lighterTokens}
