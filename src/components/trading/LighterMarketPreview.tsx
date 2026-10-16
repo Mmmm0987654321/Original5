@@ -1072,7 +1072,7 @@ export default function LighterMarketPreview({
       const spotAvailable = publicAccounts !== null && publicAccounts.length > 0 && publicAccounts.every(a => a.assets !== null)
         ? spotAssets.filter(a => a.symbol === "USDC").reduce((sum, a) => sum + a.balance, 0)
         : null;
-      const unrealizedPnl = publicAccounts !== null && publicAccounts.every(a => a.positions.every(p => p.unrealizedPnl !== null))
+      const unrealizedPnl = publicAccounts !== null && publicAccounts.length > 0 && publicAccounts.every(a => a.positions.every(p => p.unrealizedPnl !== null))
         ? publicAccounts.flatMap(a => a.positions).reduce((sum, p) => sum + (p.unrealizedPnl ?? 0), 0) : null;
       return <div id="funds-portfolio-container" className="space-y-3 sm:space-y-4 text-brand-text font-sans bg-brand-bg px-3 pt-2 pb-2 sm:p-4 sm:pb-8 rounded-3xl max-w-4xl mx-auto w-full">
         <HideDexFundsOverview
@@ -1126,7 +1126,8 @@ export default function LighterMarketPreview({
           onMarket={setPerformanceMarket}
           summary={<div className="grid grid-cols-2 gap-2 sm:gap-3">
             {([
-              {label:"NET PNL",value:"—"},
+              {label:"UNREALIZED PNL (LIVE)",value:performanceMarket==="spot" || unrealizedPnl===null ? "—" :
+                (unrealizedPnl<0?"-$":"+$")+formatPrice(Math.abs(unrealizedPnl),2)},
               {label:"TOTAL VOLUME",value:"—"},
               {label:"FEES (LOADED FILLS)",value:"—"},
               {label:"EXECUTED ORDERS",value:"—"},
@@ -1139,7 +1140,7 @@ export default function LighterMarketPreview({
           chart={<div className="h-[180px] sm:h-[220px] w-full rounded-xl bg-brand-overlay-subtle/50 border border-brand-border/40 flex flex-col items-center justify-center text-center p-4">
             <TrendingUp className="w-6 h-6 text-brand-muted/60 mb-2"/>
             <span className="text-xs font-semibold text-brand-muted">
-              Verified Lighter fills and equity timeseries are not loaded for this period and market.
+              Lighter fills and historical equity series are not verified for this period. Live unrealized PnL above is a current account snapshot, not historical net PnL.
             </span>
             <span className="text-[10px] text-brand-muted mt-1">No historical PnL or trading volume is estimated.</span>
           </div>}
