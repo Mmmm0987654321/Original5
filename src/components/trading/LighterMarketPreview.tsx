@@ -748,7 +748,7 @@ export default function LighterMarketPreview({
             {tradingBusy ? "Processing…" : "PLACE " + (side === "buy" ? (kind === "perp" ? "LONG" : "BUY") : (kind === "perp" ? "SHORT" : "SELL"))}
           </button>
           {authorizationPanel}
-          {tradingNotice && <p role="status" className="text-[10px] text-amber-500 break-all">{tradingNotice}</p>
+          {tradingNotice && <p role="status" className="text-[10px] text-amber-500 break-all">{tradingNotice}</p>}
         </div>
         <div id="terminal-order-book" className="col-span-5 min-w-0 self-start rounded-xl border border-brand-border bg-brand-bg p-1.5 sm:p-3">
           <div className="flex items-center justify-between gap-1 mb-2">
