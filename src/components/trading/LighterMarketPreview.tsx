@@ -22,6 +22,7 @@ import HideDexTradeHistory from "./HideDexTradeHistory";
 import HideDexOpenOrders, {type HideDexOpenOrderRow} from "./HideDexOpenOrders";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
 import HideDexOrderBookPanel, {type HideDexBookLevel} from "./HideDexOrderBookPanel";
+import {HideDexTradeGrid,HideDexOrderForm} from "./HideDexTradeLayout";
 import HideDexMobileMarketHeader from "./HideDexMobileMarketHeader";
 import HideDexDesktopMarketBar from "./HideDexDesktopMarketBar";
 import { HideDexSideAndAvailability, HideDexBasicOrderInputs } from "./HideDexTradeEntry";
@@ -538,7 +539,7 @@ export default function LighterMarketPreview({
       const key = Number(((sideName === "ask" ? Math.ceil(px / tick - 1e-7) : Math.floor(px / tick + 1e-7)) * tick).toFixed(decimalPrecision));
       buckets.set(key, (buckets.get(key) ?? 0) + sz);
     }
-    const visible = [...buckets.entries()].sort((a,b) => sideName === "ask" ? a[0]-b[0] : b[0]-a[0]).slice(0, 14);
+    const visible = [...buckets.entries()].sort((a,b) => sideName === "ask" ? a[0]-b[0] : b[0]-a[0]).slice(0, 6);
     const totalSize = Math.max(1, visible.reduce((sum, row) => sum + row[1], 0));
     let cumulative = 0;
     return <div className="space-y-0.5 w-full">
@@ -573,7 +574,7 @@ export default function LighterMarketPreview({
       map.set(key,(map.get(key)??0)+sz);
     }
     let cumulative=0;
-    const sorted=[...map.entries()].sort((a,b)=>side==="ask"?a[0]-b[0]:b[0]-a[0]).slice(0,10);
+    const sorted=[...map.entries()].sort((a,b)=>side==="ask"?a[0]-b[0]:b[0]-a[0]).slice(0,6);
     return sorted.map(([price,size])=>({price,size,total:(cumulative+=size)}));
   };
 
@@ -950,8 +951,8 @@ export default function LighterMarketPreview({
           </div>
         )}
       </div>
-      <div className="grid grid-cols-12 gap-1.5 md:gap-2 mb-1.5 items-start">
-        <div id="terminal-order-form" className="col-span-7 min-w-0 bg-brand-bg border border-brand-border rounded-xl p-1.5 md:p-2.5 flex flex-col shadow-lg relative gap-2">
+      <HideDexTradeGrid>
+        <HideDexOrderForm>
           <HideDexTradeSelectors
             isPerp={kind === "perp"}
             orderType={orderType.toUpperCase() as TradeOrderType}
@@ -1023,7 +1024,7 @@ export default function LighterMarketPreview({
               <p className="col-span-2 text-[9px] text-brand-muted">Lighter native atomic TP/SL is available only on supported perpetual entries.</p>
             </div>}
           </>}
-          <div className="bg-brand-bg/50 border border-brand-border rounded-lg p-1.5 font-mono text-[9px] space-y-1 mt-auto">
+          <div className="bg-brand-bg/50 border border-brand-border rounded-lg p-1.5 font-mono text-[9px] space-y-0.5">
             {kind === "perp" && <div className="flex justify-between text-brand-muted"><span>Liq. Price</span><span>—</span></div>}
             <div className="flex justify-between text-brand-muted"><span>Order Value</span>
               <span>{orderValueUsd !== null ? "$" + formatPrice(orderValueUsd, 2) : "—"}</span>
@@ -1037,7 +1038,7 @@ export default function LighterMarketPreview({
               (side === "buy" ? "bg-[#18c29c] text-[#030610]" : "bg-[#f25c5c] text-white")}>
             {tradingBusy ? "Processing…" : "PLACE " + (side === "buy" ? (kind === "perp" ? "LONG" : "BUY") : (kind === "perp" ? "SHORT" : "SELL"))}
           </button>
-        </div>
+        </HideDexOrderForm>
         <HideDexOrderBookPanel
           asks={makeLighterBookRows(feed.asks,"ask").reverse()}
           bids={makeLighterBookRows(feed.bids,"bid")}
@@ -1057,7 +1058,7 @@ export default function LighterMarketPreview({
           onGroup={v => setBookGroup(Number(v))}
           shrinkOnTpSl={false}
         />
-      </div>
+      </HideDexTradeGrid>
       {lighterAccountTabs}
     </>}
 
@@ -1152,8 +1153,6 @@ export default function LighterMarketPreview({
           sensitiveHidden={hideBalance}
           unavailableMessage="Verified Lighter fills for this wallet are not loaded. No volume is inferred from Hyperliquid or prices."
         />
-        {lighterAssetCards}
-        {accountCards}
       </div>;
     })()}
 

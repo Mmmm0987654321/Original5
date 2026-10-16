@@ -27,8 +27,11 @@ export interface HideDexOrderBookPanelProps {
 export default function HideDexOrderBookPanel(props:HideDexOrderBookPanelProps) {
  const [showGroup,setShowGroup]=useState(false);
  const rootRef=useRef<HTMLDivElement>(null);
- const maxTotal=Math.max(1,props.asks[props.asks.length-1]?.total||0,
-   props.bids[props.bids.length-1]?.total||0,10);
+ const visibleAsks=[...props.asks].filter(row=>Number.isFinite(row.price)&&row.price>0&&Number.isFinite(row.size)&&row.size>=0)
+   .sort((a,b)=>a.price-b.price).slice(0,6).reverse();
+ const visibleBids=[...props.bids].filter(row=>Number.isFinite(row.price)&&row.price>0&&Number.isFinite(row.size)&&row.size>=0)
+   .sort((a,b)=>b.price-a.price).slice(0,6);
+ const maxTotal=Math.max(1,...visibleAsks.map(row=>row.total),...visibleBids.map(row=>row.total));
  const displayRows=(rows:readonly HideDexBookLevel[],side:"BUY"|"SELL")=>
    <div className="space-y-0.5 w-full">
      {rows.map((row,idx) => {
@@ -37,7 +40,7 @@ export default function HideDexOrderBookPanel(props:HideDexOrderBookPanelProps) 
        const isBuy=side==="BUY";
        return <button key={side+"-"+row.price+"-"+idx} type="button"
          onClick={()=>props.onSelectPrice(row.price)}
-         className={`w-full grid grid-cols-2 text-[9px] md:text-[11px] font-mono py-0.5 rounded transition-all text-left relative overflow-hidden group ${isBuy?"hover:bg-emerald-500/10":"hover:bg-rose-500/10"} ${isFlashing?(isBuy?"bg-emerald-500/30 text-emerald-300 font-extrabold ring-1 ring-emerald-500/50":"bg-rose-500/30 text-rose-300 font-extrabold ring-1 ring-rose-500/50"):""}`}>
+         className={`w-full h-[25px] md:h-[28px] grid grid-cols-2 items-center text-[9px] md:text-[11px] font-mono rounded transition-all text-left relative overflow-hidden group ${isBuy?"hover:bg-emerald-500/10":"hover:bg-rose-500/10"} ${isFlashing?(isBuy?"bg-emerald-500/30 text-emerald-300 font-extrabold ring-1 ring-emerald-500/50":"bg-rose-500/30 text-rose-300 font-extrabold ring-1 ring-rose-500/50"):""}`}>
          <div aria-hidden="true" className={`absolute right-0 top-0 bottom-0 border-l-2 pointer-events-none rounded-r ${isBuy?"bg-[#18c29c]/25 border-[#18c29c]/40 group-hover:bg-[#18c29c]/35":"bg-[#e2445c]/25 border-[#e2445c]/40 group-hover:bg-[#e2445c]/35"}`}
            style={{width:depthPercent+"%"}}/>
          <span className={`font-bold z-10 pl-0.5 ${isBuy?"text-[#18c29c]":"text-[#ff4d4d]"}`}>{props.formatPrice(row.price)}</span>
@@ -46,7 +49,7 @@ export default function HideDexOrderBookPanel(props:HideDexOrderBookPanelProps) 
      })}
    </div>;
  return <div ref={rootRef} id="terminal-order-book"
-   className="col-span-5 min-w-0 bg-brand-bg border border-brand-border rounded-xl p-1.5 md:p-2.5 flex flex-col justify-between shadow-lg relative self-start h-[510px] sm:h-[540px] md:h-[560px] overflow-hidden">
+   className="col-span-5 min-w-0 bg-brand-bg border border-brand-border rounded-xl p-1.5 md:p-2.5 flex flex-col justify-between shadow-lg relative self-start h-[398px] md:h-[440px] overflow-hidden">
    <div className="flex flex-col min-h-0 overflow-hidden flex-grow h-full">
      <div className="grid grid-cols-2 text-[8px] md:text-[10px] font-sans font-black uppercase tracking-wider text-gray-500 border-b border-brand-border pb-1 md:pb-1.5 mb-1 md:mb-1.5 flex-shrink-0 items-center">
        <span>Price</span>
@@ -60,7 +63,7 @@ export default function HideDexOrderBookPanel(props:HideDexOrderBookPanelProps) 
        </button>
      </div>
      <div ref={props.asksContainerRef} className="flex-1 flex flex-col justify-end overflow-hidden min-h-0 pr-0.5" id="orderbook-asks-container">
-       {displayRows(props.asks,"SELL")}
+       {displayRows(visibleAsks,"SELL")}
      </div>
      <div className="border-y border-brand-border py-1 my-0.5 text-center flex flex-col items-center justify-center bg-brand-bg/50 rounded-lg flex-shrink-0" id="orderbook-spread-row">
        <span className="font-mono font-bold text-xs md:text-base text-[#18c29c] leading-none">
@@ -69,7 +72,7 @@ export default function HideDexOrderBookPanel(props:HideDexOrderBookPanelProps) 
        <span className="text-[7px] md:text-[9px] font-bold text-gray-500 uppercase tracking-widest mt-0.5">{props.midLabel}</span>
      </div>
      <div className="flex-1 flex flex-col justify-start overflow-hidden min-h-0 pr-0.5" id="orderbook-bids-container">
-       {displayRows(props.bids,"BUY")}
+       {displayRows(visibleBids,"BUY")}
      </div>
    </div>
    <div className="border-t border-brand-border pt-1 md:pt-2 flex justify-between items-center text-[9px] md:text-xs">

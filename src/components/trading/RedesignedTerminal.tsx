@@ -75,6 +75,7 @@ import { useLanguage } from "../../lib/LanguageContext";
 import TradingDashboardTabs from "./TradingDashboardTabs";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
 import HideDexOrderBookPanel from "./HideDexOrderBookPanel";
+import {HideDexTradeGrid,HideDexOrderForm} from "./HideDexTradeLayout";
 import HideDexMobileMarketHeader from "./HideDexMobileMarketHeader";
 import HideDexDesktopMarketBar from "./HideDexDesktopMarketBar";
 import { HideDexSideAndAvailability, HideDexBasicOrderInputs } from "./HideDexTradeEntry";
@@ -1860,8 +1861,8 @@ export default function RedesignedTerminal({
   };
 
   // --- Order Book Centralized Subscription & Real-Time Hydration ---
-  const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
-  const limit = isMobile ? 8 : 14;
+  // Visual order book shows exactly six authentic price levels per side on both venues.
+  const limit = 6;
 
   const {
     asks,
@@ -1878,7 +1879,9 @@ export default function RedesignedTerminal({
     let bidAccum = 0;
 
     const mappedBids =
-      rawBids
+      [...rawBids]
+        .filter(b => Number.isFinite(Number(b.px)) && Number(b.px)>0)
+        .sort((a,b)=>Number(b.px)-Number(a.px))
         .slice(0, limit)
         .map((b) => {
           const price =
@@ -1899,7 +1902,9 @@ export default function RedesignedTerminal({
     let askAccum = 0;
 
     const mappedAsks =
-      rawAsks
+      [...rawAsks]
+        .filter(a => Number.isFinite(Number(a.px)) && Number(a.px)>0)
+        .sort((a,b)=>Number(a.px)-Number(b.px))
         .slice(0, limit)
         .map((a) => {
           const price =
@@ -4646,13 +4651,10 @@ export default function RedesignedTerminal({
       </div>
 
       {/* 3. TWO-COLUMN SPLIT PANEL LAYOUT (Order Form Left | Order Book Right - Side by Side even on Mobile!) */}
-      <div className="grid grid-cols-12 gap-1.5 md:gap-2 mb-1.5 items-stretch">
+      <HideDexTradeGrid>
         
         {/* LEFT COLUMN: COMPACT ORDER PLACEMENT PANEL (7 of 12 cols) */}
-        <div
-          className="col-span-7 bg-brand-bg border border-brand-border rounded-xl p-1.5 md:p-2.5 flex flex-col h-full shadow-lg relative"
-          id="terminal-order-form"
-        >
+        <HideDexOrderForm>
           
           {/* Locked Overlay: Wallet Not Connected */}
           {!walletAddress && (
@@ -4674,7 +4676,7 @@ export default function RedesignedTerminal({
             </div>
           )}
 
-          <form onSubmit={handleSubmitOrder} className="flex flex-1 flex-col gap-2 md:gap-3">
+          <form onSubmit={handleSubmitOrder} className="flex flex-col gap-2 md:gap-3">
             
             {/* The exact same original HideDex selectors are used by both venues. */}
             <HideDexTradeSelectors
@@ -5192,7 +5194,7 @@ export default function RedesignedTerminal({
             )}
 
             {/* Calculations and limits stats list */}
-            <div className="bg-brand-bg/50 border border-brand-border rounded-lg p-1.5 text-[9px] md:text-[10px] font-mono space-y-0.5 mt-auto">
+            <div className="bg-brand-bg/50 border border-brand-border rounded-lg p-1.5 text-[9px] md:text-[10px] font-mono space-y-0.5">
               {isPerp && (
                 <div className="flex justify-between text-gray-500 font-bold">
                   <span>Liq. Price</span>
@@ -5287,7 +5289,7 @@ export default function RedesignedTerminal({
                 : `Place ${orderSide === "BUY" ? (isPerp ? "Long" : "Buy") : (isPerp ? "Short" : "Sell")}`}
             </button>
           </form>
-        </div>
+        </HideDexOrderForm>
 
         <HideDexOrderBookPanel
           asks={asks}
@@ -5308,7 +5310,7 @@ export default function RedesignedTerminal({
           flashingPrices={activeFlashingPrices}
           shrinkOnTpSl={isTpSlEnabled}
         />
-      </div>
+      </HideDexTradeGrid>
 
       {/* 4. BOTTOM TABS: POSITIONS, OPEN ORDERS, BALANCES, TRADE HISTORY (Unified Component) */}
       <TradingDashboardTabs
