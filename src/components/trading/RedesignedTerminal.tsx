@@ -75,6 +75,7 @@ import { useLanguage } from "../../lib/LanguageContext";
 import TradingDashboardTabs from "./TradingDashboardTabs";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
 import HideDexOrderBookPanel from "./HideDexOrderBookPanel";
+import HideDexMobileMarketHeader from "./HideDexMobileMarketHeader";
 import { HideDexSideAndAvailability, HideDexBasicOrderInputs } from "./HideDexTradeEntry";
 import MarketSelector, {
   renderAssetLogo,
@@ -4451,146 +4452,18 @@ export default function RedesignedTerminal({
         </div>
       )}
 
-      {/* MOBILE TRADE-ONLY COMPACT MARKET HEADER */}
-      <div
-        className="md:hidden bg-brand-bg border border-brand-border rounded-xl p-1.5 mb-1.5 flex items-center justify-between gap-1.5 shadow-xl relative"
-        id="terminal-mobile-trade-header"
-      >
-        {/* Coin + mode */}
-        <button
-          type="button"
-          data-terminal-token-trigger="true"
-          onClick={() =>
-            setShowTokenDropdown(
-              !showTokenDropdown
-            )
-          }
-          className="flex items-center gap-2 min-w-0 cursor-pointer text-left"
-          id="mobile-trade-token-selector-trigger"
-        >
-          <div className="shrink-0">
-            {renderAssetLogo(
-              symbol,
-              currentToken?.displayBaseAsset,
-              currentToken?.sourceCoin,
-            )}
-          </div>
-
-          <div className="min-w-0">
-            <div className="flex items-center gap-1">
-              <span className="font-display font-bold text-sm tracking-tight leading-none text-brand-text uppercase truncate">
-                {headerTicker}
-              </span>
-
-              <ChevronDown className="w-3.5 h-3.5 text-brand-muted shrink-0" />
-            </div>
-
-            <div className="mt-0.5 text-[9px] font-semibold tracking-wider leading-none">
-              {isPerp ? (
-                <span className="text-accent">
-                  {mobileTradeMarketLeverage} Perp
-                </span>
-              ) : (
-                <span className="text-accent">
-                  Spot
-                </span>
-              )}
-            </div>
-          </div>
-        </button>
-
-        {/* Live price + 24h */}
-        <div className="flex flex-col items-center justify-center min-w-0 px-1">
-          <span className="font-mono font-bold text-xs text-brand-text leading-none whitespace-nowrap">
-            {typeof realCurrentPrice ===
-              "number" &&
-            Number.isFinite(
-              realCurrentPrice
-            ) &&
-            realCurrentPrice > 0
-              ? realCurrentPrice.toLocaleString(
-                  undefined,
-                  {
-                    minimumFractionDigits:
-                      symbol === "PURR"
-                        ? 4
-                        : 2,
-                  }
-                )
-              : "--"}
-          </span>
-
-          <span
-            className={`text-[9px] font-mono font-semibold mt-0.5 leading-none ${
-              typeof effectiveChange24h ===
-                "number" &&
-              Number.isFinite(
-                effectiveChange24h
-              )
-                ? effectiveChange24h >= 0
-                  ? "text-success"
-                  : "text-danger"
-                : "text-brand-muted"
-            }`}
-          >
-            {typeof effectiveChange24h ===
-              "number" &&
-            Number.isFinite(
-              effectiveChange24h
-            )
-              ? `${
-                  effectiveChange24h >= 0
-                    ? "+"
-                    : ""
-                }${effectiveChange24h.toFixed(
-                  2
-                )}%`
-              : "--"}
-          </span>
-        </div>
-
-        {/* REAL Spot / Perp quick switch */}
-        {isSpotOnly ? (
-          <div className="shrink-0 px-2 py-1 rounded-full bg-accent/10 border border-accent/30 text-accent font-mono text-[9px] font-bold uppercase">
-            SPOT
-          </div>
-        ) : canToggleSpot ? (
-          <button
-            type="button"
-            id="mobile-trade-spot-perp-toggle"
-            title={
-              isPerp
-                ? "Switch to Spot Market"
-                : "Switch to Perpetual Market"
-            }
-            onClick={() => {
-              const nextPerp =
-                !isPerp;
-
-              setIsPerp(
-                nextPerp
-              );
-            }}
-            className={`shrink-0 w-9 h-5 rounded-full p-0.5 transition-colors duration-200 cursor-pointer ${
-              isPerp
-                ? "bg-accent"
-                : "bg-brand-overlay-active"
-            }`}
-          >
-            <div
-              className={`w-4 h-4 rounded-full bg-brand-bg shadow transform transition-transform duration-200 ${
-                isPerp
-                  ? "translate-x-4"
-                  : "translate-x-0"
-              }`}
-            />
-          </button>
-        ) : (
-          <div className="shrink-0 px-2 py-1 rounded-full bg-accent/10 border border-accent/30 text-accent font-mono text-[9px] font-bold uppercase">
-            {mobileTradeMarketLeverage} PERP
-          </div>
-        )}
-      </div>
+      <HideDexMobileMarketHeader
+        logo={renderAssetLogo(symbol,currentToken?.displayBaseAsset,currentToken?.sourceCoin)}
+        ticker={headerTicker}
+        modeLabel={isPerp ? mobileTradeMarketLeverage + " Perp" : "Spot"}
+        priceLabel={typeof realCurrentPrice === "number" && Number.isFinite(realCurrentPrice) && realCurrentPrice>0
+          ? realCurrentPrice.toLocaleString(undefined,{minimumFractionDigits:symbol==="PURR"?4:2}) : "--"}
+        change24h={effectiveChange24h}
+        onSelectMarket={() => setShowTokenDropdown(v=>!v)}
+        mode={isPerp?"perp":"spot"}
+        switchMode={isSpotOnly?"spot-only":canToggleSpot?"toggle":"perp-only"}
+        onSwitchMode={() => setIsPerp(!isPerp)}
+      />
 
       {/* 1. TOP INTERACTIVE HEADER SECTION: ONE unified compact upper market panel */}
       <div className="hidden md:block relative glass-panel rounded-xl border border-brand-border bg-brand-surface py-1.5 px-2 sm:px-2.5 select-none shadow-sm mb-1.5 md:mb-2" id="terminal-unified-market-header">

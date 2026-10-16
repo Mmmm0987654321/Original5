@@ -14,6 +14,7 @@ import MarketsPanel from "../dashboard/MarketsPanel";
 import TradingAccountTabBar, { type TradingTabId } from "./TradingAccountTabBar";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
 import HideDexOrderBookPanel, {type HideDexBookLevel} from "./HideDexOrderBookPanel";
+import HideDexMobileMarketHeader from "./HideDexMobileMarketHeader";
 import { HideDexSideAndAvailability, HideDexBasicOrderInputs } from "./HideDexTradeEntry";
 import type { TokenMetadata } from "../../types";
 import MarketSelector, { renderAssetLogo } from "./MarketSelector";
@@ -834,32 +835,17 @@ export default function LighterMarketPreview({
         No matching {kind === "spot" ? "Spot" : "Perp"} market is selected. Choose an actual Lighter market before trading.
         <button type="button" onClick={() => setMarketSelectorOpen(true)} className="ml-2 underline text-accent">Select market</button>
       </p>}
-      {/* The same mobile terminal composition: selected coin, price, mode,
-          then order form/book. The chart lives under Market on small screens. */}
-      <div id="terminal-mobile-trade-header" className="md:hidden bg-brand-bg border border-brand-border rounded-xl p-1.5 mb-1.5 flex items-center justify-between gap-1.5 shadow-xl relative">
-        <button type="button" onClick={() => setMarketSelectorOpen(true)} className="flex items-center gap-2 min-w-0 text-left" aria-label="Choose Lighter market">
-          {selected && <span className="shrink-0">{renderAssetLogo(selected.symbol)}</span>}
-          <span className="min-w-0">
-            <span className="block font-display font-bold text-sm text-brand-text uppercase truncate">{selected?.symbol ?? "SELECT MARKET"}⌄</span>
-            <span className="block text-[9px] font-semibold tracking-wider text-accent">{kind === "perp" ?
-                (selected?.maxLeverage ? selected.maxLeverage + "x Perp" : "Perpetual") : "Spot"}</span>
-          </span>
-        </button>
-        <span className="flex flex-col items-center min-w-0">
-          <span className="font-mono font-bold text-xs text-brand-text whitespace-nowrap">{formatPrice(marketPrice)}</span>
-          <span className={"text-[9px] font-mono font-semibold " +
-            ((selected?.change24h ?? 0) >= 0 ? "text-success" : "text-danger")}>
-            {selected?.change24h == null ? "—" : (selected.change24h >= 0 ? "+" : "") + formatPrice(selected.change24h, 2) + "%"}
-          </span>
-        </span>
-        <button type="button" onClick={() => switchKind(kind === "perp" ? "spot" : "perp")}
-          role="switch" aria-checked={kind === "spot"}
-          aria-label="Switch Lighter Spot and Perpetual" title="Switch Lighter Spot / Perpetual"
-          className="shrink-0 ml-auto w-11 h-6 flex items-center rounded-full bg-white p-0.5 border border-brand-border">
-          <span className={"block w-5 h-5 bg-black rounded-full shadow transition-transform duration-150 " +
-            (kind === "spot" ? "translate-x-5" : "translate-x-0")}/>
-        </button>
-      </div>
+      <HideDexMobileMarketHeader
+        logo={selected ? renderAssetLogo(selected.symbol) : null}
+        ticker={selected?.symbol ?? "SELECT MARKET"}
+        modeLabel={kind==="perp" ? (selected?.maxLeverage ? selected.maxLeverage + "x Perp" : "Perpetual") : "Spot"}
+        priceLabel={formatPrice(marketPrice)}
+        change24h={selected?.change24h}
+        onSelectMarket={() => setMarketSelectorOpen(true)}
+        mode={kind}
+        switchMode="toggle"
+        onSwitchMode={() => switchKind(kind==="perp"?"spot":"perp")}
+      />
       <div id="terminal-unified-market-header" className="hidden md:block rounded-xl border border-brand-border bg-brand-surface p-2 mb-2">
         <div className="flex flex-wrap justify-between items-center gap-2">
           <div className="flex items-center gap-2">
