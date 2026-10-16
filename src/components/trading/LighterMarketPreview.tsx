@@ -23,6 +23,7 @@ import HideDexOpenOrders, {type HideDexOpenOrderRow} from "./HideDexOpenOrders";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
 import HideDexOrderBookPanel, {type HideDexBookLevel} from "./HideDexOrderBookPanel";
 import {HideDexTradeGrid,HideDexOrderForm} from "./HideDexTradeLayout";
+import {HideDexTradePercentPresets,HideDexTradeOptionToggle} from "./HideDexTradeOptions";
 import HideDexMobileMarketHeader from "./HideDexMobileMarketHeader";
 import HideDexDesktopMarketBar from "./HideDexDesktopMarketBar";
 import { HideDexSideAndAvailability, HideDexBasicOrderInputs } from "./HideDexTradeEntry";
@@ -987,28 +988,26 @@ export default function LighterMarketPreview({
               setSizeUnit(v=>v==="USD"?"COIN":"USD");
             }}
           />
-                    <div className="grid grid-cols-5 gap-1">
-            {[10,25,50,75,100].map(percent => <button type="button" key={percent}
-              disabled={!marketPrice || displayTradingAccount?.availableBalance == null}
-              onClick={() => {
-                const available = displayTradingAccount?.availableBalance??0;
-                const price = orderType==="limit" ? Number(limitPrice) : marketPrice;
-                if (price && price>0 && available>0) setAmount(String(Number((sizeUnit === "USD"
-                  ? available*percent/100 : available*percent/100/price).toFixed(6))));
-              }} className="border border-brand-border rounded-lg py-1.5 text-[9px] font-bold text-brand-muted disabled:opacity-40">{percent}%</button>)}
-          </div>
+          <HideDexTradePercentPresets
+            disabled={!marketPrice || displayTradingAccount?.availableBalance == null}
+            onSelect={percent => {
+              const available=displayTradingAccount?.availableBalance??0;
+              const price=orderType==="limit"?Number(limitPrice):marketPrice;
+              if(price&&price>0&&available>0)setAmount(String(Number((sizeUnit==="USD"
+                ? available*percent/100:available*percent/100/price).toFixed(6))));
+            }}
+          />
           {kind === "perp" && <>
-            <div className="border-t border-brand-border pt-3 flex items-center gap-2">
-              <input type="checkbox" checked={reduceOnly}
+            <div className="border-t border-brand-border/35 pt-2 px-0.5">
+              <HideDexTradeOptionToggle kind="reduce" checked={reduceOnly}
                 disabled={!tradingIdentity || tradingBusy || !hasReduciblePosition}
-                title={!hasReduciblePosition ? "Reduce Only requires a verified opposite-side open position" : ""}
-                onChange={e => setReduceOnly(e.target.checked)} aria-label="Reduce Only" className="w-4 h-4"/>
-              <span className="font-bold text-[10px] text-brand-muted">Reduce Only</span>
+                title={!hasReduciblePosition?"Reduce Only requires a verified opposite-side position":undefined}
+                onChange={setReduceOnly}/>
             </div>
-            <div className="border-t border-brand-border pt-3 flex items-center gap-2">
-              <input type="checkbox" checked={attachTpSl} disabled={!tradingIdentity || tradingBusy || reduceOnly}
-                onChange={e => setAttachTpSl(e.target.checked)} aria-label="Attach TP/SL" className="w-4 h-4"/>
-              <span className="font-bold text-[10px] text-brand-muted">Take Profit / Stop Loss</span>
+            <div className="border-t border-brand-border/35 pt-2">
+              <HideDexTradeOptionToggle kind="tpsl" checked={attachTpSl}
+                disabled={!tradingIdentity || tradingBusy || reduceOnly}
+                onChange={setAttachTpSl}/>
             </div>
             {attachTpSl && !reduceOnly && <div className="grid grid-cols-2 gap-2">
               <label className="text-[10px] text-brand-muted">Take Profit (USDC)

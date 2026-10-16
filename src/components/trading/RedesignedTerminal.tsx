@@ -76,6 +76,7 @@ import TradingDashboardTabs from "./TradingDashboardTabs";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
 import HideDexOrderBookPanel from "./HideDexOrderBookPanel";
 import {HideDexTradeGrid,HideDexOrderForm} from "./HideDexTradeLayout";
+import {HideDexTradePercentPresets,HideDexTradeOptionToggle} from "./HideDexTradeOptions";
 import HideDexMobileMarketHeader from "./HideDexMobileMarketHeader";
 import HideDexDesktopMarketBar from "./HideDexDesktopMarketBar";
 import { HideDexSideAndAvailability, HideDexBasicOrderInputs } from "./HideDexTradeEntry";
@@ -4875,30 +4876,11 @@ export default function RedesignedTerminal({
               </div>
             )}
 
-            {/* Quick percentages pills */}
-            <div className="grid grid-cols-5 gap-1 pt-0.5">
-              {[10, 25, 50, 75, 100].map((pct) => (
-                <button
-                  key={pct}
-                  type="button"
-                  disabled={!canCalculatePercentageSize}
-                  onClick={() => {
-                    if (canCalculatePercentageSize) {
-                      handlePercentagePreset(pct);
-                    }
-                  }}
-                  className={`py-1 text-center border rounded-lg text-[9px] md:text-[10px] font-mono font-bold transition-all ${
-                    !canCalculatePercentageSize
-                      ? "opacity-35 cursor-not-allowed bg-brand-overlay-subtle/50 border-brand-border/40 text-gray-600"
-                      : selectedPercentage === pct
-                      ? "bg-[#18c29c]/10 text-[#18c29c] border-[#18c29c] cursor-pointer"
-                      : "bg-brand-overlay-subtle border-brand-border text-gray-400 hover:text-brand-text hover:bg-brand-overlay-normal cursor-pointer"
-                  }`}
-                >
-                  {pct}%
-                </button>
-              ))}
-            </div>
+            <HideDexTradePercentPresets
+              disabled={!canCalculatePercentageSize}
+              selected={selectedPercentage}
+              onSelect={handlePercentagePreset}
+            />
 
             {/* Options block (Reduce Only, Take Profit, Stop Loss, TIF) */}
             {isAttachedTpSlParentOrder && (
@@ -4907,39 +4889,8 @@ export default function RedesignedTerminal({
                   {/* Reduce Only checkbox */}
                   {roAvailable ? (
                     <div className="flex flex-col gap-1 min-w-0">
-                      <label
-                        className={`min-h-[32px] px-2.5 rounded-lg border flex items-center justify-center gap-1.5 cursor-pointer select-none transition-all text-[10px] md:text-xs font-black ${
-                          reduceOnly
-                            ? "bg-[#18c29c] hover:bg-[#15b390] border-[#18c29c] text-[#030610] shadow-md shadow-[#18c29c]/10"
-                            : "bg-brand-surface hover:bg-brand-overlay-normal border-brand-border hover:border-[#18c29c]/60 text-brand-text"
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={reduceOnly}
-                          onChange={(e) =>
-                            setReduceOnly(
-                              e.target.checked
-                            )
-                          }
-                          className="sr-only"
-                        />
-
-                        <span
-                          className={`w-3.5 h-3.5 rounded-[4px] border flex items-center justify-center text-[10px] leading-none font-black ${
-                            reduceOnly
-                              ? "bg-[#030610]/10 border-[#030610]/30 text-[#030610]"
-                              : "bg-brand-bg border-brand-border text-transparent"
-                          }`}
-                          aria-hidden="true"
-                        >
-                          ✓
-                        </span>
-
-                        <span className="whitespace-nowrap">
-                          Reduce Only
-                        </span>
-                      </label>
+                      <HideDexTradeOptionToggle kind="reduce" checked={reduceOnly}
+                        onChange={setReduceOnly}/>
 
                       {roTooLarge && (
                         <span className="text-[9px] text-pnl-loss font-mono font-bold">
@@ -4961,19 +4912,10 @@ export default function RedesignedTerminal({
 
                 {/* Premium Take Profit / Stop Loss Section */}
                 <div className="border-t border-brand-border/35 pt-2 space-y-2">
-                  <div 
-                    className="flex items-center gap-2.5 select-none cursor-pointer group py-0.5" 
-                    onClick={() => setIsTpSlEnabled(!isTpSlEnabled)}
-                  >
-                    {/* Custom Screenshot Styled Checkbox */}
-                    <div
-                      className={`w-[18px] h-[18px] rounded-[5px] border-[1.8px] transition-all flex items-center justify-center ${
-                        isTpSlEnabled
-                          ? "border-[#18c29c] bg-[#18c29c]/10"
-                          : "border-brand-border bg-brand-surface group-hover:border-[#18c29c]/60"
-                      }`}
-                    >
-                      {isTpSlEnabled && (
+                  <HideDexTradeOptionToggle kind="tpsl"
+                    checked={isTpSlEnabled} onChange={setIsTpSlEnabled}/>
+
+                  {isTpSlEnabled && (
                         <div className="w-[8px] h-[8px] rounded-[1.5px] bg-[#18c29c]" />
                       )}
                     </div>
