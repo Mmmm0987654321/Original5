@@ -293,7 +293,7 @@ export default function Navbar({
           className="flex items-center cursor-pointer group shrink-0 min-w-0"
           id="navbar-logo"
         >
-          <HideDexLogo size={26} showText={true} textSize="text-[10px] min-[390px]:text-[11px] sm:text-base" className="gap-1 sm:gap-2" />
+          <HideDexLogo size={28} showText={true} textSize="text-[13px] min-[390px]:text-sm sm:text-base" className="gap-1 sm:gap-2" />
         </div>
 
         {/* Compact header venue switcher. Keep name/logo/wallet room on narrow phones.

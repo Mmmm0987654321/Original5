@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useState } from "react";
-import { Layers, Wallet, TrendingUp, Unlock, Lock, ArrowUpRight, ArrowDownRight, ChevronRight, Copy, Check, Eye, EyeOff, BarChart3 } from "lucide-react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Layers, Wallet, TrendingUp, Unlock, Lock, ArrowUpRight, ArrowDownRight, ChevronRight, ChevronDown, X, ShieldCheck, Copy, Check, Eye, EyeOff, BarChart3 } from "lucide-react";
 import { TrustShieldValue } from "../common/TrustShieldValue";
 import {
   registerLighterTradingKey, reconnectLighterTradingKey, getActiveLighterSigner,
   clearLighterTradingKey, submitLighterOrder, withdrawLighterUsdc,
   getLighterSignedOpenOrders, cancelLighterSignedOrder,
-  verifyLighterTradingKey, type LighterTradingIdentity,
+  verifyLighterTradingKey, updateLighterPerpMargin, type LighterTradingIdentity,
 } from "../../lib/lighterTrading";
 import { depositLighterUsdcOnEthereum, depositLighterUsdcFromArbitrum, type LighterWalletProvider } from "../../lib/lighterFunding";
 import TVChart from "./TVChart";
@@ -65,6 +65,15 @@ export default function LighterMarketPreview({
   const [positionSort, setPositionSort] = useState<"default" | "pnl" | "size">("default");
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [orderType, setOrderType] = useState<"market" | "limit">("market");
+  const [orderTypeOpen, setOrderTypeOpen] = useState(false);
+  const [authSheetOpen, setAuthSheetOpen] = useState(false);
+  const [marginSheetOpen, setMarginSheetOpen] = useState(false);
+  const [marginMode, setMarginMode] = useState<"cross" | "isolated">("cross");
+  const [chosenLeverage, setChosenLeverage] = useState(1);
+  const [marginBusy, setMarginBusy] = useState(false);
+  const [marginStatus, setMarginStatus] = useState("");
+  const [marginUpdateMarketId, setMarginUpdateMarketId] = useState<number | null>(null);
+  const authPromptedWallet = useRef("");
   const [amount, setAmount] = useState("");
   const [sizeUnit, setSizeUnit] = useState<"USD" | "COIN">("USD");
   const [hideBalance, setHideBalance] = useState(false);
@@ -103,7 +112,19 @@ export default function LighterMarketPreview({
       setTradingIdentity(getActiveLighterSigner(walletAddress));
     }
     setTradingNotice("");
+    setAuthSheetOpen(false);
+    authPromptedWallet.current = "";
   }, [walletAddress]);
+
+  // Use the same one-time bottom-sheet style as HideDex's existing Enable Trading flow.
+  // Never auto-sign or send a transaction: the user must explicitly tap the primary action.
+  useEffect(() => {
+    if (section === "trade" && walletAddress && !tradingIdentity &&
+        authPromptedWallet.current !== walletAddress) {
+      authPromptedWallet.current = walletAddress;
+      setAuthSheetOpen(true);
+    }
+  }, [section, walletAddress, tradingIdentity]);
 
   const beginLighterAuthorization = async () => {
     if (!walletAddress || tradingBusy) return;
@@ -114,6 +135,7 @@ export default function LighterMarketPreview({
       });
       setTradingIdentity(identity);
       setRecoveryKey(secret);
+      setAuthSheetOpen(true); // Keep one-time backup visible only inside the secure sheet.
       setTradingNotice("Lighter registration submitted" + (txHash ? ": " + txHash : "") +
         ". Keep a secure backup of the API key below; this browser does not store it.");
       setAccountReload(v => v + 1);
@@ -131,6 +153,7 @@ export default function LighterMarketPreview({
       });
       setTradingIdentity(identity);
       setExistingKey(""); setShowExistingKey(false);
+      setAuthSheetOpen(false);
       setTradingNotice("Existing Lighter API key verified for this connected wallet.");
     } catch (e) {
       setTradingNotice(e instanceof Error ? e.message : "Trading key verification failed.");
@@ -237,8 +260,32 @@ export default function LighterMarketPreview({
     return () => {cancelled = true;};
   },[walletAddress,tradingIdentity,accountTab,accountReload]);
 
+  const submitMarginSettings = async () => {
+    if (!walletAddress || !selected || kind !== "perp" || marginBusy) return;
+    if (!tradingIdentity) {
+      setMarginSheetOpen(false); setAuthSheetOpen(true); return;
+    }
+    if (!selected.maxLeverage || chosenLeverage > selected.maxLeverage || chosenLeverage < 1) {
+      setMarginStatus("Lighter did not verify this leverage. No update sent."); return;
+    }
+    if (!window.confirm("UPDATE REAL LIGHTER MARGIN SETTINGS\\n" + selected.symbol +
+      "\\n" + marginMode.toUpperCase() + " · " + chosenLeverage + "x\\nConfirm on Lighter mainnet?")) return;
+    setMarginBusy(true); setMarginStatus("Submitting signed Lighter margin update…");
+    try {
+      const tx = await updateLighterPerpMargin({
+        walletAddress, market: selected, leverage: chosenLeverage, marginMode,
+      });
+      setMarginUpdateMarketId(selected.id);
+      setMarginStatus("Lighter accepted settings transaction " + tx +
+        ". Execution must be confirmed on Lighter; the displayed choice is not a verified active setting.");
+      setAccountReload(v => v + 1);
+    } catch(e) {
+      setMarginStatus(e instanceof Error ? e.message : "Lighter rejected leverage update.");
+    } finally { setMarginBusy(false); }
+  };
+
   const authorizationPanel = (
-    <div className="space-y-2 text-[10px] sm:text-xs">
+    <div className="space-y-2 text-xs sm:text-sm">
       {tradingIdentity ? <div className="flex justify-between gap-2 items-center border border-brand-border rounded-lg p-2">
         <span className="text-emerald-500 font-bold">Lighter signing key · Account #{tradingIdentity.accountIndex} · Slot {tradingIdentity.apiKeyIndex}</span>
         <button type="button" onClick={() => {
@@ -268,7 +315,7 @@ export default function LighterMarketPreview({
             className="rounded bg-brand-overlay-normal p-2 font-bold disabled:opacity-40">Verify & reconnect</button>
         </div>}
       </>}
-      {recoveryKey && <div className="rounded-lg border border-amber-500/40 p-2 space-y-2">
+      {recoveryKey && <div className="rounded-xl border border-amber-500/40 p-3 space-y-3">
         <p className="text-amber-500 font-bold">Save this API key securely now: it will disappear on reload. It permits trades and secure withdrawals.</p>
         <input type="password" readOnly value={recoveryKey} aria-label="One-time Lighter trading key backup"
           className="w-full p-2 rounded border border-brand-border bg-brand-bg"/>
@@ -394,6 +441,9 @@ export default function LighterMarketPreview({
     setAmount("");
     setLimitPrice("");
     setBookGroup(1);
+    setMarginUpdateMarketId(null);
+    setMarginStatus("");
+    setOrderTypeOpen(false);
     if (navigate) onSelectSection("trade", m.kind);
   };
   const switchKind = (next: Kind) => {
@@ -414,6 +464,8 @@ export default function LighterMarketPreview({
     setSelectedMarketId(nextMarket?.id ?? null);
     setAmount("");
     setLimitPrice("");
+    setMarginUpdateMarketId(null);
+    setOrderTypeOpen(false);
     if (!nextMarket) setMarketSelectorOpen(true);
     if (section === "trade") onSelectSection("trade", next);
   };
@@ -624,6 +676,73 @@ export default function LighterMarketPreview({
   );
 
   return <div className="w-full min-w-0 text-brand-text pb-1" data-exchange="lighter">
+    {authSheetOpen && (
+      <div role="presentation" className="fixed inset-0 z-[160] flex items-end justify-center bg-black/75 backdrop-blur-[2px]"
+        onMouseDown={e => { if (e.target === e.currentTarget && !tradingBusy && !recoveryKey) setAuthSheetOpen(false); }}>
+        <section role="dialog" aria-modal="true" aria-label="Enable Lighter trading"
+          className="w-full max-w-lg rounded-t-[30px] border border-brand-border bg-brand-bg p-5 pb-[max(22px,env(safe-area-inset-bottom))] shadow-2xl space-y-5 max-h-[85dvh] overflow-y-auto">
+          <div className="flex items-center gap-3">
+            <span className="w-11 h-11 shrink-0 flex items-center justify-center rounded-xl border border-brand-border bg-brand-surface"><ShieldCheck className="w-6 h-6"/></span>
+            <h2 className="font-black text-xl flex-1 text-brand-text">Enable Trading</h2>
+            <button type="button" aria-label="Close enable trading" disabled={tradingBusy || Boolean(recoveryKey)}
+              onClick={() => setAuthSheetOpen(false)}
+              className="p-1.5 disabled:opacity-30"><X className="w-5 h-5"/></button>
+          </div>
+          {!tradingIdentity && <p className="text-sm text-brand-muted leading-relaxed">
+            Confirm the one-time wallet authorization to activate Lighter mainnet trading on HideDex.
+            This trading key can authorize orders and withdrawals to your verified wallet.
+            Review the wallet request before confirming.
+          </p>}
+          {authorizationPanel}
+          {tradingNotice && <p role="status" className="text-xs text-amber-500 break-all">{tradingNotice}</p>}
+          {tradingIdentity && !recoveryKey && <button type="button"
+            className="w-full bg-white text-black rounded-xl p-3 text-sm font-extrabold"
+            onClick={() => setAuthSheetOpen(false)}>Continue trading</button>}
+          {recoveryKey && <button type="button" className="w-full bg-white text-black rounded-xl p-3 text-sm font-bold"
+            onClick={() => {setRecoveryKey("");setAuthSheetOpen(false);}}>
+            I have securely saved my key
+          </button>}
+        </section>
+      </div>
+    )}
+    {marginSheetOpen && (
+      <div role="presentation" className="fixed inset-0 z-[150] flex items-end sm:items-center justify-center bg-black/70 p-0 sm:p-4"
+        onMouseDown={e => { if(e.target === e.currentTarget && !marginBusy) setMarginSheetOpen(false); }}>
+        <section role="dialog" aria-modal="true" aria-label="Lighter margin and leverage settings"
+          className="w-full max-w-sm rounded-t-2xl sm:rounded-2xl border border-brand-border bg-brand-bg p-4 space-y-4 max-h-[80dvh] overflow-y-auto">
+          <div className="flex justify-between items-center"><h2 className="text-base font-bold">Margin & Leverage</h2>
+            <button type="button" disabled={marginBusy} aria-label="Close margin settings" onClick={() => setMarginSheetOpen(false)}><X className="w-5 h-5"/></button>
+          </div>
+          <p className="text-xs text-brand-muted">{selected?.symbol ?? "No market"} ·
+            Verified maximum: {selected?.maxLeverage ? selected.maxLeverage + "x" : "Unavailable"}
+          </p>
+          <div className="grid grid-cols-2 gap-2">
+            {(["cross","isolated"] as const).map(mode => <button type="button" key={mode} disabled={marginBusy}
+              onClick={() => setMarginMode(mode)} className={"rounded-xl border p-2.5 text-sm font-bold " +
+                (marginMode === mode ? "border-accent text-accent bg-brand-overlay-normal" : "border-brand-border text-brand-text")}>
+              {mode === "cross" ? "Cross" : "Isolated"}
+            </button>)}
+          </div>
+          <p className="text-xs font-bold">Leverage: {chosenLeverage}x</p>
+          <div className="grid grid-cols-4 gap-2">
+            {[1,2,3,5,10,15,20,25,40,50,75,100].filter(x => selected?.maxLeverage && x <= selected.maxLeverage)
+              .map(x => <button type="button" key={x} disabled={marginBusy}
+                onClick={() => setChosenLeverage(x)}
+                className={"rounded-lg border p-2 text-xs font-bold " +
+                  (chosenLeverage === x ? "border-accent text-accent" : "border-brand-border")}>{x}x</button>)}
+          </div>
+          <p className="text-[11px] text-brand-muted">Changing leverage/margin sends a real signed transaction on Lighter. Selecting a value does not change the account until it is accepted and executed.</p>
+          <button type="button" disabled={marginBusy || !tradingIdentity || !selected?.maxLeverage || chosenLeverage > selected.maxLeverage}
+            onClick={submitMarginSettings} className="w-full p-3 bg-accent text-brand-bg rounded-xl font-bold text-sm disabled:opacity-40">
+            {marginBusy ? "Submitting…" : "Confirm Lighter margin update"}
+          </button>
+          {!tradingIdentity && <button type="button" className="text-xs underline text-accent" onClick={() => {setMarginSheetOpen(false);setAuthSheetOpen(true);}}>
+            Enable trading first
+          </button>}
+          {marginStatus && <p role="status" className="text-xs text-amber-500 break-all">{marginStatus}</p>}
+        </section>
+      </div>
+    )}
     {marketSelectorOpen && (
       <MarketSelector
         tokens={lighterTokens}
@@ -692,7 +811,8 @@ export default function LighterMarketPreview({
           {selected && <span className="shrink-0">{renderAssetLogo(selected.symbol)}</span>}
           <span className="min-w-0">
             <span className="block font-display font-bold text-sm text-brand-text uppercase truncate">{selected?.symbol ?? "SELECT MARKET"}⌄</span>
-            <span className="block text-[9px] font-semibold tracking-wider text-accent">{labelKind(kind)}</span>
+            <span className="block text-[9px] font-semibold tracking-wider text-accent">{kind === "perp" ?
+                (selected?.maxLeverage ? selected.maxLeverage + "x Perp" : "Perpetual") : "Spot"}</span>
           </span>
         </button>
         <span className="flex flex-col items-center min-w-0">
@@ -703,9 +823,11 @@ export default function LighterMarketPreview({
           </span>
         </span>
         <button type="button" onClick={() => switchKind(kind === "perp" ? "spot" : "perp")}
-          className="shrink-0 min-w-12 px-1.5 h-7 rounded-lg border border-brand-border bg-brand-surface text-[9px] font-bold text-accent"
-          aria-label="Switch spot or perpetual" title="Switch between actual Lighter Spot and Perp markets">
-          {kind === "perp" ? "PERP" : "SPOT"} ↕
+          role="switch" aria-checked={kind === "spot"}
+          aria-label="Switch Lighter Spot and Perpetual" title="Switch Lighter Spot / Perpetual"
+          className="shrink-0 ml-auto w-11 h-6 flex items-center rounded-full bg-white p-0.5 border border-brand-border">
+          <span className={"block w-5 h-5 bg-black rounded-full shadow transition-transform duration-150 " +
+            (kind === "spot" ? "translate-x-5" : "translate-x-0")}/>
         </button>
       </div>
       <div id="terminal-unified-market-header" className="hidden md:block rounded-xl border border-brand-border bg-brand-surface p-2 mb-2">
@@ -717,10 +839,8 @@ export default function LighterMarketPreview({
               className="border border-brand-border rounded-lg bg-brand-bg px-2 py-2 text-xs font-bold max-w-[160px] truncate">
               {selected?.symbol ?? "Choose market"}⌄
             </button>
-            <button type="button" onClick={() => switchKind(kind === "perp" ? "spot" : "perp")}
-              className="text-[10px] border border-brand-border px-2 py-2 rounded-lg">
-              {labelKind(kind)} ▾
-            </button>
+            <span className="text-[10px] text-brand-muted">{kind === "perp" ?
+              (selected?.maxLeverage ? selected.maxLeverage + "x Perp" : "Perpetual") : "Spot"}</span>
           </div>
           <div className="flex border border-brand-border rounded-lg overflow-hidden">
             <button type="button" onClick={() => setViewMode("chart")} className={"px-3 py-2 text-[10px] font-bold " + (viewMode === "chart" ? "bg-accent text-brand-bg" : "")}>CHART</button>
@@ -730,6 +850,12 @@ export default function LighterMarketPreview({
             <div><div className="text-brand-muted">Last</div><strong>{formatPrice(marketPrice)}</strong></div>
             <div><div className="text-brand-muted">24h Vol</div><strong>{selected?.volume24hUsd == null ? "—" : "$" + formatPrice(selected.volume24hUsd, 2)}</strong></div>
             <div><div className="text-brand-muted">24h Change</div><strong>{formatPrice(selected?.change24h, 2)}</strong></div>
+            <button type="button" role="switch" aria-checked={kind === "spot"}
+              aria-label="Switch Lighter Spot and Perpetual" title="Switch Spot / Perpetual"
+              onClick={() => switchKind(kind === "perp" ? "spot" : "perp")}
+              className="ml-2 shrink-0 w-11 h-6 flex items-center bg-white rounded-full p-0.5">
+              <span className={"w-5 h-5 block bg-black rounded-full transition-transform " + (kind === "spot" ? "translate-x-5" : "")}/>
+            </button>
           </div>
         </div>
         {viewMode === "chart" && <div id="market-chart-toolbar-host" className="mt-2 min-h-[28px] w-full border-t border-brand-border" />}
@@ -750,20 +876,51 @@ export default function LighterMarketPreview({
       </div>
       <div className="grid grid-cols-12 gap-1.5 md:gap-2 mb-1.5 items-stretch">
         <div id="terminal-order-form" className="col-span-7 min-w-0 bg-brand-bg border border-brand-border rounded-xl p-1.5 md:p-2.5 flex flex-col h-full shadow-lg relative gap-2">
-          <div className="flex items-center gap-1">
-            <select aria-label="Order type" value={orderType}
-              onChange={e => setOrderType(e.target.value as "market" | "limit")}
-              className="min-w-0 flex-1 p-1.5 rounded-lg border border-brand-border bg-brand-surface text-xs font-bold">
-              <option value="market">Market</option><option value="limit">Limit</option>
-            </select>
-            {kind === "perp" && <span title="Lighter margin configuration not connected"
-              className="min-w-0 flex-1 text-center truncate p-1.5 rounded-lg border border-brand-border bg-brand-surface text-xs text-brand-muted">
-              Margin —
-            </span>}
-            {kind === "perp" && <span title="Lighter leverage configuration not connected"
-              className="shrink-0 text-center px-2 py-1.5 rounded-lg border border-brand-border bg-brand-surface text-xs text-brand-muted">
-              —x
-            </span>}
+          <div className="flex gap-1 items-center">
+            <div className="relative min-w-0 flex-[1.1] z-[35]">
+              <button type="button" aria-label="Order type" aria-haspopup="menu" aria-expanded={orderTypeOpen}
+                onClick={() => setOrderTypeOpen(v => !v)}
+                className="w-full h-9 flex items-center justify-between gap-1 rounded-xl border border-brand-border bg-brand-surface px-2 text-xs font-bold text-brand-text">
+                <span className="truncate">{orderType === "market" ? "Market" : "Limit"}</span>
+                <ChevronDown className="w-3.5 h-3.5 shrink-0"/>
+              </button>
+              {orderTypeOpen && <>
+                <button type="button" aria-label="Close order type menu"
+                  className="fixed inset-0 z-[34] cursor-default" onClick={() => setOrderTypeOpen(false)}/>
+                <div role="menu" aria-label="Choose order type"
+                  className="absolute z-[36] top-full left-0 mt-1 min-w-[142px] w-max max-w-[80vw] rounded-xl border border-brand-border bg-brand-bg shadow-2xl p-1">
+                  {([
+                    {id:"limit",label:"Limit",available:true},
+                    {id:"market",label:"Market",available:true},
+                    {id:"stop_limit",label:"Stop Limit",available:false},
+                    {id:"stop_market",label:"Stop Market",available:false},
+                    {id:"take_limit",label:"Take Limit",available:false},
+                    {id:"take_market",label:"Take Market",available:false},
+                  ] as const).map(opt =>
+                    <button type="button" key={opt.id} role="menuitem"
+                      disabled={!opt.available}
+                      title={!opt.available ? "Native Lighter conditional order not enabled: cannot submit an unverified action" : ""}
+                      onClick={() => { if (opt.id === "limit" || opt.id === "market") setOrderType(opt.id); setOrderTypeOpen(false); }}
+                      className={"w-full flex items-center justify-between text-left text-xs py-2 px-2 rounded-lg " +
+                        (orderType === opt.id ? "bg-brand-overlay-normal font-bold text-brand-text" : "text-brand-text hover:bg-brand-overlay-subtle") +
+                        (!opt.available ? " opacity-40 cursor-not-allowed" : "")}>
+                      {opt.label}
+                    </button>)}
+                </div>
+              </>}
+            </div>
+            {kind === "perp" && <button type="button" onClick={() => setMarginSheetOpen(true)}
+              aria-label="Change Cross or Isolated margin"
+              className="flex-[1] min-w-0 h-9 px-1.5 border border-brand-border bg-brand-surface rounded-xl flex items-center justify-between gap-0.5 text-xs font-bold text-brand-text">
+              <span className="truncate">{marginMode === "isolated" ? "Isolated" : "Cross"}</span>
+              <ChevronDown className="w-3 h-3 shrink-0"/>
+            </button>}
+            {kind === "perp" && <button type="button" onClick={() => setMarginSheetOpen(true)}
+              aria-label="Change Lighter leverage"
+              className="shrink-0 h-9 px-1.5 border border-brand-border bg-brand-surface rounded-xl flex items-center gap-0.5 text-xs font-bold text-brand-text">
+              <span>{selected?.maxLeverage ? chosenLeverage + "x" : "—x"}</span>
+              <ChevronDown className="w-3 h-3"/>
+            </button>}
           </div>
           <div className="flex bg-brand-overlay-subtle rounded-lg p-0.5 border border-brand-border">
             <button type="button" onClick={() => setSide("buy")} className={"flex-1 py-2 rounded-md font-bold text-[10px] md:text-xs " +
@@ -853,8 +1010,9 @@ export default function LighterMarketPreview({
               (side === "buy" ? "bg-[#18c29c] text-[#030610]" : "bg-[#f25c5c] text-white")}>
             {tradingBusy ? "Processing…" : "PLACE " + (side === "buy" ? (kind === "perp" ? "LONG" : "BUY") : (kind === "perp" ? "SHORT" : "SELL"))}
           </button>
-          {authorizationPanel}
-          {tradingNotice && <p role="status" className="text-[10px] text-amber-500 break-all">{tradingNotice}</p>}
+          {!tradingIdentity && <button type="button" onClick={() => setAuthSheetOpen(true)}
+            className="text-[10px] text-accent font-semibold py-1 underline">Enable trading</button>}
+          {tradingNotice && <p role="status" className="text-[9px] text-amber-500 line-clamp-2 break-words">{tradingNotice}</p>}
         </div>
         <div id="terminal-order-book" className="col-span-5 min-w-0 self-start rounded-xl border border-brand-border bg-brand-bg p-1.5 sm:p-3">
           <div className="flex items-center justify-between gap-1 mb-2">
@@ -1062,7 +1220,8 @@ export default function LighterMarketPreview({
             </button>
           </> : <>
             <p className="text-xs text-brand-muted">Secure STANDARD USDC withdrawal to the L1 wallet that owns this Lighter account. No external website and no arbitrary recipient. Wallet and Lighter ownership are verified before submission.</p>
-            {!tradingIdentity && authorizationPanel}
+            {!tradingIdentity && <button type="button" onClick={() => setAuthSheetOpen(true)}
+              className="text-xs font-bold text-accent underline">Enable Lighter trading to withdraw</button>}
             <label className="block text-xs font-bold" htmlFor="lighter-withdraw-amount">Withdrawal amount (USDC)</label>
             <input id="lighter-withdraw-amount" type="text" inputMode="decimal" autoComplete="off"
               disabled={!tradingIdentity || fundingBusy} value={withdrawAmount}
