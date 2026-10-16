@@ -543,7 +543,7 @@ export default function LighterMarketPreview({
               <input type="checkbox" disabled aria-label="TP/SL unavailable until Lighter signer registration" className="w-4 h-4"/>
               <span className="font-bold text-[10px] text-brand-muted">Take Profit / Stop Loss</span>
             </div>
-          </>
+          </>}
           <div className="bg-brand-bg/50 border border-brand-border rounded-lg p-1.5 font-mono text-[9px] space-y-1 mt-auto">
             {kind === "perp" && <div className="flex justify-between text-brand-muted"><span>Liq. Price</span><span>—</span></div>}
             <div className="flex justify-between text-brand-muted"><span>Order Value</span>
