@@ -88,8 +88,8 @@ export async function getLighterCandles(
 ): Promise<{ candles: Array<{ t: number; o: number; h: number; l: number; c: number; v: number }> }> {
   if (!Number.isSafeInteger(marketId) || marketId < 0) throw new Error("Invalid Lighter market");
   const allowed = new Set(["1m","5m","15m","30m","1h","4h","12h","1d","1w"]);
-  const validRes = allowed.has(resolution) ? resolution :
-    (resolution === "3m" ? "1m" : resolution === "2h" ? "1h" : "1d");
+  if (!allowed.has(resolution)) throw new Error("Lighter does not provide " + resolution + " candles");
+  const validRes = resolution;
   const start = Math.max(0, Math.floor(startMs / 1000));
   const end = Math.floor(endMs / 1000);
   if (end <= start) return { candles: [] };

@@ -3833,13 +3833,14 @@ export default function App() {
             onOpenSettings={() => setActiveTab(ActiveTab.Profile)}
             walletAddress={walletAddress}
             balanceUSDC={realAccountValueUsd}
+            selectedExchange={selectedExchange}
             onDisconnectWallet={handleDisconnectWallet}
             isMobileOpen={mobileSidebarOpen}
             onCloseMobile={() => setMobileSidebarOpen(false)}
-            watchlist={watchlist}
-            onToggleWatchlist={handleToggleWatchlist}
-            onSelectToken={(symbol) => setSelectedSymbol(symbol)}
-            tokens={tokens}
+            watchlist={selectedExchange === "lighter" ? [] : watchlist}
+            onToggleWatchlist={selectedExchange === "lighter" ? () => {} : handleToggleWatchlist}
+            onSelectToken={(symbol) => { if (selectedExchange === "hyperliquid") setSelectedSymbol(symbol); }}
+            tokens={selectedExchange === "lighter" ? [] : tokens}
           />
         )}
 
@@ -4139,6 +4140,11 @@ export default function App() {
           )}
 
           {selectedExchange === "lighter" && (
+            activeTab === ActiveTab.Markets || activeTab === ActiveTab.Dashboard ||
+            activeTab === ActiveTab.Spot || activeTab === ActiveTab.Perp ||
+            activeTab === ActiveTab.Portfolio || activeTab === ActiveTab.Profile ||
+            activeTab === ActiveTab.Orders || activeTab === ActiveTab.TradeHistory
+          ) && (
             <LighterMarketPreview
               walletAddress={walletConnected ? walletAddress : ""}
               section={
@@ -4210,6 +4216,15 @@ export default function App() {
 
           {/* ACCOUNT & SETTINGS PAGE */}
           {selectedExchange === "hyperliquid" && activeTab === ActiveTab.Profile && (
+            <AccountSettingsPanel
+              walletConnected={walletConnected}
+              onDisconnectWallet={handleDisconnectWallet}
+              initialSlippage={slippageTolerance}
+              onApplySlippage={(value) => setSlippageTolerance(value)}
+            />
+          )}
+
+          {selectedExchange === "lighter" && activeTab === ActiveTab.Profile && (
             <AccountSettingsPanel
               walletConnected={walletConnected}
               onDisconnectWallet={handleDisconnectWallet}
