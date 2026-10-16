@@ -12,7 +12,7 @@ import {
 } from "@hitesh23k/lighter-sdk/browser";
 import wasmUrl from "@hitesh23k/lighter-sdk/lighterSigner.wasm?url";
 import wasmExecUrl from "@hitesh23k/lighter-sdk/wasm_exec.js?url";
-import { getLighterAccountIndexes, getLighterMarkets, type LighterMarket } from "./lighterMarketData";
+import { getLighterAccountIndexes, getLighterPublicAccounts, getLighterMarkets, type LighterMarket } from "./lighterMarketData";
 import type { LighterWalletProvider } from "./lighterFunding";
 
 type Session = {
@@ -168,6 +168,7 @@ export async function submitLighterOrder(args: {
   walletAddress: string; market: LighterMarket; side: "buy" | "sell";
   type: "market" | "limit"; coinSize: number; limitPrice?: number;
   referencePrice: number; reduceOnly?: boolean;
+  takeProfit?: number; stopLoss?: number;
 }): Promise<string> {
   return withWrite(async () => {
     const s = active(args.walletAddress);
@@ -183,14 +184,49 @@ export async function submitLighterOrder(args: {
     const { baseAmount, price } = rawOrder(fresh, args.coinSize, signedPrice);
     const minNotional = args.coinSize * args.referencePrice;
     if (!Number.isFinite(minNotional) || minNotional <= 0) throw new Error("Invalid order notional.");
-    const params = {
-      marketIndex: fresh.id, baseAmount, price, isAsk: args.side === "sell",
-      clientOrderIndex: clientOrderIndex(), reduceOnly: Boolean(args.reduceOnly),
-      applyIntegratorFee: false,
-    };
-    const tx = args.type === "market"
-      ? await s.client.rest.createMarketOrder(s.signer, params)
-      : await s.client.rest.createLimitOrder(s.signer, {...params, timeInForce: "gtc" });
+    if (args.reduceOnly) {
+      if (fresh.kind !== "perp" || args.takeProfit != null || args.stopLoss != null)
+        throw new Error("Reduce Only is permitted only for individual Lighter perpetual close orders.");
+      const [account] = await getLighterPublicAccounts([s.signer.accountIndex]);
+      if (!account) throw new Error("Cannot verify position before reduce-only order.");
+      const pos = account.positions.find(p => p.symbol === fresh.symbol);
+      if (!pos || (args.side === "sell" && pos.signedSize <= 0) ||
+          (args.side === "buy" && pos.signedSize >= 0) ||
+          args.coinSize > Math.abs(pos.signedSize) + 1e-10)
+        throw new Error("Reduce-only side/size does not match a verified open position.");
+    }
+    let tx: { code:number;message?:string;tx_hash?:string };
+    if (args.takeProfit != null || args.stopLoss != null) {
+      if (fresh.kind !== "perp" || args.reduceOnly)
+        throw new Error("Native atomic TP/SL brackets are perpetual-entry only.");
+      if (fresh.multiplier !== 1)
+        throw new Error("This market uses multiplier scaling; native bracket orders cannot be verified.");
+      const sdkMeta = (await s.client.markets()).find(m => m.marketId === fresh.id && m.symbol === fresh.symbol.toUpperCase());
+      if (!sdkMeta || sdkMeta.priceDecimals !== fresh.priceDecimals || sdkMeta.sizeDecimals !== fresh.sizeDecimals)
+        throw new Error("SDK market price/size metadata mismatch. No order submitted.");
+      const tp = args.takeProfit, sl = args.stopLoss;
+      if ((tp != null && (!Number.isFinite(tp) || tp <= 0 ||
+          (args.side === "buy" ? tp <= args.referencePrice : tp >= args.referencePrice))) ||
+          (sl != null && (!Number.isFinite(sl) || sl <= 0 ||
+          (args.side === "buy" ? sl >= args.referencePrice : sl <= args.referencePrice))))
+        throw new Error("Invalid TP/SL direction or trigger prices for this entry.");
+      tx = await s.client.placeBracketOrder({
+        symbol: fresh.symbol, side: args.side === "buy" ? "long" : "short",
+        size: args.coinSize,
+        entry: args.type === "limit" ? { type:"limit",price:Number(args.limitPrice) } :
+          { type:"market",slippage:0.02 },
+        takeProfit:tp,stopLoss:sl,applyIntegratorFee:false,
+      },s.signer);
+    } else {
+      const params = {
+        marketIndex: fresh.id, baseAmount, price, isAsk: args.side === "sell",
+        clientOrderIndex: clientOrderIndex(), reduceOnly: Boolean(args.reduceOnly),
+        applyIntegratorFee: false,
+      };
+      tx = args.type === "market"
+        ? await s.client.rest.createMarketOrder(s.signer, params)
+        : await s.client.rest.createLimitOrder(s.signer, {...params, timeInForce: "gtc" });
+    }
     return accepted(tx);
   });
 }
@@ -208,6 +244,14 @@ export async function cancelLighterSignedOrder(args: {
     const s = active(args.walletAddress);
     if (!Number.isSafeInteger(args.orderIndex) || args.orderIndex < 0) throw new Error("Invalid Lighter order index.");
     if (!(await verifyLighterTradingKey(args.walletAddress))) throw new Error("Lighter key registration pending.");
+    const catalog = await getLighterMarkets();
+    if (!catalog.some(m => m.id === args.market.id && m.kind === args.market.kind &&
+      m.symbol === args.market.symbol))
+      throw new Error("Market identity changed. Refresh before cancelling.");
+    const activeOrders = await s.client.getOpenOrders();
+    const target = activeOrders.find(o => Number(o.order_index) === args.orderIndex &&
+      Number(o.market_index ?? o.market_id) === args.market.id);
+    if (!target) throw new Error("This order is no longer open on your Lighter account.");
     const tx = await s.client.rest.cancelOrder(s.signer, {
       marketIndex: args.market.id, orderIndex: args.orderIndex,
     });

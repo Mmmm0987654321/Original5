@@ -89,6 +89,10 @@ export default function LighterMarketPreview({
   const [existingApiKeyIndex, setExistingApiKeyIndex] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [reduceOnly, setReduceOnly] = useState(false);
+  const [attachTpSl, setAttachTpSl] = useState(false);
+  const [takeProfit, setTakeProfit] = useState("");
+  const [stopLoss, setStopLoss] = useState("");
+  const [openOrdersError, setOpenOrdersError] = useState("");
   const [liveOrders, setLiveOrders] = useState<Awaited<ReturnType<typeof getLighterSignedOpenOrders>> | null>(null);
 
   useEffect(() => {
@@ -135,6 +139,7 @@ export default function LighterMarketPreview({
   const submitTrade = async () => {
     if (!walletAddress || !selected || !tradingIdentity || tradingBusy) return;
     if (!marketPrice || feed.status !== "live" || !(sizeInCoin > 0) ||
+        (attachTpSl && (!takeProfit.trim() && !stopLoss.trim())) ||
         (orderType === "limit" && !(Number(limitPrice) > 0))) {
       setTradingNotice("Choose a live Lighter market with a valid order size and limit price.");
       return;
@@ -143,6 +148,7 @@ export default function LighterMarketPreview({
     if (!window.confirm("LIVE LIGHTER MAINNET " + orderSide + " " + selected.symbol +
       "\nSize: " + sizeInCoin + "\nType: " + orderType +
       "\nApprox. value: $" + formatPrice(orderValueUsd, 2) +
+      (attachTpSl ? "\nTP: " + (takeProfit || "none") + "\nSL: " + (stopLoss || "none") : "") +
       "\nProceed with a REAL signed order?")) return;
     setTradingBusy(true); setTradingNotice("Signing and submitting real Lighter mainnet order…");
     try {
@@ -150,6 +156,8 @@ export default function LighterMarketPreview({
         walletAddress, market: selected, side, type: orderType,
         coinSize: sizeInCoin, limitPrice: Number(limitPrice),
         referencePrice: marketPrice, reduceOnly,
+        takeProfit:attachTpSl && takeProfit.trim() ? Number(takeProfit) : undefined,
+        stopLoss:attachTpSl && stopLoss.trim() ? Number(stopLoss) : undefined,
       });
       setTradingNotice("Lighter accepted order. Transaction: " + tx + ". Confirm fills in Positions/Orders.");
       setAmount("");
@@ -174,6 +182,60 @@ export default function LighterMarketPreview({
       setFundingStatus(e instanceof Error ? e.message : "Lighter withdrawal failed.");
     } finally { setFundingBusy(false); }
   };
+
+  const closeLighterPosition = async (accountIndex: number, symbol: string, signedSize: number) => {
+    if (!walletAddress || !tradingIdentity || tradingBusy) return;
+    if (accountIndex !== tradingIdentity.accountIndex) {
+      setTradingNotice("Select the registered signer for this Lighter subaccount before closing.");
+      return;
+    }
+    const m = markets.find(row => row.kind === "perp" && row.symbol === symbol);
+    if (!m || !Number.isFinite(signedSize) || !signedSize || !(m.lastTradePrice && m.lastTradePrice > 0)) {
+      setTradingNotice("Cannot verify a live Lighter market and size for this close.");
+      return;
+    }
+    const coinSize = Math.abs(signedSize);
+    if (!window.confirm("REAL LIGHTER MAINNET CLOSE POSITION\n" + m.symbol +
+      "\nEntire size: " + coinSize + "\nReduce-only market order, max 2% slippage bound. Proceed?")) return;
+    setTradingBusy(true); setTradingNotice("Checking actual position and sending reduce-only close…");
+    try {
+      const tx = await submitLighterOrder({
+        walletAddress, market:m, side:signedSize > 0 ? "sell":"buy",
+        type:"market", coinSize, referencePrice:m.lastTradePrice, reduceOnly:true,
+      });
+      setTradingNotice("Lighter accepted close order: " + tx + ". Await position refresh.");
+      setAccountReload(v => v + 1);
+    } catch (e) { setTradingNotice(e instanceof Error ? e.message : "Lighter close rejected."); }
+    finally { setTradingBusy(false); }
+  };
+
+  const cancelLighterOrder = async (marketId: number, orderIndex: number) => {
+    const m = markets.find(row => row.id === marketId);
+    if (!m || !Number.isSafeInteger(orderIndex) || orderIndex < 0 ||
+        !walletAddress || !tradingIdentity || tradingBusy) return;
+    if (!window.confirm("CANCEL LIVE LIGHTER ORDER #" + orderIndex + " on " + m.symbol + "?")) return;
+    setTradingBusy(true); setOpenOrdersError("");
+    try {
+      const tx = await cancelLighterSignedOrder({walletAddress,market:m,orderIndex});
+      setTradingNotice("Lighter accepted cancel: " + tx);
+      setAccountReload(v => v + 1);
+    } catch(e) {setOpenOrdersError(e instanceof Error ? e.message:"Cancel rejected.");}
+    finally {setTradingBusy(false);}
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!walletAddress || !tradingIdentity || accountTab !== "OPEN_ORDERS") {
+      setLiveOrders(null);setOpenOrdersError("");
+      return;
+    }
+    getLighterSignedOpenOrders(walletAddress).then(rows => {
+      if(!cancelled) {setLiveOrders(rows);setOpenOrdersError("");}
+    }).catch(e => {
+      if(!cancelled) {setLiveOrders(null);setOpenOrdersError(e instanceof Error ? e.message:"Lighter open orders unavailable.");}
+    });
+    return () => {cancelled = true;};
+  },[walletAddress,tradingIdentity,accountTab,accountReload]);
 
   const authorizationPanel = (
     <div className="space-y-2 text-[10px] sm:text-xs">
@@ -512,17 +574,47 @@ export default function LighterMarketPreview({
                     <div>Entry Price<strong className="font-mono block text-brand-text">{formatPrice(p.entryPrice)}</strong></div>
                     <div>Unrealized PnL<strong className="font-mono block text-brand-text">{p.unrealizedPnl === null ? "—" : formatPrice(p.unrealizedPnl,2) + " USDC"}</strong></div>
                     <div>Margin / Leverage<strong className="font-mono block text-brand-muted">Not verified</strong></div>
-                    <div className="col-span-2 text-brand-muted">TP/SL and Close Position require genuine Lighter account signing. No simulated close actions.</div>
+                    <div className="col-span-2 flex items-center justify-between gap-2 border-t border-brand-border pt-3">
+                      <span className="text-brand-muted">TP/SL: Native bracket support on new Perp orders</span>
+                      <button type="button"
+                        onClick={() => closeLighterPosition(a.index,p.symbol,p.signedSize)}
+                        disabled={tradingBusy || !tradingIdentity || tradingIdentity.accountIndex !== a.index}
+                        className="px-2 py-1.5 rounded-lg border border-rose-500/40 text-rose-400 font-bold disabled:opacity-30 shrink-0">
+                        Close 100%
+                      </button>
+                    </div>
                   </div>}
                 </div>;
               })}
             {!walletAddress && <p className="text-xs text-brand-muted">Connect wallet to check Lighter positions.</p>}
           </div>
         )}
-        {accountTab === "OPEN_ORDERS" && (
-          <p className="text-xs text-brand-muted">Open orders have not been verified from Lighter's account API.
-            Cancel actions are disabled until account authorization is implemented.</p>
-        )}
+        {accountTab === "OPEN_ORDERS" && <div className="space-y-2 text-[11px]">
+          {!tradingIdentity && <p className="text-brand-muted">Authorize this Lighter account in Trade to load its real open orders.</p>}
+          {tradingIdentity && liveOrders === null && !openOrdersError &&
+            <p className="text-brand-muted">Loading authenticated Lighter open orders…</p>}
+          {openOrdersError && <p role="alert" className="text-rose-400">{openOrdersError}</p>}
+          {liveOrders && liveOrders.length === 0 &&
+            <p className="text-brand-muted">No open orders found for registered Lighter Account #{tradingIdentity?.accountIndex}.</p>}
+          {liveOrders?.map((order,i) => {
+            const marketId = Number(order.market_index ?? order.market_id);
+            const m = markets.find(x => x.id === marketId);
+            const orderIndex = Number(order.order_index);
+            return <div key={String(marketId) + ":" + String(orderIndex) + ":" + i}
+              className="rounded-xl border border-brand-border bg-brand-surface p-3 flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="font-bold">{m?.symbol ?? "Unknown market #" + marketId}
+                  <span className="ml-2 text-brand-muted">{order.is_ask ? "SELL" : "BUY"}</span></p>
+                <p className="font-mono text-brand-muted">Order #{Number.isSafeInteger(orderIndex) ? orderIndex : "—"} · Price: {order.price ?? "—"} · Remaining: {order.remaining_base_amount ?? "—"}</p>
+              </div>
+              <button type="button" onClick={() => cancelLighterOrder(marketId,orderIndex)}
+                disabled={tradingBusy || !m || !Number.isSafeInteger(orderIndex)}
+                className="shrink-0 rounded-lg border border-rose-500/40 text-rose-400 px-2 py-1 font-bold disabled:opacity-30">
+                Cancel
+              </button>
+            </div>;
+          })}
+        </div>}
         {accountTab === "TRADE_HISTORY" && (
           <p className="text-xs text-brand-muted">Lighter fills and historical fees are not integrated.
             No Hyperliquid history or fabricated fills are shown.</p>
@@ -729,9 +821,23 @@ export default function LighterMarketPreview({
               <span className="font-bold text-[10px] text-brand-muted">Reduce Only</span>
             </div>
             <div className="border-t border-brand-border pt-3 flex items-center gap-2">
-              <input type="checkbox" disabled aria-label="TP/SL unavailable until Lighter signer registration" className="w-4 h-4"/>
+              <input type="checkbox" checked={attachTpSl} disabled={!tradingIdentity || tradingBusy || reduceOnly}
+                onChange={e => setAttachTpSl(e.target.checked)} aria-label="Attach TP/SL" className="w-4 h-4"/>
               <span className="font-bold text-[10px] text-brand-muted">Take Profit / Stop Loss</span>
             </div>
+            {attachTpSl && !reduceOnly && <div className="grid grid-cols-2 gap-2">
+              <label className="text-[10px] text-brand-muted">Take Profit (USDC)
+                <input type="number" inputMode="decimal" min="0" placeholder="Trigger price"
+                  value={takeProfit} onChange={e => setTakeProfit(e.target.value)}
+                  className="w-full min-w-0 bg-brand-surface border border-brand-border rounded p-1.5 text-brand-text"/>
+              </label>
+              <label className="text-[10px] text-brand-muted">Stop Loss (USDC)
+                <input type="number" inputMode="decimal" min="0" placeholder="Trigger price"
+                  value={stopLoss} onChange={e => setStopLoss(e.target.value)}
+                  className="w-full min-w-0 bg-brand-surface border border-brand-border rounded p-1.5 text-brand-text"/>
+              </label>
+              <p className="col-span-2 text-[9px] text-brand-muted">Lighter native atomic TP/SL is available only on supported perpetual entries.</p>
+            </div>}
           </>}
           <div className="bg-brand-bg/50 border border-brand-border rounded-lg p-1.5 font-mono text-[9px] space-y-1 mt-auto">
             {kind === "perp" && <div className="flex justify-between text-brand-muted"><span>Liq. Price</span><span>—</span></div>}
