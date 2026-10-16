@@ -3,6 +3,9 @@ on:
   push:
     branches:
       - audit/lighter-signer-tscheck-20261016
+  pull_request:
+    branches:
+      - main
 permissions:
   contents: read
 jobs:
