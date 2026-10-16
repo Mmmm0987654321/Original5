@@ -459,7 +459,7 @@ export default function MarketsPanel({
       ],
     );
 
-  const isCurrentTokenPerp = currentToken?.openInterest !== undefined;
+  const isCurrentTokenPerp = currentToken?.openInterest !== undefined && currentToken?.category !== "spot";
   const lighterDepth = React.useMemo(() => {
     const mul = Number.isFinite(lighterMultiplier) && lighterMultiplier > 0 ? lighterMultiplier : 1;
     const convert = (levels: LighterMarketFeed["bids"] | undefined, reverse: boolean) => {
@@ -520,7 +520,11 @@ export default function MarketsPanel({
                   <ChevronDown className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-gray-400" />
                 </div>
                 <span className="text-[7px] sm:text-[8px] text-accent font-mono font-bold uppercase tracking-wider block leading-none mt-0.5">
-                  {isCurrentTokenPerp ? `${getPerpLeverageFormatted(currentToken?.symbol || "", currentToken?.maxLeverage)} Perpetual` : "Spot Asset"}
+                  {isCurrentTokenPerp
+                    ? (lighterMarketId !== undefined
+                        ? "Perpetual"
+                        : `${getPerpLeverageFormatted(currentToken?.symbol || "", currentToken?.maxLeverage)} Perpetual`)
+                    : "Spot Asset"}
                 </span>
               </div>
             </div>
@@ -668,8 +672,11 @@ export default function MarketsPanel({
         <div className="w-full space-y-2 sm:space-y-2.5">
           {/* Full Width Trading Chart - Max available area with no extra gap */}
           <div className="w-full bg-brand-surface border border-brand-border rounded-xl p-0.5 shadow-xl overflow-hidden" id="desktop-main-chart">
-            <TVChart 
-              symbol={selectedSymbol} 
+            <TVChart
+              key={lighterMarketId !== undefined ? `lighter-${lighterMarketId}` : undefined}
+              symbol={lighterMarketId !== undefined
+                ? String(currentToken?.displayBaseAsset ?? selectedSymbol).replace(/\/USDC$/i, "")
+                : selectedSymbol} 
               marketCoin={lighterMarketId !== undefined ? "" : chartCandleCoin}
               lighterMarketId={lighterMarketId}
               isSpot={chartIsSpot}

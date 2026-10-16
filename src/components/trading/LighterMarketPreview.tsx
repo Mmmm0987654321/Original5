@@ -129,6 +129,8 @@ export default function LighterMarketPreview({
       low24h: m.low24h,
       openInterest: m.kind === "perp" ? null : undefined,
       isSpotOnly: m.kind === "spot",
+      hasSpot: m.kind === "spot",
+      spotSymbol: m.kind === "spot" ? m.symbol : undefined,
       category: m.kind === "spot" ? "spot" : "perps",
       displayBaseAsset: m.symbol,
       sourceCoin: m.symbol,

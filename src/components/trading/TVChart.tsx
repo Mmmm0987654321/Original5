@@ -327,6 +327,8 @@ function TVChartComponent({
       candleData,
     isLoading:
       candlesLoading,
+    isError: candlesError,
+    error: candleFetchError,
   } =
     useQuery({
       queryKey: [
