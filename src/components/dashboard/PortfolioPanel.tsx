@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useMemo, useEffect } from "react";
+import HideDexFundsOverview from "./HideDexFundsOverview";
 import { 
   Wallet, 
   Eye, 
@@ -929,294 +930,74 @@ export default function PortfolioPanel({
             animate={{ opacity: 1 }}
             className="space-y-3 sm:space-y-4"
           >
-            {/* 1. TOTAL FUNDS HERO */}
-            <div className="relative bg-brand-surface border border-brand-border/70 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 overflow-hidden shadow-sm" id="funds-hero-card">
-              {/* Subtle ambient accent glow for premium finish (theme-safe) */}
-              <div className="absolute top-0 right-0 w-80 h-80 bg-accent/5 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
-
-              {/* Top Row: Total Funds label + Eye toggle; Account Type badge & Lock button */}
-              <div className="relative flex items-center justify-between gap-2">
-                <div className="flex items-center gap-1.5 sm:gap-2">
-                  <span className="text-[10px] sm:text-xs font-bold text-brand-muted uppercase tracking-wider">
-                    {t("total_funds")}
-                  </span>
-                  {trustShieldMode !== "PRIVATE" && (
-                    <button 
-                      type="button"
-                      onClick={toggleHideBalances} 
-                      className="p-1 rounded-md text-brand-muted hover:text-brand-text transition-colors cursor-pointer"
-                      title={hideBalances ? "Show Balances" : "Hide Balances"}
-                      id="toggle-balance-eye-btn"
-                    >
-                      {hideBalances ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                    </button>
-                  )}
-                </div>
-
-                <div className="flex items-center gap-1.5 sm:gap-2">
-                  {(trustShieldMode === "PRIVATE" || trustShieldMode === "ANONYMOUS") && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (fundsUnlocked) {
-                          localStorage.removeItem("privacy_unlocked");
-                          sessionStorage.removeItem("funds_unlocked");
-                          setFundsUnlocked(false);
-                          setShowFundsUnlockPopup(true);
-                        } else {
-                          setShowFundsUnlockPopup(true);
-                        }
-                      }}
-                      className="flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 text-[9px] font-black uppercase tracking-wider text-rose-400 bg-rose-500/10 border border-rose-500/25 rounded-lg sm:rounded-xl hover:bg-rose-500/20 transition-all cursor-pointer shadow-xs"
-                      id="hero-lock-funds-btn"
-                    >
-                      <Lock className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-                      <span>{fundsUnlocked ? "Lock" : "Unlock"}</span>
-                    </button>
-                  )}
-                  <div className="flex items-center gap-1 sm:gap-1.5 px-2.5 py-1 rounded-lg sm:rounded-xl bg-brand-overlay-subtle border border-brand-border/60 text-[11px] sm:text-xs font-semibold text-brand-text">
-                    <Layers className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-accent" />
-                    <span>{hyperliquidAccountModeLabel} Account</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Main Balance */}
-              <div className="relative mt-2 sm:mt-3">
-                <div className="text-2xl sm:text-4xl md:text-5xl font-black font-mono tracking-tight text-brand-text">
-                  {!tradingStateReady
-                    ? (shouldHideBalances ? "••••••" : "--")
-                    : formatAmount(
-                        typeof accountValueUsd === "number" && Number.isFinite(accountValueUsd)
-                          ? accountValueUsd
-                          : totalPortfolioValue,
-                        true
-                      )}
-                </div>
-                <div className="text-[11px] sm:text-sm font-mono font-medium text-brand-muted mt-0.5 sm:mt-1">
-                  {!tradingStateReady
-                    ? (shouldHideBalances ? "≈ ••••••" : "--")
-                    : formatApproxUSD(
-                        typeof accountValueUsd === "number" && Number.isFinite(accountValueUsd)
-                          ? accountValueUsd
-                          : totalPortfolioValue
-                      )}
-                </div>
-              </div>
-
-              {/* Account Sub-boxes: Wallet Address + Account Type (Side by Side on Mobile) */}
-              <div className="relative grid grid-cols-2 max-[359px]:grid-cols-1 gap-2 mt-3 sm:mt-4">
-                {/* Box 1: Wallet Address */}
-                <div className="flex items-center gap-2 sm:gap-3 p-2 sm:p-2.5 rounded-xl bg-brand-overlay-subtle border border-brand-border/50 min-w-0">
-                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-brand-overlay-normal border border-brand-border/60 flex items-center justify-center text-accent shrink-0">
-                    <Wallet className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <span className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider text-brand-muted block truncate">
-                      {t("wallet_address")}
-                    </span>
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <span className="text-xs font-mono font-bold text-brand-text truncate">
-                        {walletAddress ? formatWalletAddress(walletAddress) : "Not Connected"}
-                      </span>
-                      {walletAddress && (
-                        <button
-                          type="button"
-                          onClick={() => handleCopyAddress(walletAddress)}
-                          className="text-brand-muted hover:text-brand-text transition-colors p-0.5 cursor-pointer shrink-0"
-                          title="Copy address"
-                        >
-                          {copiedText ? <Check className="w-3 h-3 text-success" /> : <Copy className="w-3 h-3" />}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Box 2: Account Type */}
-                <div className="flex items-center gap-2 sm:gap-3 p-2 sm:p-2.5 rounded-xl bg-brand-overlay-subtle border border-brand-border/50 min-w-0">
-                  <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl bg-brand-overlay-normal border border-brand-border/60 flex items-center justify-center text-accent shrink-0">
-                    <Layers className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <span className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider text-brand-muted block truncate">
-                      {t("account_type")}
-                    </span>
-                    <span className="text-xs font-mono font-bold text-brand-text block mt-0.5 truncate">
-                      {hyperliquidAccountModeLabel}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {walletConnected && accountStateError && (
-                <div className="relative flex items-center gap-1.5 text-xs text-rose-400 bg-rose-500/10 border border-rose-500/20 px-3 py-1.5 rounded-xl mt-2.5" id="portfolio-account-state-error">
-                  <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 text-rose-400" />
-                  <span className="truncate" title={accountStateError}>{accountStateError}</span>
-                </div>
-              )}
-            </div>
-
-            {/* 2. MAIN ACTIONS: DEPOSIT + WITHDRAWAL (Side-by-side on mobile) */}
-            <div className="grid grid-cols-2 max-[359px]:grid-cols-1 gap-2 sm:gap-3" id="funds-action-buttons-row">
-              {/* DEPOSIT ACTION CARD */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (isLocked) {
-                    setShowFundsUnlockPopup(true);
-                    return;
-                  }
-                  setActiveModal("DEPOSIT");
-                }}
-                className="p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl bg-accent text-brand-bg font-extrabold flex items-center justify-between transition-all hover:opacity-95 active:scale-[0.99] shadow-md cursor-pointer text-left group min-w-0"
-                id="deposit-modal-trigger-btn"
-              >
-                <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                  <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-brand-bg/15 border border-brand-bg/25 flex items-center justify-center shrink-0">
-                    <ArrowUpRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-brand-bg" />
-                  </div>
-                  <div className="min-w-0">
-                    <span className="text-xs sm:text-sm font-black tracking-wider uppercase block truncate">{t("deposit")}</span>
-                    <span className="text-[9px] sm:text-[11px] font-semibold opacity-90 truncate block">{t("add_funds")}</span>
-                  </div>
-                </div>
-                <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 opacity-75 shrink-0 transition-transform group-hover:translate-x-0.5 ml-1" />
-              </button>
-
-              {/* WITHDRAWAL ACTION CARD */}
-              <button
-                type="button"
-                onClick={() => {
-                  if (isLocked) {
-                    setShowFundsUnlockPopup(true);
-                    return;
-                  }
-                  setActiveModal("WITHDRAW");
-                }}
-                className="p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl bg-brand-surface border border-brand-border hover:bg-brand-overlay-normal text-brand-text font-extrabold flex items-center justify-between transition-all active:scale-[0.99] shadow-sm cursor-pointer text-left group min-w-0"
-                id="withdraw-modal-trigger-btn"
-              >
-                <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-                  <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-accent/10 border border-accent/25 flex items-center justify-center text-accent shrink-0">
-                    <ArrowDownRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <span className="text-xs sm:text-sm font-black tracking-wider uppercase block truncate">{t("withdrawal")}</span>
-                    <span className="text-[9px] sm:text-[11px] font-medium text-brand-sub truncate block">{t("send_funds")}</span>
-                  </div>
-                </div>
-                <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-brand-muted shrink-0 transition-transform group-hover:translate-x-0.5 ml-1" />
-              </button>
-            </div>
-
-            {/* Optional Transfer action for Standard Account */}
-            {tradingStateReady && accountModeKnown && !isPooledAccount && (
-              <div className="flex justify-stretch sm:justify-end w-full">
-                <button
-                  type="button"
+            <HideDexFundsOverview
+              totalLabel={t("total_funds")}
+              totalValue={!tradingStateReady
+                ? (shouldHideBalances ? "••••••" : "--")
+                : formatAmount(typeof accountValueUsd === "number" && Number.isFinite(accountValueUsd)
+                  ? accountValueUsd : totalPortfolioValue,true)}
+              approximateValue={!tradingStateReady
+                ? (shouldHideBalances ? "≈ ••••••" : "--")
+                : formatApproxUSD(typeof accountValueUsd === "number" && Number.isFinite(accountValueUsd)
+                  ? accountValueUsd : totalPortfolioValue)}
+              accountLabel={hyperliquidAccountModeLabel + " Account"}
+              accountModeLabel={hyperliquidAccountModeLabel}
+              walletAddress={walletAddress}
+              walletDisplay={walletAddress ? formatWalletAddress(walletAddress) : "Not Connected"}
+              hideBalances={hideBalances}
+              onToggleBalances={trustShieldMode !== "PRIVATE" ? toggleHideBalances : undefined}
+              addressCopied={copiedText}
+              onCopyAddress={() => handleCopyAddress(walletAddress)}
+              extraHeaderAction={(trustShieldMode === "PRIVATE" || trustShieldMode === "ANONYMOUS") &&
+                <button type="button"
                   onClick={() => {
-                    if (isLocked) {
-                      setShowFundsUnlockPopup(true);
-                      return;
+                    if(fundsUnlocked) {
+                      localStorage.removeItem("privacy_unlocked");
+                      sessionStorage.removeItem("funds_unlocked");
+                      setFundsUnlocked(false);
                     }
-                    setActiveModal("TRANSFER");
+                    setShowFundsUnlockPopup(true);
                   }}
-                  className="flex w-full sm:w-auto min-w-0 items-center justify-center gap-2 px-3 py-2.5 sm:py-2 rounded-xl bg-brand-surface border border-brand-border hover:bg-brand-overlay-normal text-[10px] sm:text-[11px] font-semibold text-brand-text transition-colors cursor-pointer text-center"
-                  id="transfer-modal-trigger-btn"
-                >
-                  <ArrowRightLeft className="w-4 h-4 shrink-0 text-accent" />
-                  <span className="leading-tight">{t("transfer_spot_perps")}</span>
-                </button>
-              </div>
-            )}
-
-            {/* 3. COMPACT 2x2 BALANCE GRID (Mobile & Desktop) */}
-            <div className="grid grid-cols-2 max-[359px]:grid-cols-1 gap-2 sm:gap-3" id="balances-grid-display">
-              {/* CARD 1: SPOT BALANCE */}
-              <div className="bg-brand-surface border border-brand-border/60 rounded-xl sm:rounded-2xl p-2.5 sm:p-3.5 flex flex-col justify-between hover:border-brand-border transition-colors shadow-xs min-w-0">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center text-accent shrink-0">
-                    <Wallet className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                  </div>
-                  <span className="min-w-0 text-[9px] sm:text-[11px] font-bold uppercase tracking-normal sm:tracking-wide text-brand-muted leading-tight whitespace-normal break-words">
-                    Spot Available
-                  </span>
-                </div>
-                <div>
-                  <div className="text-base sm:text-xl font-black font-mono text-brand-text truncate">
-                    {spotBalancesHydrated ? formatAmount(Math.max(0, spotAvailableUsdc)) : (shouldHideBalances ? "••••••" : "--")}
-                  </div>
-                  <div className="text-[9px] sm:text-[11px] font-mono text-brand-muted mt-0.5 leading-tight line-clamp-2">
-                    Total Spot (incl. holds + altcoins): {spotBalancesHydrated ? formatAmount(totalSpotBalance) : (shouldHideBalances ? "••••••" : "--")}
-                  </div>
-                </div>
-              </div>
-
-              {/* CARD 2: PERPETUAL BALANCE */}
-              <div className="bg-brand-surface border border-brand-border/60 rounded-xl sm:rounded-2xl p-2.5 sm:p-3.5 flex flex-col justify-between hover:border-brand-border transition-colors shadow-xs min-w-0">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-success/10 border border-success/20 flex items-center justify-center text-success shrink-0">
-                    <TrendingUp className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                  </div>
-                  <span className="min-w-0 text-[9px] sm:text-[11px] font-bold uppercase tracking-normal sm:tracking-wide text-brand-muted leading-tight whitespace-normal break-words">
-                    {t("perpetual_balance")}
-                  </span>
-                </div>
-                <div>
-                  <div className="text-base sm:text-xl font-black font-mono text-brand-text truncate">
-                    {tradingStateReady && realPerpEquity !== null ? formatAmount(realPerpEquity) : (shouldHideBalances ? "••••••" : "--")}
-                  </div>
-                  <div className="text-[9px] sm:text-[11px] font-mono text-brand-muted mt-0.5 leading-tight flex flex-wrap items-center gap-x-1">
-                    <span>Perp equity (HL); available: {tradingStateReady ? formatAmount(availablePerpBalance) : (shouldHideBalances ? "••••••" : "--")}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* CARD 3: AVAILABLE BUYING POWER */}
-              <div className="bg-brand-surface border border-brand-border/60 rounded-xl sm:rounded-2xl p-2.5 sm:p-3.5 flex flex-col justify-between hover:border-brand-border transition-colors shadow-xs min-w-0">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-accent/10 border border-accent/20 flex items-center justify-center text-accent shrink-0">
-                    <Unlock className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                  </div>
-                  <span className="min-w-0 text-[9px] sm:text-[11px] font-bold uppercase tracking-normal sm:tracking-wide text-brand-muted leading-tight whitespace-normal break-words">
-                    {t("available_for_trade")}
-                  </span>
-                </div>
-                <div>
-                  <div className="text-base sm:text-xl font-black font-mono text-brand-text truncate">
-                    {tradingStateReady ? formatAmount(availablePerpBalance) : (shouldHideBalances ? "••••••" : "--")}
-                  </div>
-                  <div className="text-[9px] sm:text-[11px] font-mono text-brand-muted mt-0.5 leading-tight line-clamp-2">
-                    Main Perp available; HIP-3 market limits may differ
-                  </div>
-                </div>
-              </div>
-
-              {/* CARD 4: LOCKED MARGIN */}
-              <div className="bg-brand-surface border border-brand-border/60 rounded-xl sm:rounded-2xl p-2.5 sm:p-3.5 flex flex-col justify-between hover:border-brand-border transition-colors shadow-xs min-w-0">
-                <div className="flex items-center gap-2 mb-2">
-                  <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 shrink-0">
-                    <Lock className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
-                  </div>
-                  <span className="min-w-0 text-[9px] sm:text-[11px] font-bold uppercase tracking-normal sm:tracking-wide text-brand-muted leading-tight whitespace-normal break-words">
-                    {t("in_trade")}
-                  </span>
-                </div>
-                <div>
-                  <div className="text-base sm:text-xl font-black font-mono text-brand-text truncate">
-                    {formatAmount(totalLockedBalance)}
-                  </div>
-                  <div className="text-[9px] sm:text-[11px] font-mono text-brand-muted mt-0.5 leading-tight truncate">
-                    Pos: {formatAmount(lockedPositionMargin, false)} | Ord: {formatAmount(lockedOrderMargin, false)}
-                  </div>
-                </div>
-              </div>
-            </div>
-            <p className="text-[10px] leading-relaxed text-brand-muted px-1">
-              Available = spendable USDC after exchange holds/margin. Total Spot includes held funds and assets;
-              Perpetual Equity includes open-position PnL. These amounts are not supposed to be equal.
-            </p>
+                  className="flex items-center gap-1 px-2 py-0.5 sm:px-2.5 sm:py-1 text-[9px] font-black uppercase tracking-wider text-rose-400 bg-rose-500/10 border border-rose-500/25 rounded-lg sm:rounded-xl cursor-pointer shadow-xs"
+                  id="hero-lock-funds-btn">
+                  <Lock className="w-2.5 h-2.5 sm:w-3 sm:h-3"/>
+                  {fundsUnlocked ? "Lock" : "Unlock"}
+                </button>}
+              accountError={walletConnected ? accountStateError : undefined}
+              depositLabel={t("deposit")}
+              depositSubtitle={t("add_funds")}
+              withdrawLabel={t("withdrawal")}
+              withdrawSubtitle={t("send_funds")}
+              onDeposit={() => {
+                if(isLocked) {setShowFundsUnlockPopup(true);return;}
+                setActiveModal("DEPOSIT");
+              }}
+              onWithdraw={() => {
+                if(isLocked) {setShowFundsUnlockPopup(true);return;}
+                setActiveModal("WITHDRAW");
+              }}
+              onTransfer={tradingStateReady && accountModeKnown && !isPooledAccount ? () => {
+                if(isLocked) {setShowFundsUnlockPopup(true);return;}
+                setActiveModal("TRANSFER");
+              } : undefined}
+              transferLabel={t("transfer_spot_perps")}
+              cards={[
+                {label:"Spot Available",value:spotBalancesHydrated ? formatAmount(Math.max(0,spotAvailableUsdc)) : (shouldHideBalances ? "••••••" : "--"),
+                  subtitle:<>Total Spot (incl. holds + altcoins): {spotBalancesHydrated ? formatAmount(totalSpotBalance) : (shouldHideBalances ? "••••••" : "--")}</>,
+                  icon:<Wallet className="w-3 h-3 sm:w-3.5 sm:h-3.5"/>},
+                {label:t("perpetual_balance"),value:tradingStateReady && realPerpEquity !== null ? formatAmount(realPerpEquity) : (shouldHideBalances ? "••••••" : "--"),
+                  subtitle:<>Perp equity (HL); available: {tradingStateReady ? formatAmount(availablePerpBalance) : (shouldHideBalances ? "••••••" : "--")}</>,
+                  icon:<TrendingUp className="w-3 h-3 sm:w-3.5 sm:h-3.5"/>,iconTone:"text-success"},
+                {label:t("available_for_trade"),value:tradingStateReady ? formatAmount(availablePerpBalance) : (shouldHideBalances ? "••••••" : "--"),
+                  subtitle:"Main Perp available; HIP-3 market limits may differ",
+                  icon:<Unlock className="w-3 h-3 sm:w-3.5 sm:h-3.5"/>},
+                {label:t("in_trade"),value:formatAmount(totalLockedBalance),
+                  subtitle:`Pos: ${formatAmount(lockedPositionMargin,false)} | Ord: ${formatAmount(lockedOrderMargin,false)}`,
+                  icon:<Lock className="w-3 h-3 sm:w-3.5 sm:h-3.5"/>,iconTone:"text-amber-500"},
+              ]}
+              note={<>Available = spendable USDC after exchange holds/margin. Total Spot includes held funds and assets;
+                Perpetual Equity includes open-position PnL. These amounts are not supposed to be equal.</>}
+            />
 
             {/* 4. ASSET ALLOCATION CARD (Compact side-by-side on mobile, no fake chevron, no PnL) */}
             <div className="bg-brand-surface border border-brand-border/60 rounded-xl sm:rounded-2xl p-3 sm:p-4 shadow-xs" id="asset-allocation-section">
