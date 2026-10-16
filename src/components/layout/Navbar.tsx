@@ -98,12 +98,31 @@ export default function Navbar({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [walletDropdownOpen, setWalletDropdownOpen] = useState(false);
   const [networkDropdownOpen, setNetworkDropdownOpen] = useState(false);
+  const [exchangeMenuOpen, setExchangeMenuOpen] = useState(false);
+  const exchangeMenuRef = useRef<HTMLDivElement>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const currentTheme = userSettings?.theme || "dark";
   const searchRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const { t } = useLanguage();
+
+  // Hide the compact exchange chooser when the user clicks away or presses Escape.
+  useEffect(() => {
+    if (!exchangeMenuOpen) return;
+    const outside = (event: MouseEvent) => {
+      if (!exchangeMenuRef.current?.contains(event.target as Node)) setExchangeMenuOpen(false);
+    };
+    const escape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setExchangeMenuOpen(false);
+    };
+    document.addEventListener("mousedown", outside);
+    document.addEventListener("keydown", escape);
+    return () => {
+      document.removeEventListener("mousedown", outside);
+      document.removeEventListener("keydown", escape);
+    };
+  }, [exchangeMenuOpen]);
 
   // Handle outside click for dropdowns
   useEffect(() => {
@@ -277,21 +296,45 @@ export default function Navbar({
           <HideDexLogo size={trustShieldMode === "ANONYMOUS" ? 28 : 32} showText={true} textSize={trustShieldMode === "ANONYMOUS" ? "text-xs sm:text-base" : "text-sm sm:text-base"} />
         </div>
 
-        {/* Exchange selector is isolated from Hyperliquid signing and account state.
-            Lighter execution is disabled until the official signer is verified. */}
+        {/* Compact header venue switcher. Keep name/logo/wallet room on narrow phones.
+            Venue switch is navigation only; never sign or send an order. */}
         {onSelectExchange && activeTab !== ActiveTab.Landing && (
-          <label className="ml-2 flex items-center gap-1 shrink-0 text-[10px] text-brand-muted">
-            <span className="hidden sm:inline">Exchange</span>
-            <select
-              aria-label="Trading exchange"
-              value={selectedExchange}
-              onChange={event => onSelectExchange(event.target.value as "hyperliquid" | "lighter")}
-              className="max-w-[106px] sm:max-w-[133px] border border-brand-border rounded-lg bg-brand-surface text-brand-text px-1.5 py-2 text-[10px] sm:text-xs"
-            >
-              <option value="hyperliquid">Hyperliquid</option>
-              <option value="lighter">Lighter</option>
-            </select>
-          </label>
+          <div ref={exchangeMenuRef} className="relative ml-1 shrink-0 z-[75]" data-exchange-menu>
+            <button type="button"
+              aria-label={`Exchange: ${selectedExchange === "lighter" ? "Lighter" : "Hyperliquid"}. Change exchange`}
+              title={selectedExchange === "lighter" ? "Lighter" : "Hyperliquid"}
+              aria-haspopup="menu" aria-expanded={exchangeMenuOpen}
+              onClick={() => setExchangeMenuOpen(open => !open)}
+              className={`h-9 sm:h-10 inline-flex items-center justify-center gap-1 rounded-lg border px-2 text-brand-text transition-colors hover:bg-brand-overlay-normal ${exchangeMenuOpen ? "border-accent bg-brand-overlay-normal" : "border-brand-border bg-brand-surface"}`}>
+              <span aria-hidden="true" className={`w-2 h-2 rounded-full ${selectedExchange === "lighter" ? "bg-sky-400" : "bg-emerald-400"}`}/>
+              <span className="hidden min-[430px]:inline text-[10px] sm:text-xs font-semibold">{selectedExchange === "lighter" ? "Lighter" : "Hyperliquid"}</span>
+              <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${exchangeMenuOpen ? "rotate-180" : ""}`} />
+            </button>
+            {exchangeMenuOpen && (
+              <div role="menu" aria-label="Select trading exchange"
+                className="absolute top-full mt-2 left-0 max-[430px]:-left-20 w-[min(250px,calc(100vw-24px))] rounded-xl border border-brand-border bg-brand-surface shadow-2xl p-2 z-[100]">
+                <p className="px-2 py-1.5 text-[10px] text-brand-muted font-semibold uppercase tracking-wider">Select Exchange</p>
+                {([
+                  { id: "hyperliquid", label: "Hyperliquid", hint: "Mainnet", dot: "bg-emerald-400" },
+                  { id: "lighter", label: "Lighter", hint: "Mainnet · Integration preview", dot: "bg-sky-400" },
+                ] as const).map(venue => (
+                  <button type="button" role="menuitemradio"
+                    aria-checked={selectedExchange === venue.id} key={venue.id}
+                    onClick={() => { setExchangeMenuOpen(false); if (venue.id !== selectedExchange) onSelectExchange(venue.id); }}
+                    className={`w-full flex items-center justify-between gap-3 text-left px-3 py-2.5 rounded-lg hover:bg-brand-overlay-normal ${selectedExchange === venue.id ? "bg-brand-overlay-subtle" : ""}`}>
+                    <span className="flex items-center gap-2.5 min-w-0">
+                      <span className={`w-2.5 h-2.5 shrink-0 rounded-full ${venue.dot}`} />
+                      <span className="min-w-0">
+                        <span className="block text-xs font-bold text-brand-text">{venue.label}</span>
+                        <span className="block text-[10px] text-brand-muted">{venue.hint}</span>
+                      </span>
+                    </span>
+                    {selectedExchange === venue.id && <Check className="w-4 h-4 text-accent shrink-0"/>}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         )}
         {/* Centered command search, using only wired website features. */}
         <div className="hidden md:block absolute left-1/2 -translate-x-1/2 w-[min(38vw,360px)] min-w-[190px] z-[60]" ref={searchRef}>
