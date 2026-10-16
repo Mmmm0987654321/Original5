@@ -1,3 +1,4 @@
+import { getLighterCandles } from "../../lib/lighterMarketData";
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -94,6 +95,7 @@ interface TVChartProps {
   priceLines?: ChartPriceLine[];
   tradeHistory?: TradeHistoryItem[];
   toolbarHostId?: string;
+  lighterMarketId?: number;
 }
 
 interface Candle {
@@ -123,6 +125,7 @@ function TVChartComponent({
   priceLines,
   tradeHistory = [],
   toolbarHostId,
+  lighterMarketId,
 }: TVChartProps) {
   const [toolbarHost, setToolbarHost] = useState<HTMLElement | null>(null);
 
@@ -315,7 +318,7 @@ function TVChartComponent({
 
   const liveCandle =
     useLiveCandle(
-      marketCoin,
+      lighterMarketId !== undefined ? "" : marketCoin,
       hlInterval
     );
 
@@ -328,7 +331,8 @@ function TVChartComponent({
     useQuery({
       queryKey: [
         "candles",
-        marketCoin,
+        lighterMarketId !== undefined ? "lighter" : "hyperliquid",
+        lighterMarketId ?? marketCoin,
         hlInterval,
         initialHistoryBars,
         historyLookbackMs,
@@ -343,20 +347,16 @@ function TVChartComponent({
             endTime -
             historyLookbackMs;
 
-          return fetchCandles(
-            marketCoin,
-            hlInterval,
-            initialHistoryBars,
-            startTime,
-            endTime
-          );
+          return lighterMarketId !== undefined
+            ? getLighterCandles(lighterMarketId, hlInterval, Math.max(startTime, endTime - 500 * intervalMsValue), endTime)
+            : fetchCandles(marketCoin, hlInterval, initialHistoryBars, startTime, endTime);
         },
 
       enabled:
-        !!marketCoin,
+        lighterMarketId !== undefined || !!marketCoin,
 
       refetchInterval:
-        false,
+        lighterMarketId !== undefined ? 15_000 : false,
 
       refetchIntervalInBackground:
         false,
@@ -504,7 +504,7 @@ function TVChartComponent({
           number
       ) => {
         if (
-          !marketCoin ||
+          (lighterMarketId === undefined && !marketCoin) ||
           !Number.isFinite(
             beforeTimestampMs
           )
@@ -558,13 +558,10 @@ function TVChartComponent({
         }
 
         const result =
-          await fetchCandles(
-            marketCoin,
-            hlInterval,
-            HISTORY_PAGE_BARS,
-            startTime,
-            endTime
-          );
+          lighterMarketId !== undefined
+            ? await getLighterCandles(lighterMarketId, hlInterval,
+                Math.max(startTime, endTime - 500 * intervalMsValue), endTime)
+            : await fetchCandles(marketCoin, hlInterval, HISTORY_PAGE_BARS, startTime, endTime);
 
         const page =
           mapApiCandles(
@@ -592,6 +589,7 @@ function TVChartComponent({
       },
       [
         marketCoin,
+        lighterMarketId,
         hlInterval,
         intervalMsValue,
       ]
@@ -1525,7 +1523,7 @@ function TVChartComponent({
               candles={candles}
               interval={interval}
               symbol={displayTicker}
-              drawingStorageKey={symbol}
+              drawingStorageKey={lighterMarketId !== undefined ? `lighter:${lighterMarketId}:${symbol}` : symbol}
               timezone={timezone}
               chartMode={chartType}
               showHighLow={showHighLow}

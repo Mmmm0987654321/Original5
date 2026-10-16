@@ -14,6 +14,11 @@ export type LighterMarket = {
   priceDecimals: number;
   sizeDecimals: number;
   multiplier: number;
+  lastTradePrice: number | null;
+  volume24hUsd: number | null;
+  change24h: number | null;
+  high24h: number | null;
+  low24h: number | null;
 };
 export type LighterLevel = { price: string; size: string };
 export type LighterMarketFeed = {
@@ -61,12 +66,47 @@ export async function getLighterMarkets(signal?: AbortSignal): Promise<LighterMa
         pd === null || sd === null || pd < 0 || sd < 0) return;
     const mult = finite(obj.multiplier);
     result.push({ id, symbol, kind, priceDecimals: pd, sizeDecimals: sd,
-      multiplier: mult !== null && mult > 0 ? mult : 1 });
+      multiplier: mult !== null && mult > 0 ? mult : 1,
+      lastTradePrice: finite(obj.last_trade_price),
+      volume24hUsd: finite(obj.daily_quote_token_volume),
+      change24h: finite(obj.daily_price_change),
+      high24h: finite(obj.daily_price_high),
+      low24h: finite(obj.daily_price_low),
+    });
   };
   list(data.order_book_details).forEach(m => add(m, "perp"));
   list(data.spot_order_book_details).forEach(m => add(m, "spot"));
   if (!result.length) throw new Error("Lighter returned no verifiable active markets");
   return result.sort((x, y) => x.kind.localeCompare(y.kind) || x.symbol.localeCompare(y.symbol));
+}
+
+
+/** Lighter mainnet OHLC only. Time query is seconds; returned candle t is ms. */
+export async function getLighterCandles(
+  marketId: number, resolution: string, startMs: number, endMs: number,
+  signal?: AbortSignal
+): Promise<{ candles: Array<{ t: number; o: number; h: number; l: number; c: number; v: number }> }> {
+  if (!Number.isSafeInteger(marketId) || marketId < 0) throw new Error("Invalid Lighter market");
+  const allowed = new Set(["1m","5m","15m","30m","1h","4h","12h","1d","1w"]);
+  const validRes = allowed.has(resolution) ? resolution :
+    (resolution === "3m" ? "1m" : resolution === "2h" ? "1h" : "1d");
+  const start = Math.max(0, Math.floor(startMs / 1000));
+  const end = Math.floor(endMs / 1000);
+  if (end <= start) return { candles: [] };
+  const query = new URLSearchParams({
+    market_id: String(marketId), resolution: validRes,
+    start_timestamp: String(start), end_timestamp: String(end), count_back: "500",
+  });
+  const data = await lighterPublicGet(`/api/v1/candles?${query.toString()}`, signal);
+  const candles = list(data.c).map(raw => {
+    const v = record(raw); if (!v) return null;
+    const t = finite(v.t), o = finite(v.o), h = finite(v.h),
+      l = finite(v.l), c = finite(v.c), vol = finite(v.v);
+    if (t === null || o === null || h === null || l === null || c === null ||
+        o <= 0 || h <= 0 || l <= 0 || c <= 0 || h < l) return null;
+    return { t, o, h, l, c, v: vol !== null && vol >= 0 ? vol : 0 };
+  }).filter((v): v is NonNullable<typeof v> => v !== null);
+  return { candles };
 }
 
 export async function getLighterAccountIndexes(walletAddress: string, signal?: AbortSignal): Promise<number[]> {
