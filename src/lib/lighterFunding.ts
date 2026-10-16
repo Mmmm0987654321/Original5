@@ -22,7 +22,7 @@ export type LighterWalletProvider = {
 
 async function verifiedUsdcAssetIndex(): Promise<number> {
   const data = await lighterPublicGet("/api/v1/assetDetails");
-  const assets = Array.isArray(data.assets) ? data.assets : [];
+  const assets = Array.isArray(data.asset_details) ? data.asset_details : [];
   const matching = assets.filter(v => {
     if (!v || typeof v !== "object") return false;
     const a = v as Record<string, unknown>;

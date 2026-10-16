@@ -104,6 +104,14 @@ export default function LighterMarketPreview({
     return () => ac.abort();
   }, [walletAddress, accountReload]);
 
+  // Keep Lighter balances, collateral and positions fresh even when the
+  // user makes a transaction outside HideDex. Read-only refresh; no signing.
+  useEffect(() => {
+    if (!walletAddress) return;
+    const interval = window.setInterval(() => setAccountReload(n => n + 1), 30_000);
+    return () => window.clearInterval(interval);
+  }, [walletAddress]);
+
   const available = useMemo(() => markets.filter(market => market.kind === kind), [markets, kind]);
   const selected = useMemo(
     () => available.find(row => row.id === selectedMarketId) ?? available[0],
