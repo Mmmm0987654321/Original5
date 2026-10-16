@@ -278,12 +278,32 @@ export function subscribeLighterBook(
   let ping: ReturnType<typeof setInterval> | undefined;
   let retry: ReturnType<typeof setTimeout> | undefined;
 
-  const emit = (status: LighterMarketFeed["status"]) => {
+  // Preserve every exchange delta in the maps; throttle only React rendering
+  // to avoid jitter/flickering on high-frequency mainnet books.
+  let frameTimer: ReturnType<typeof setTimeout> | undefined;
+  let queuedStatus: LighterMarketFeed["status"] = "connecting";
+  let lastPaint = 0;
+  const paint = () => {
+    frameTimer = undefined;
     if (closed) return;
+    lastPaint = Date.now();
     const levels = (src: Map<string, string>, desc: boolean) =>
       [...src.entries()].sort((x, y) => desc ? Number(y[0])-Number(x[0]) : Number(x[0])-Number(y[0]))
         .slice(0, 16).map(([price, size]) => ({ price, size }));
-    onUpdate({ status, bids: levels(bids, true), asks: levels(asks, false), recentTradePrice: tradePrice });
+    onUpdate({ status: queuedStatus, bids: levels(bids, true), asks: levels(asks, false), recentTradePrice: tradePrice });
+  };
+  const emit = (status: LighterMarketFeed["status"]) => {
+    if (closed) return;
+    queuedStatus = status;
+    if (status !== "live") {
+      if (frameTimer) clearTimeout(frameTimer);
+      frameTimer = undefined;
+      paint();
+      return;
+    }
+    if (frameTimer) return;
+    const delay = Math.max(0, 125 - (Date.now() - lastPaint));
+    frameTimer = setTimeout(paint, delay);
   };
   const channel = `order_book/${marketId}`;
   const reset = () => {
@@ -349,6 +369,7 @@ export function subscribeLighterBook(
   open();
   return () => {
     closed = true;
+    if (frameTimer) clearTimeout(frameTimer);
     if (ping) clearInterval(ping);
     if (retry) clearTimeout(retry);
     if (ws) { ws.onclose = null; ws.close(); }

@@ -290,23 +290,22 @@ export default function Navbar({
         {/* Keep the brand visible even when sensitive account details are hidden. */}
         <div
           onClick={() => handleNavClick(ActiveTab.Landing)}
-          className="flex items-center cursor-pointer group shrink-0"
+          className="flex items-center cursor-pointer group shrink-0 min-w-0"
           id="navbar-logo"
         >
-          <span className="min-[390px]:hidden"><HideDexLogo size={27} showText={false} /></span>
-          <span className="hidden min-[390px]:inline-flex"><HideDexLogo size={trustShieldMode === "ANONYMOUS" ? 28 : 32} showText={true} textSize={trustShieldMode === "ANONYMOUS" ? "text-xs sm:text-base" : "text-sm sm:text-base"} /></span>
+          <HideDexLogo size={26} showText={true} textSize="text-[10px] min-[390px]:text-[11px] sm:text-base" className="gap-1 sm:gap-2" />
         </div>
 
         {/* Compact header venue switcher. Keep name/logo/wallet room on narrow phones.
             Venue switch is navigation only; never sign or send an order. */}
         {onSelectExchange && activeTab !== ActiveTab.Landing && (
-          <div ref={exchangeMenuRef} className="relative ml-1 shrink-0 z-[75]" data-exchange-menu>
+          <div ref={exchangeMenuRef} className="relative ml-0.5 sm:ml-1 shrink-0 z-[75]" data-exchange-menu>
             <button type="button"
               aria-label={`Exchange: ${selectedExchange === "lighter" ? "Lighter" : "Hyperliquid"}. Change exchange`}
               title={selectedExchange === "lighter" ? "Lighter" : "Hyperliquid"}
               aria-haspopup="menu" aria-expanded={exchangeMenuOpen}
               onClick={() => setExchangeMenuOpen(open => !open)}
-              className={`h-9 sm:h-10 inline-flex items-center justify-center gap-1 rounded-lg border px-2 text-brand-text transition-colors hover:bg-brand-overlay-normal ${exchangeMenuOpen ? "border-accent bg-brand-overlay-normal" : "border-brand-border bg-brand-surface"}`}>
+              className={`h-8 sm:h-10 inline-flex items-center justify-center gap-0.5 sm:gap-1 rounded-lg border px-1.5 sm:px-2 text-brand-text transition-colors hover:bg-brand-overlay-normal ${exchangeMenuOpen ? "border-accent bg-brand-overlay-normal" : "border-brand-border bg-brand-surface"}`}>
               <span aria-hidden="true" className={`w-2 h-2 rounded-full ${selectedExchange === "lighter" ? "bg-sky-400" : "bg-emerald-400"}`}/>
               <span className="hidden min-[430px]:inline text-[10px] sm:text-xs font-semibold">{selectedExchange === "lighter" ? "Lighter" : "Hyperliquid"}</span>
               <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${exchangeMenuOpen ? "rotate-180" : ""}`} />
@@ -407,7 +406,7 @@ export default function Navbar({
         </div>
 
         {/* Header Actions Container: right aligned in all privacy modes */}
-        <div className="flex items-center gap-1 sm:gap-2.5 ml-auto shrink-0 min-w-0">
+        <div className="flex items-center gap-0.5 sm:gap-2.5 ml-auto shrink-0 min-w-0">
           
           {/* Extra Desktop-Only Actions */}
           <div className="hidden lg:flex items-center gap-2.5">
@@ -456,7 +455,7 @@ export default function Navbar({
           </div>
 
           {/* Right Navigation Controls */}
-          <div className="flex items-center gap-1 sm:gap-2.5">
+          <div className="flex items-center gap-0.5 sm:gap-2.5">
             {/* 1. Wallet Button */}
             {walletConnected ? (
               <div className="flex items-center gap-1 sm:gap-1.5">

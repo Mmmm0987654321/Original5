@@ -6,7 +6,7 @@ import TVChart from "./TVChart";
 import MarketsPanel from "../dashboard/MarketsPanel";
 import TradingAccountTabBar, { type TradingTabId } from "./TradingAccountTabBar";
 import type { TokenMetadata } from "../../types";
-import { renderAssetLogo } from "./MarketSelector";
+import MarketSelector, { renderAssetLogo } from "./MarketSelector";
 import {
   getLighterAccountIndexes, getLighterMarkets, getLighterPublicAccounts,
   subscribeLighterBook,
@@ -43,6 +43,9 @@ export default function LighterMarketPreview({
 }: Props) {
   const [markets, setMarkets] = useState<LighterMarket[]>([]);
   const [selectedMarketId, setSelectedMarketId] = useState<number | null>(null);
+  const [lastPerpMarketId, setLastPerpMarketId] = useState<number | null>(null);
+  const [lastSpotMarketId, setLastSpotMarketId] = useState<number | null>(null);
+  const [marketSelectorOpen, setMarketSelectorOpen] = useState(false);
   const [kind, setKind] = useState<Kind>(initialKind);
   const [loading, setLoading] = useState(true);
   const [marketError, setMarketError] = useState<string | null>(null);
@@ -67,7 +70,12 @@ export default function LighterMarketPreview({
   // Market/Funds/Account navigation must not reset the user's selected Lighter spot/perp kind.
   // Explicit Trade routing is the only place where App's chosen mode takes precedence.
   useEffect(() => {
-    if (section === "trade") setKind(initialKind);
+    if (section === "trade" && initialKind !== kind) {
+      setKind(initialKind);
+      setSelectedMarketId(initialKind === "spot" ? lastSpotMarketId : lastPerpMarketId);
+    }
+  // Do not overwrite manual selection when remaining in the same trade section.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialKind, section]);
 
   useEffect(() => {
@@ -78,9 +86,11 @@ export default function LighterMarketPreview({
       setMarkets(rows);
       setMarketError(null);
       setSelectedMarketId(current =>
-        current !== null && rows.some(row => row.id === current)
-          ? current : (rows.find(row => row.kind === "perp" && row.symbol === "BTC")?.id
-              ?? rows.find(row => row.kind === "perp")?.id ?? rows[0]?.id ?? null)
+        current !== null && rows.some(row => row.id === current && row.kind === kind)
+          ? current : kind === "perp"
+            ? (rows.find(row => row.kind === "perp" && row.symbol === "BTC")?.id
+              ?? rows.find(row => row.kind === "perp")?.id ?? null)
+            : null
       );
     }).catch(error => {
       if (!ac.signal.aborted) setMarketError(error instanceof Error ? error.message : "Lighter markets unavailable");
@@ -114,7 +124,7 @@ export default function LighterMarketPreview({
 
   const available = useMemo(() => markets.filter(market => market.kind === kind), [markets, kind]);
   const selected = useMemo(
-    () => available.find(row => row.id === selectedMarketId) ?? available[0],
+    () => available.find(row => row.id === selectedMarketId),
     [available, selectedMarketId]
   );
   useEffect(() => {
@@ -161,15 +171,33 @@ export default function LighterMarketPreview({
   const chooseMarket = (m: LighterMarket, navigate: boolean) => {
     setSelectedMarketId(m.id);
     setKind(m.kind);
+    if (m.kind === "spot") setLastSpotMarketId(m.id);
+    else setLastPerpMarketId(m.id);
+    setMarketSelectorOpen(false);
     setAmount("");
     setLimitPrice("");
     if (navigate) onSelectSection("trade", m.kind);
   };
   const switchKind = (next: Kind) => {
+    if (next === kind) return;
+    const current = selected;
+    if (current) {
+      if (kind === "spot") setLastSpotMarketId(current.id);
+      else setLastPerpMarketId(current.id);
+    }
+    // Never silently replace BTC with LIT/USDC (or any unrelated symbol).
+    // Use same-base market if supported; otherwise the user's prior selection.
+    const sameBase = current?.symbol.split("/")[0].toUpperCase();
+    const matching = sameBase && markets.find(m =>
+      m.kind === next && m.symbol.split("/")[0].toUpperCase() === sameBase);
+    const remembered = next === "spot" ? lastSpotMarketId : lastPerpMarketId;
+    const nextMarket = matching ?? markets.find(m => m.kind === next && m.id === remembered);
     setKind(next);
-    setSelectedMarketId(markets.find(m => m.kind === next)?.id ?? null);
+    setSelectedMarketId(nextMarket?.id ?? null);
     setAmount("");
     setLimitPrice("");
+    if (!nextMarket) setMarketSelectorOpen(true);
+    if (section === "trade") onSelectSection("trade", next);
   };
 
   const bookLevels = (levels: LighterMarketFeed["bids"], sideName: "bid" | "ask") => {
@@ -296,6 +324,22 @@ export default function LighterMarketPreview({
   );
 
   return <div className="w-full min-w-0 text-brand-text pb-1" data-exchange="lighter">
+    {marketSelectorOpen && (
+      <MarketSelector
+        tokens={lighterTokens}
+        selectedSymbol={lighterSelectedSymbol}
+        onClose={() => setMarketSelectorOpen(false)}
+        onSelectToken={(symbol, marketKind) => {
+          const row = lighterTokens.find(t => t.symbol === symbol &&
+            (marketKind === "spot" ? t.isSpotOnly : !t.isSpotOnly));
+          const m = markets.find(m => m.symbol === row?.sourceCoin &&
+            m.kind === marketKind);
+          if (m) chooseMarket(m, section === "trade");
+        }}
+        initialCategory={kind === "spot" ? "spot" : "perps"}
+        externalPricesOnly={true}
+      />
+    )}
     {marketError && <div role="alert" className="mb-2 p-3 border border-rose-500/40 rounded-lg text-xs text-rose-400">
       Lighter market API unavailable: {marketError}. Hyperliquid prices are never substituted.
     </div>}
@@ -337,13 +381,17 @@ export default function LighterMarketPreview({
     )}
 
     {section === "trade" && <>
+      {!selected && <p role="status" className="mb-2 rounded-lg border border-brand-border bg-brand-surface px-3 py-2 text-xs text-brand-muted">
+        No matching {kind === "spot" ? "Spot" : "Perp"} market is selected. Choose an actual Lighter market before trading.
+        <button type="button" onClick={() => setMarketSelectorOpen(true)} className="ml-2 underline text-accent">Select market</button>
+      </p>}
       {/* The same mobile terminal composition: selected coin, price, mode,
           then order form/book. The chart lives under Market on small screens. */}
       <div id="terminal-mobile-trade-header" className="md:hidden bg-brand-bg border border-brand-border rounded-xl p-1.5 mb-1.5 flex items-center justify-between gap-1.5 shadow-xl relative">
-        <button type="button" onClick={() => onSelectSection("markets")} className="flex items-center gap-2 min-w-0 text-left">
+        <button type="button" onClick={() => setMarketSelectorOpen(true)} className="flex items-center gap-2 min-w-0 text-left" aria-label="Choose Lighter market">
           {selected && <span className="shrink-0">{renderAssetLogo(selected.symbol)}</span>}
           <span className="min-w-0">
-            <span className="block font-display font-bold text-sm text-brand-text uppercase truncate">{selected?.symbol ?? "—"}⌄</span>
+            <span className="block font-display font-bold text-sm text-brand-text uppercase truncate">{selected?.symbol ?? "SELECT MARKET"}⌄</span>
             <span className="block text-[9px] font-semibold tracking-wider text-accent">{labelKind(kind)}</span>
           </span>
         </button>
@@ -364,11 +412,11 @@ export default function LighterMarketPreview({
         <div className="flex flex-wrap justify-between items-center gap-2">
           <div className="flex items-center gap-2">
             {selected && <span className="shrink-0">{renderAssetLogo(selected.symbol)}</span>}
-            <select value={selected?.id ?? ""} aria-label="Lighter symbol" onChange={e => {
-              const m = available.find(x => x.id === Number(e.target.value)); if (m) chooseMarket(m, false);
-            }} className="border border-brand-border rounded-lg bg-brand-bg px-2 py-2 text-xs font-bold max-w-[140px]">
-              {available.map(m => <option key={m.id} value={m.id}>{m.symbol}</option>)}
-            </select>
+            <button type="button" onClick={() => setMarketSelectorOpen(true)}
+              aria-label="Choose Lighter market"
+              className="border border-brand-border rounded-lg bg-brand-bg px-2 py-2 text-xs font-bold max-w-[160px] truncate">
+              {selected?.symbol ?? "Choose market"}⌄
+            </button>
             <button type="button" onClick={() => switchKind(kind === "perp" ? "spot" : "perp")}
               className="text-[10px] border border-brand-border px-2 py-2 rounded-lg">
               {labelKind(kind)} ▾
