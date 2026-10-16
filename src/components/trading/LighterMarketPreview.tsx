@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { Layers, Wallet, TrendingUp, Unlock, Lock, ArrowUpRight, ArrowDownRight, ChevronRight } from "lucide-react";
+import { TrustShieldValue } from "../common/TrustShieldValue";
 import TVChart from "./TVChart";
 import MarketsPanel from "../dashboard/MarketsPanel";
 import TradingAccountTabBar, { type TradingTabId } from "./TradingAccountTabBar";
@@ -247,15 +249,6 @@ export default function LighterMarketPreview({
     {marketError && <div role="alert" className="mb-2 p-3 border border-rose-500/40 rounded-lg text-xs text-rose-400">
       Lighter market API unavailable: {marketError}. Hyperliquid prices are never substituted.
     </div>}
-    <div className="flex items-center justify-between gap-2 mb-2 px-2 py-2 bg-brand-surface border border-brand-border rounded-xl">
-      <div><span className="font-semibold text-xs sm:text-sm">Lighter Mainnet</span>
-        <p className="text-[9px] text-brand-muted">Only Lighter market/account data</p></div>
-      <span className={"text-[10px] rounded-lg border border-brand-border px-2 py-1 " +
-        (feed.status === "live" ? "text-emerald-500" : "text-brand-muted")}>
-        {section === "trade" || section === "markets" ? "Order Book: " + feed.status : "Lighter"}
-      </span>
-    </div>
-
     {section === "markets" && (
       <MarketsPanel
         tokens={lighterTokens}
@@ -376,23 +369,82 @@ export default function LighterMarketPreview({
       {lighterAccountTabs}
     </>}
 
-    {(section === "funds" || section === "account" || section === "orders") && <div className="space-y-3">
-      <div className="border border-brand-border rounded-xl bg-brand-surface p-3">
-        <h2 className="text-base font-bold mb-2">{section === "funds" ? "Lighter Funds" : section === "account" ? "Lighter Account" : "Lighter Positions & Orders"}</h2>
-        {section === "funds" && <p className="text-xs text-brand-muted mb-3">Exchange-specific balances and collateral. Hyperliquid holdings are not included.</p>}
+    {section === "funds" && (() => {
+      const verifiedCollateral = publicAccounts !== null && publicAccounts.every(a => a.collateral !== null)
+        ? publicAccounts.reduce((total, a) => total + (a.collateral ?? 0), 0) : null;
+      const verifiedAvailable = publicAccounts !== null && publicAccounts.every(a => a.availableBalance !== null)
+        ? publicAccounts.reduce((total, a) => total + (a.availableBalance ?? 0), 0) : null;
+      const showBalance = (value: number | null) =>
+        <TrustShieldValue fieldKey="portfolio" value={value === null ? "—" : formatPrice(value, 6) + " USDC"} hideEyeIcon />;
+      return <div id="funds-portfolio-container" className="space-y-3 sm:space-y-4 text-brand-text font-sans bg-brand-bg px-3 pt-2 pb-2 sm:p-4 sm:pb-8 rounded-3xl max-w-4xl mx-auto w-full">
+        <div className="relative bg-brand-surface border border-brand-border/70 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 overflow-hidden shadow-sm" id="funds-hero-card">
+          <div className="absolute top-0 right-0 w-80 h-80 bg-accent/5 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
+          <div className="relative flex items-center justify-between gap-2">
+            <span className="text-[10px] sm:text-xs font-bold text-brand-muted uppercase tracking-wider">TOTAL FUNDS</span>
+            <span className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-brand-overlay-subtle border border-brand-border/60 text-[11px] font-semibold">
+              <Layers className="w-3.5 h-3.5 text-accent" /> Lighter Account
+            </span>
+          </div>
+          <div className="relative mt-2 sm:mt-3">
+            <div className="text-2xl sm:text-4xl md:text-5xl font-black font-mono tracking-tight text-brand-text">{showBalance(verifiedCollateral)}</div>
+            <div className="text-[11px] sm:text-sm font-mono text-brand-muted mt-1">Verified Lighter collateral · USDC</div>
+          </div>
+          <div className="relative grid grid-cols-2 max-[359px]:grid-cols-1 gap-2 mt-3 sm:mt-4">
+            <div className="flex items-center gap-2 sm:gap-3 p-2 sm:p-2.5 rounded-xl bg-brand-overlay-subtle border border-brand-border/50 min-w-0">
+              <Wallet className="w-5 h-5 shrink-0 text-accent" />
+              <div className="min-w-0"><div className="text-[9px] uppercase font-bold text-brand-muted">WALLET ADDRESS</div>
+                <div className="text-xs font-bold font-mono truncate">{walletAddress ? walletAddress.slice(0, 8) + "…" : "Not connected"}</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 sm:gap-3 p-2 sm:p-2.5 rounded-xl bg-brand-overlay-subtle border border-brand-border/50 min-w-0">
+              <Layers className="w-5 h-5 shrink-0 text-accent"/>
+              <div><div className="text-[9px] uppercase font-bold text-brand-muted">ACCOUNT TYPE</div>
+                <div className="text-xs font-bold font-mono">Lighter</div>
+              </div>
+            </div>
+          </div>
+          {accountError && <p role="alert" className="mt-3 text-[10px] text-rose-400">{accountError}</p>}
+        </div>
+        <div className="grid grid-cols-2 max-[359px]:grid-cols-1 gap-2 sm:gap-3" id="funds-action-buttons-row">
+          <a href="https://app.lighter.xyz/" target="_blank" rel="noopener noreferrer"
+            className="p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl bg-accent text-brand-bg font-extrabold flex items-center justify-between shadow-md text-left group min-w-0">
+            <div className="flex items-center gap-2 min-w-0"><ArrowUpRight className="w-5 h-5" />
+              <div className="min-w-0"><div className="text-xs sm:text-sm uppercase font-black truncate">DEPOSIT</div>
+                <div className="text-[9px] sm:text-[11px] opacity-90">Official Lighter ↗</div></div>
+            </div><ChevronRight className="w-4 h-4"/>
+          </a>
+          <a href="https://app.lighter.xyz/" target="_blank" rel="noopener noreferrer"
+            className="p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl bg-brand-surface border border-brand-border text-brand-text font-extrabold flex items-center justify-between shadow-sm text-left group min-w-0">
+            <div className="flex items-center gap-2 min-w-0"><ArrowDownRight className="w-5 h-5 text-accent"/>
+              <div className="min-w-0"><div className="text-xs sm:text-sm uppercase font-black truncate">WITHDRAWAL</div>
+                <div className="text-[9px] sm:text-[11px] text-brand-muted">Official Lighter ↗</div></div>
+            </div><ChevronRight className="w-4 h-4 text-brand-muted"/>
+          </a>
+        </div>
+        <div className="grid grid-cols-2 max-[359px]:grid-cols-1 gap-2 sm:gap-3" id="balances-grid-display">
+          {[
+            {title:"SPOT AVAILABLE",subtitle:"Separate Lighter spot balance not verified",value:null,icon:<Wallet className="w-4 h-4"/>},
+            {title:"PERPETUAL COLLATERAL",subtitle:"Verified Lighter collateral",value:verifiedCollateral,icon:<TrendingUp className="w-4 h-4"/>},
+            {title:"AVAILABLE FOR TRADE",subtitle:"Exchange-reported available balance",value:verifiedAvailable,icon:<Unlock className="w-4 h-4"/>},
+            {title:"MARGIN IN TRADE",subtitle:"Locked margin not independently verified",value:null,icon:<Lock className="w-4 h-4"/>},
+          ].map(row => <div key={row.title}
+            className="bg-brand-surface border border-brand-border/60 rounded-xl sm:rounded-2xl p-2.5 sm:p-3.5 flex flex-col justify-between shadow-xs min-w-0">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="w-7 h-7 rounded-lg bg-accent/10 border border-accent/20 flex justify-center items-center text-accent">{row.icon}</span>
+                <span className="text-[9px] sm:text-[11px] font-bold uppercase text-brand-muted leading-tight">{row.title}</span>
+              </div>
+              <div className="text-base sm:text-xl font-black font-mono text-brand-text truncate">{showBalance(row.value)}</div>
+              <div className="text-[9px] sm:text-[11px] font-mono text-brand-muted leading-tight">{row.subtitle}</div>
+            </div>)}
+        </div>
+        <p className="text-[10px] text-brand-muted px-1">Lighter account amounts only. Unsupported spot/margin details remain unavailable—not estimated or copied from Hyperliquid. Deposit and withdrawal open the official exchange until HideDex Lighter signing is verified.</p>
         {accountCards}
-      </div>
-      {section === "orders" && <div className="border border-brand-border rounded-xl p-3 text-xs text-brand-muted">
-        Verified open-order details, cancellation and execution history require additional Lighter account integration.
-        No order status is fabricated.
-      </div>}
-      {section === "funds" && <div className="border border-brand-border rounded-xl p-3">
-        <div className="font-bold text-xs mb-2">Deposit / Withdrawal</div>
-        <p className="text-xs text-brand-muted mb-2">Lighter-specific funding authorization is not integrated in HideDex yet. Do not use Hyperliquid funding routes.</p>
-        <a href="https://app.lighter.xyz/" target="_blank" rel="noopener noreferrer" className="text-xs text-accent underline">
-          Open official Lighter for deposit / withdrawal ↗
-        </a>
-      </div>}
+      </div>;
+    })()}
+
+    {section === "orders" && <div className="rounded-xl border border-brand-border bg-brand-bg p-3">
+      {lighterAccountTabs}
     </div>}
+
   </div>;
 }
