@@ -55,6 +55,8 @@ export default function LighterMarketPreview({
   const [feed, setFeed] = useState<LighterMarketFeed>(emptyBook);
   const [viewMode, setViewMode] = useState<"chart" | "orderbook">("chart");
   const [accountTab, setAccountTab] = useState<TradingTabId>("POSITIONS");
+  const [expandedPositions, setExpandedPositions] = useState<Record<string, boolean>>({});
+  const [positionSort, setPositionSort] = useState<"default" | "pnl" | "size">("default");
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [orderType, setOrderType] = useState<"market" | "limit">("market");
   const [amount, setAmount] = useState("");
@@ -313,21 +315,58 @@ export default function LighterMarketPreview({
             {accountError && <p className="text-xs text-rose-400">Unable to verify positions: {accountError}</p>}
             {publicAccounts !== null && knownPositionCount === 0 &&
               <p className="text-xs text-brand-muted">No open positions reported by connected Lighter accounts.</p>}
-            {publicAccounts?.flatMap(acct => acct.positions.map((p, index) => (
-              <div key={acct.index + ":" + p.symbol + ":" + index}
-                className="bg-brand-card border border-brand-border/60 rounded-xl p-3 text-[11px]">
-                <div className="flex items-center justify-between gap-2 border-b border-brand-border pb-2 mb-2">
-                  <strong>{p.symbol} · {p.signedSize > 0 ? "LONG" : "SHORT"}</strong>
-                  <span className="font-mono">Account #{acct.index}</span>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <p>Size <strong className="block font-mono">{formatPrice(Math.abs(p.signedSize), 6)}</strong></p>
-                  <p>Entry <strong className="block font-mono">{formatPrice(p.entryPrice)}</strong></p>
-                  <p>Unrealized PnL <strong className="block font-mono">{formatPrice(p.unrealizedPnl)}</strong></p>
-                  <p className="text-brand-muted">TP/SL and Close require verified Lighter signing</p>
+            {knownPositionCount !== undefined && knownPositionCount > 0 && (
+              <div className="flex justify-between gap-2 items-center border-b border-brand-border pb-2 text-[10px] sm:text-xs text-brand-muted">
+                <label>Sort By:
+                  <select aria-label="Sort Lighter positions" value={positionSort}
+                    onChange={e => setPositionSort(e.target.value as "default" | "pnl" | "size")}
+                    className="ml-1 bg-brand-bg text-brand-text">
+                    <option value="default">Default</option>
+                    <option value="pnl">Unrealized PnL</option>
+                    <option value="size">Position Size</option>
+                  </select>
+                </label>
+                <div className="flex gap-2">
+                  <button type="button" onClick={() => setExpandedPositions(Object.fromEntries(
+                    (publicAccounts ?? []).flatMap(a => a.positions.map((p,i) => [a.index + ":" + p.symbol + ":" + i, true]))))}
+                    className="text-brand-text">Expand All</button>
+                  <button type="button" onClick={() => setExpandedPositions(Object.fromEntries(
+                    (publicAccounts ?? []).flatMap(a => a.positions.map((p,i) => [a.index + ":" + p.symbol + ":" + i, false]))))}
+                    className="text-rose-400">Close All</button>
                 </div>
               </div>
-            )))}
+            )}
+            {(publicAccounts ?? []).flatMap(a => a.positions.map((p,i) => ({a,p,i})))
+              .sort((x,y) => positionSort === "pnl" ? (y.p.unrealizedPnl ?? -Infinity)-(x.p.unrealizedPnl ?? -Infinity)
+                : positionSort === "size" ? Math.abs(y.p.signedSize)-Math.abs(x.p.signedSize) : 0)
+              .map(({a,p,i}) => {
+                const key = a.index + ":" + p.symbol + ":" + i;
+                const isExpanded = expandedPositions[key] ?? false;
+                return <div key={key} className="bg-brand-card border border-brand-border rounded-2xl overflow-hidden text-[11px]">
+                  <button type="button" onClick={() => setExpandedPositions(v => ({...v,[key]: !(v[key] ?? false)}))}
+                    aria-expanded={isExpanded}
+                    className="w-full p-3 flex items-center justify-between gap-2 text-left">
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className="text-brand-muted">{isExpanded ? "⌄" : "›"}</span>
+                      <span className="font-bold text-sm truncate">{p.symbol}-PERP</span>
+                      <span className="rounded-md border border-brand-border bg-brand-overlay-subtle px-1.5 py-0.5 text-[9px] uppercase">{p.signedSize >= 0 ? "LONG" : "SHORT"}</span>
+                    </span>
+                    <span className="text-right shrink-0">
+                      <span className={"block font-mono font-bold text-sm " + (p.unrealizedPnl === null ? "text-brand-muted" : p.unrealizedPnl < 0 ? "text-rose-400" : "text-emerald-400")}>
+                        {p.unrealizedPnl === null ? "—" : (p.unrealizedPnl < 0 ? "-$" : "+$") + formatPrice(Math.abs(p.unrealizedPnl),2)}
+                      </span>
+                      <span className="block text-brand-muted text-[9px]">Lighter #{a.index}</span>
+                    </span>
+                  </button>
+                  {isExpanded && <div className="p-3 border-t border-brand-border grid grid-cols-2 gap-3">
+                    <div>Position Size<strong className="font-mono block text-brand-text">{formatPrice(Math.abs(p.signedSize),6)} {p.symbol}</strong></div>
+                    <div>Entry Price<strong className="font-mono block text-brand-text">{formatPrice(p.entryPrice)}</strong></div>
+                    <div>Unrealized PnL<strong className="font-mono block text-brand-text">{p.unrealizedPnl === null ? "—" : formatPrice(p.unrealizedPnl,2) + " USDC"}</strong></div>
+                    <div>Margin / Leverage<strong className="font-mono block text-brand-muted">Not verified</strong></div>
+                    <div className="col-span-2 text-brand-muted">TP/SL and Close Position require genuine Lighter account signing. No simulated close actions.</div>
+                  </div>}
+                </div>;
+              })}
             {!walletAddress && <p className="text-xs text-brand-muted">Connect wallet to check Lighter positions.</p>}
           </div>
         )}
