@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Layers, Wallet, TrendingUp, Unlock, Lock, ArrowUpRight, ArrowDownRight, ChevronRight } from "lucide-react";
+import { Layers, Wallet, TrendingUp, Unlock, Lock, ArrowUpRight, ArrowDownRight, ChevronRight, Copy, Check, Eye, EyeOff, BarChart3 } from "lucide-react";
 import { TrustShieldValue } from "../common/TrustShieldValue";
 import { depositLighterUsdcOnEthereum, depositLighterUsdcFromArbitrum, type LighterWalletProvider } from "../../lib/lighterFunding";
 import TVChart from "./TVChart";
@@ -58,6 +58,10 @@ export default function LighterMarketPreview({
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [orderType, setOrderType] = useState<"market" | "limit">("market");
   const [amount, setAmount] = useState("");
+  const [sizeUnit, setSizeUnit] = useState<"USD" | "COIN">("USD");
+  const [hideBalance, setHideBalance] = useState(false);
+  const [copiedAddress, setCopiedAddress] = useState(false);
+  const [bookGroup, setBookGroup] = useState(1);
   const [limitPrice, setLimitPrice] = useState("");
   const [orderBookSizeUnit, setOrderBookSizeUnit] = useState<"USD" | "COIN">("USD");
   const [fundsModal, setFundsModal] = useState<"deposit" | "withdraw" | null>(null);
@@ -176,6 +180,7 @@ export default function LighterMarketPreview({
     setMarketSelectorOpen(false);
     setAmount("");
     setLimitPrice("");
+    setBookGroup(1);
     if (navigate) onSelectSection("trade", m.kind);
   };
   const switchKind = (next: Kind) => {
@@ -200,18 +205,33 @@ export default function LighterMarketPreview({
     if (section === "trade") onSelectSection("trade", next);
   };
 
+  const inputPrice = orderType === "limit" ? Number(limitPrice) : marketPrice;
+  const inputAmount = Number(amount);
+  const sizeInCoin = Number.isFinite(inputAmount) && inputAmount > 0 && inputPrice !== null && inputPrice > 0
+    ? sizeUnit === "USD" ? inputAmount / inputPrice : inputAmount : 0;
+  const orderValueUsd = sizeInCoin && inputPrice ? sizeInCoin * inputPrice : null;
   const bookLevels = (levels: LighterMarketFeed["bids"], sideName: "bid" | "ask") => {
-    const visible = levels.slice(0, 14);
-    const totalSize = Math.max(1, visible.reduce((sum, row) => sum + Math.max(0, displaySize(row.size) ?? 0), 0));
+    // Sum real exchange sizes into rounded price groups; never synthesize levels.
+    const decimalPrecision = Math.min(10, selected?.priceDecimals ?? 2);
+    const tick = Math.pow(10, -decimalPrecision) * bookGroup;
+    const buckets = new Map<number, number>();
+    for (const l of levels) {
+      const px = displayPrice(l.price), sz = displaySize(l.size);
+      if (px === null || sz === null || px <= 0 || sz < 0) continue;
+      const key = Number(((sideName === "ask" ? Math.ceil(px / tick - 1e-7) : Math.floor(px / tick + 1e-7)) * tick).toFixed(decimalPrecision));
+      buckets.set(key, (buckets.get(key) ?? 0) + sz);
+    }
+    const visible = [...buckets.entries()].sort((a,b) => sideName === "ask" ? a[0]-b[0] : b[0]-a[0]).slice(0, 14);
+    const totalSize = Math.max(1, visible.reduce((sum, row) => sum + row[1], 0));
     let cumulative = 0;
     return <div className="space-y-0.5 w-full">
       {visible.length === 0 && <div className="py-2 text-[10px] text-brand-muted">Waiting for live {sideName}s…</div>}
       {visible.map((level, i) => {
-        const px = displayPrice(level.price), sz = displaySize(level.size);
+        const [px, sz] = level;
         cumulative += Math.max(0, sz ?? 0);
         const depth = Math.max(0, Math.min(100, cumulative / totalSize * 100));
         const value = sz !== null && px !== null && orderBookSizeUnit === "USD" ? sz * px : sz;
-        return <button type="button" key={level.price + "-" + i}
+        return <button type="button" key={px + "-" + i}
           onClick={() => { if (px !== null) setLimitPrice(String(px)); }}
           className="relative w-full grid grid-cols-2 gap-1 text-[9px] sm:text-[11px] font-mono py-1 text-left overflow-hidden rounded hover:bg-brand-overlay-subtle">
           <span aria-hidden="true" className={"absolute right-0 top-0 bottom-0 rounded-r pointer-events-none " +
@@ -490,10 +510,19 @@ export default function LighterMarketPreview({
                 className="bg-transparent text-right min-w-0 w-[60%] font-mono text-brand-text focus:outline-none" />}
           </div>
           <div className="flex items-center justify-between border border-brand-border bg-brand-surface rounded-lg p-2 text-[10px]">
-            <label htmlFor="lighter-trade-size" className="font-bold text-brand-muted">SIZE ({selected?.symbol ?? "COIN"})</label>
-            <input id="lighter-trade-size" value={amount} onChange={e => setAmount(e.target.value)}
-              type="number" inputMode="decimal" min="0" placeholder="0.00"
-              className="min-w-0 w-[45%] bg-transparent text-right font-mono text-brand-text focus:outline-none"/>
+            <label htmlFor="lighter-trade-size" className="font-bold text-brand-muted truncate">SIZE ({sizeUnit === "USD" ? "USDC" : selected?.symbol.split("/")[0] ?? "COIN"})</label>
+            <div className="min-w-0 flex items-center justify-end gap-1">
+              <input id="lighter-trade-size" value={amount} onChange={e => setAmount(e.target.value)}
+                type="number" inputMode="decimal" min="0" placeholder="0.00"
+                className="min-w-0 w-[54%] bg-transparent text-right font-mono text-brand-text focus:outline-none"/>
+              <button type="button" className="shrink-0 border border-brand-border rounded px-1 py-1"
+                onClick={() => {
+                  if (inputPrice && inputPrice > 0 && inputAmount > 0)
+                    setAmount(String(Number((sizeUnit === "USD" ? inputAmount / inputPrice : inputAmount * inputPrice).toFixed(6))));
+                  else setAmount("");
+                  setSizeUnit(v => v === "USD" ? "COIN" : "USD");
+                }}>{sizeUnit === "USD" ? "USDC" : "COIN"}</button>
+            </div>
           </div>
           <div className="grid grid-cols-5 gap-1">
             {[10,25,50,75,100].map(percent => <button type="button" key={percent}
@@ -501,22 +530,24 @@ export default function LighterMarketPreview({
               onClick={() => {
                 const available = publicAccounts?.reduce((sum,a)=>sum+(a.availableBalance??0),0)??0;
                 const price = orderType==="limit" ? Number(limitPrice) : marketPrice;
-                if (price && price>0 && available>0) setAmount(String(Math.floor(available*percent/100/price*1000000)/1000000));
+                if (price && price>0 && available>0) setAmount(String(Number((sizeUnit === "USD"
+                  ? available*percent/100 : available*percent/100/price).toFixed(6))));
               }} className="border border-brand-border rounded-lg py-1.5 text-[9px] font-bold text-brand-muted disabled:opacity-40">{percent}%</button>)}
           </div>
-          <div className="border-t border-brand-border pt-3 flex items-center gap-2">
-            <input type="checkbox" disabled aria-label="Reduce Only not available" className="w-4 h-4"/>
-            <span className="font-bold text-[10px] text-brand-muted">Reduce Only (signer required)</span>
-          </div>
-          <div className="border-t border-brand-border pt-3 flex items-center gap-2">
-            <input type="checkbox" disabled aria-label="TP/SL not available" className="w-4 h-4"/>
-            <span className="font-bold text-[10px] text-brand-muted">Take Profit / Stop Loss (signer required)</span>
-          </div>
+          {kind === "perp" && <>
+            <div className="border-t border-brand-border pt-3 flex items-center gap-2">
+              <input type="checkbox" disabled aria-label="Reduce Only unavailable until Lighter signer registration" className="w-4 h-4"/>
+              <span className="font-bold text-[10px] text-brand-muted">Reduce Only</span>
+            </div>
+            <div className="border-t border-brand-border pt-3 flex items-center gap-2">
+              <input type="checkbox" disabled aria-label="TP/SL unavailable until Lighter signer registration" className="w-4 h-4"/>
+              <span className="font-bold text-[10px] text-brand-muted">Take Profit / Stop Loss</span>
+            </div>
+          </>
           <div className="bg-brand-bg/50 border border-brand-border rounded-lg p-1.5 font-mono text-[9px] space-y-1 mt-auto">
             {kind === "perp" && <div className="flex justify-between text-brand-muted"><span>Liq. Price</span><span>—</span></div>}
             <div className="flex justify-between text-brand-muted"><span>Order Value</span>
-              <span>{Number(amount)>0 && marketPrice
-                ? "$"+formatPrice(Number(amount)*(orderType==="limit"&&Number(limitPrice)>0?Number(limitPrice):marketPrice),2):"—"}</span>
+              <span>{orderValueUsd !== null ? "$" + formatPrice(orderValueUsd, 2) : "—"}</span>
             </div>
             {kind === "perp" && <div className="flex justify-between text-brand-muted"><span>Margin</span><span>—</span></div>}
           </div>
@@ -528,16 +559,24 @@ export default function LighterMarketPreview({
           </button>
           <p className="text-[9px] leading-tight text-amber-600">Lighter signing is not connected. This form cannot place a real order.</p>
         </div>
-        <div id="terminal-order-book" className="col-span-5 min-w-0 rounded-xl border border-brand-border bg-brand-bg p-1.5 sm:p-3">
+        <div id="terminal-order-book" className="col-span-5 min-w-0 self-start rounded-xl border border-brand-border bg-brand-bg p-1.5 sm:p-3">
           <div className="flex items-center justify-between gap-1 mb-2">
             <strong className="text-[9px] text-brand-muted uppercase">Price</strong>
             <button type="button" onClick={() => setOrderBookSizeUnit(v => v === "USD" ? "COIN" : "USD")}
               className="text-[9px] uppercase font-bold text-brand-muted">Size <span className="text-cyan-500 border border-brand-border rounded px-1">{orderBookSizeUnit === "USD" ? "$" : selected?.symbol ?? "COIN"}</span></button>
           </div>
-          <div className="max-h-[340px] overflow-auto">{bookLevels(feed.asks.slice(0, 7).reverse(), "ask")}
+          <div className="max-h-[470px] overflow-y-auto overflow-x-hidden">{bookLevels(feed.asks.slice(0, 10).reverse(), "ask")}
             <div className="text-center py-2 border-y border-brand-border font-mono text-[10px] text-accent">
               {formatPrice(marketPrice)}
-            </div>{bookLevels(feed.bids.slice(0, 7), "bid")}</div>
+              <span className="block text-[9px] uppercase text-brand-muted">Last price</span>
+            </div>{bookLevels(feed.bids.slice(0, 10), "bid")}</div>
+          <div className="mt-2 pt-2 border-t border-brand-border flex justify-between items-center text-[9px] font-bold text-brand-muted">
+            <span>GROUP</span>
+            <select aria-label="Lighter order book grouping" value={bookGroup} onChange={e => setBookGroup(Number(e.target.value))}
+              className="bg-brand-bg border border-brand-border rounded px-1 py-1 text-brand-text">
+              <option value={1}>1</option><option value={10}>10</option><option value={100}>100</option>
+            </select>
+          </div>
         </div>
       </div>
       {lighterAccountTabs}
@@ -549,25 +588,45 @@ export default function LighterMarketPreview({
       const verifiedAvailable = publicAccounts !== null && publicAccounts.every(a => a.availableBalance !== null)
         ? publicAccounts.reduce((total, a) => total + (a.availableBalance ?? 0), 0) : null;
       const showBalance = (value: number | null) =>
-        <TrustShieldValue fieldKey="portfolio" value={value === null ? "—" : formatPrice(value, 6) + " USDC"} hideEyeIcon />;
+        <TrustShieldValue fieldKey="portfolio" value={hideBalance ? "••••••" : value === null ? "—" : formatPrice(value, 2) + " USDC"} hideEyeIcon />;
+      const spotAssets = publicAccounts?.flatMap(a => a.assets ?? []) ?? [];
+      const spotAvailable = publicAccounts !== null && publicAccounts.every(a => a.assets !== null)
+        ? spotAssets.filter(a => a.symbol === "USDC").reduce((sum, a) => sum + a.balance, 0)
+        : null;
+      const unrealizedPnl = publicAccounts !== null && publicAccounts.every(a => a.positions.every(p => p.unrealizedPnl !== null))
+        ? publicAccounts.flatMap(a => a.positions).reduce((sum, p) => sum + (p.unrealizedPnl ?? 0), 0) : null;
       return <div id="funds-portfolio-container" className="space-y-2.5 sm:space-y-3 text-brand-text font-sans bg-brand-bg px-2.5 pt-1 pb-0 sm:px-4 sm:pt-2 sm:pb-2 rounded-3xl max-w-4xl mx-auto w-full">
         <div className="relative bg-brand-surface border border-brand-border/70 rounded-2xl sm:rounded-3xl p-3.5 sm:p-5 overflow-hidden shadow-sm" id="funds-hero-card">
           <div className="absolute top-0 right-0 w-80 h-80 bg-accent/5 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20" />
           <div className="relative flex items-center justify-between gap-2">
-            <span className="text-[10px] sm:text-xs font-bold text-brand-muted uppercase tracking-wider">TOTAL FUNDS</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] sm:text-xs font-bold text-brand-muted uppercase tracking-wider">TOTAL FUNDS</span>
+              <button type="button" className="p-1 text-brand-muted" onClick={() => setHideBalance(x => !x)} aria-label={hideBalance ? "Show balances" : "Hide balances"}>
+                {hideBalance ? <EyeOff className="w-3.5 h-3.5"/> : <Eye className="w-3.5 h-3.5"/>}
+              </button>
+            </div>
             <span className="flex items-center gap-1 px-2.5 py-1 rounded-xl bg-brand-overlay-subtle border border-brand-border/60 text-[11px] font-semibold">
               <Layers className="w-3.5 h-3.5 text-accent" /> Lighter Account
             </span>
           </div>
           <div className="relative mt-2 sm:mt-3">
             <div className="text-2xl sm:text-4xl md:text-5xl font-black font-mono tracking-tight text-brand-text">{showBalance(verifiedCollateral)}</div>
-            <div className="text-[11px] sm:text-sm font-mono text-brand-muted mt-1">Verified Lighter collateral · USDC</div>
+            <div className="text-[11px] sm:text-sm font-mono text-brand-muted mt-1">{hideBalance ? "≈ •••••" :
+              verifiedCollateral === null ? "—" : "≈ " + formatPrice(verifiedCollateral, 2) + " USD"}</div>
           </div>
           <div className="relative grid grid-cols-2 max-[359px]:grid-cols-1 gap-2 mt-3 sm:mt-4">
             <div className="flex items-center gap-2 sm:gap-3 p-2 sm:p-2.5 rounded-xl bg-brand-overlay-subtle border border-brand-border/50 min-w-0">
               <Wallet className="w-5 h-5 shrink-0 text-accent" />
               <div className="min-w-0"><div className="text-[9px] uppercase font-bold text-brand-muted">WALLET ADDRESS</div>
-                <div className="text-xs font-bold font-mono truncate">{walletAddress ? walletAddress.slice(0, 8) + "…" : "Not connected"}</div>
+                <div className="flex gap-1 items-center min-w-0">
+                  <span className="text-xs font-bold font-mono truncate">{walletAddress ? walletAddress.slice(0, 6) + "…" : "Not connected"}</span>
+                  {walletAddress && <button type="button" onClick={async () => {
+                    try { await navigator.clipboard.writeText(walletAddress); setCopiedAddress(true); }
+                    catch { setCopiedAddress(false); }
+                  }} aria-label="Copy wallet address" className="text-brand-muted shrink-0">
+                    {copiedAddress ? <Check className="w-3 h-3"/> : <Copy className="w-3 h-3"/>}
+                  </button>}
+                </div>
               </div>
             </div>
             <div className="flex items-center gap-2 sm:gap-3 p-2 sm:p-2.5 rounded-xl bg-brand-overlay-subtle border border-brand-border/50 min-w-0">
@@ -597,8 +656,8 @@ export default function LighterMarketPreview({
         </div>
         <div className="grid grid-cols-2 max-[359px]:grid-cols-1 gap-2 sm:gap-3" id="balances-grid-display">
           {[
-            {title:"SPOT AVAILABLE",subtitle:"Separate Lighter spot balance not verified",value:null,icon:<Wallet className="w-4 h-4"/>},
-            {title:"PERPETUAL COLLATERAL",subtitle:"Verified Lighter collateral",value:verifiedCollateral,icon:<TrendingUp className="w-4 h-4"/>},
+            {title:"SPOT AVAILABLE",subtitle:"Lighter Spot USDC (separate)",value:spotAvailable,icon:<Wallet className="w-4 h-4"/>},
+            {title:"PERPETUAL BALANCE",subtitle:"Verified Lighter Perp collateral",value:verifiedCollateral,icon:<TrendingUp className="w-4 h-4"/>},
             {title:"AVAILABLE FOR TRADE",subtitle:"Exchange-reported available balance",value:verifiedAvailable,icon:<Unlock className="w-4 h-4"/>},
             {title:"MARGIN IN TRADE",subtitle:"Locked margin not independently verified",value:null,icon:<Lock className="w-4 h-4"/>},
           ].map(row => <div key={row.title}
@@ -611,7 +670,44 @@ export default function LighterMarketPreview({
               <div className="text-[9px] sm:text-[11px] font-mono text-brand-muted leading-tight">{row.subtitle}</div>
             </div>)}
         </div>
-        <p className="text-[10px] text-brand-muted px-1">Lighter account amounts only. Unsupported spot/margin details remain unavailable—not estimated or copied from Hyperliquid. Ethereum USDC deposits can be signed from HideDex. Withdrawals still require verified per-user Lighter authorization.</p>
+        <p className="text-xs text-brand-muted px-1 leading-relaxed">Spot assets and perpetual collateral are distinct. All numbers use Lighter account responses, not Hyperliquid data. Unknown margin or history fields are not estimated.</p>
+        <section className="rounded-2xl border border-brand-border bg-brand-surface p-3.5 sm:p-5 space-y-4">
+          <h3 className="text-sm sm:text-base font-black uppercase flex items-center gap-2"><Layers className="w-4 h-4 text-accent"/> ASSET ALLOCATION</h3>
+          <div className="flex gap-4 sm:gap-6 items-center">
+            <div className="w-28 h-28 sm:w-36 sm:h-36 rounded-full border-[15px] sm:border-[19px] border-emerald-500 flex flex-col items-center justify-center shrink-0">
+              <span className="text-[9px] text-brand-muted font-bold">PERP</span>
+              <strong className="font-mono">{hideBalance ? "••••" : formatPrice(verifiedCollateral, 2)}</strong>
+              <span className="text-[9px] text-brand-muted">USDC</span>
+            </div>
+            <div className="flex-1 min-w-0 space-y-3 text-[11px]">
+              <div className="flex justify-between gap-2 border-b border-brand-border pb-2"><span className="text-brand-muted">Perp Collateral</span><strong>{showBalance(verifiedCollateral)}</strong></div>
+              <div className="flex justify-between gap-2"><span className="text-brand-muted">Spot USDC</span><strong>{showBalance(spotAvailable)}</strong></div>
+              <p className="text-brand-muted">Other Spot asset quantities appear below; unsupported USD valuations are omitted.</p>
+            </div>
+          </div>
+        </section>
+        <section className="rounded-2xl border border-brand-border bg-brand-surface p-3.5 sm:p-5 space-y-4">
+          <h3 className="text-sm sm:text-base font-black uppercase">PERFORMANCE ANALYTICS & FEES</h3>
+          <p className="text-[11px] text-brand-muted flex gap-2 items-center"><BarChart3 className="w-4 h-4"/> Verified Lighter account data only</p>
+          <div className="grid grid-cols-2 gap-2 sm:gap-3">
+            {[
+              {label:"UNREALIZED PNL",value:unrealizedPnl === null ? "—" : (unrealizedPnl < 0 ? "-$" : "$") + formatPrice(Math.abs(unrealizedPnl),2)},
+              {label:"TOTAL VOLUME",value:"—"},
+              {label:"FEES (LOADED FILLS)",value:"—"},
+              {label:"EXECUTED ORDERS",value:"—"}
+            ].map(item => <div key={item.label} className="rounded-xl border border-brand-border p-3 min-w-0">
+              <span className="block text-[10px] text-brand-muted font-bold uppercase truncate">{item.label}</span>
+              <strong className="block text-lg font-mono mt-2">{hideBalance ? "••••" : item.value}</strong>
+            </div>)}
+          </div>
+          <div className="h-32 sm:h-40 border border-dashed border-brand-border rounded-xl px-3 flex items-center justify-center text-xs text-center text-brand-muted">
+            Verified Lighter equity timeseries has not been loaded. No fake PnL graph is drawn.
+          </div>
+        </section>
+        <section className="rounded-2xl border border-brand-border bg-brand-surface p-3.5 sm:p-5">
+          <h3 className="text-sm sm:text-base font-black uppercase mb-2">DAILY TRADING VOLUME <span className="text-xs font-normal text-brand-muted">(LOADED FILLS)</span></h3>
+          <p className="text-xs text-brand-muted">Verified Lighter historical fills are not yet loaded; volume is not estimated.</p>
+        </section>
         {lighterAssetCards}
       </div>;
     })()}
