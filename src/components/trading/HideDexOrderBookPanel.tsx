@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import { ChevronDown } from "lucide-react";
 
 export type HideDexBookLevel = {price:number;size:number;total:number};
@@ -12,7 +12,9 @@ export interface HideDexOrderBookPanelProps {
  onToggleSizeUnit: () => void;
  onSelectPrice: (price:number) => void;
  formatPrice: (price:number) => string;
+ formatMidPrice?: (price:number) => string;
  formatSize: (price:number,size:number) => string;
+ asksContainerRef?: React.Ref<HTMLDivElement>;
  group: string;
  groupOptions: readonly string[];
  onGroup: (group:string) => void;
@@ -57,12 +59,12 @@ export default function HideDexOrderBookPanel(props:HideDexOrderBookPanelProps) 
          </span>
        </button>
      </div>
-     <div className="flex-1 flex flex-col justify-end overflow-hidden min-h-0 pr-0.5" id="orderbook-asks-container">
+     <div ref={props.asksContainerRef} className="flex-1 flex flex-col justify-end overflow-hidden min-h-0 pr-0.5" id="orderbook-asks-container">
        {displayRows(props.asks,"SELL")}
      </div>
      <div className="border-y border-brand-border py-1 my-0.5 text-center flex flex-col items-center justify-center bg-brand-bg/50 rounded-lg flex-shrink-0" id="orderbook-spread-row">
        <span className="font-mono font-bold text-xs md:text-base text-[#18c29c] leading-none">
-         {props.midPrice != null && props.midPrice>0 ? "$"+props.formatPrice(props.midPrice) : "--"}
+         {props.midPrice != null && props.midPrice>0 ? "$"+(props.formatMidPrice?.(props.midPrice) ?? props.formatPrice(props.midPrice)) : "--"}
        </span>
        <span className="text-[7px] md:text-[9px] font-bold text-gray-500 uppercase tracking-widest mt-0.5">{props.midLabel}</span>
      </div>

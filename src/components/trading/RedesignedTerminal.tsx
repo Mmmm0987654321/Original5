@@ -5491,6 +5491,8 @@ export default function RedesignedTerminal({
           onSelectPrice={handleOrderBookRowClick}
           formatPrice={p => p.toLocaleString(undefined,{minimumFractionDigits:symbol==="PURR"?3:1})}
           formatSize={(p,size)=>formatTerminalOrderBookSize(p,size)}
+          formatMidPrice={p=>p.toLocaleString(undefined,{minimumFractionDigits:symbol==="PURR"?4:2})}
+          asksContainerRef={terminalAsksRef}
           group={aggregation}
           groupOptions={["0.01","0.1","1","2","5","10"]}
           onGroup={setAggregation}

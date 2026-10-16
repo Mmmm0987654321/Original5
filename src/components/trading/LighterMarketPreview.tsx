@@ -1031,7 +1031,7 @@ export default function LighterMarketPreview({
         : null;
       const unrealizedPnl = publicAccounts !== null && publicAccounts.every(a => a.positions.every(p => p.unrealizedPnl !== null))
         ? publicAccounts.flatMap(a => a.positions).reduce((sum, p) => sum + (p.unrealizedPnl ?? 0), 0) : null;
-      return <div id="funds-portfolio-container" className="space-y-2.5 sm:space-y-3 text-brand-text font-sans bg-brand-bg px-2.5 pt-1 pb-0 sm:px-4 sm:pt-2 sm:pb-2 rounded-3xl max-w-4xl mx-auto w-full">
+      return <div id="funds-portfolio-container" className="space-y-3 sm:space-y-4 text-brand-text font-sans bg-brand-bg px-3 pt-2 pb-2 sm:p-4 sm:pb-8 rounded-3xl max-w-4xl mx-auto w-full">
         <HideDexFundsOverview
           totalLabel="TOTAL FUNDS"
           totalValue={showBalance(verifiedCollateral)}
