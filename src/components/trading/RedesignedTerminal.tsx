@@ -4916,15 +4916,6 @@ export default function RedesignedTerminal({
                     checked={isTpSlEnabled} onChange={setIsTpSlEnabled}/>
 
                   {isTpSlEnabled && (
-                        <div className="w-[8px] h-[8px] rounded-[1.5px] bg-[#18c29c]" />
-                      )}
-                    </div>
-                    <span className="text-[11px] md:text-[12px] font-bold text-brand-text tracking-wide font-sans">
-                      Take Profit / Stop Loss
-                    </span>
-                  </div>
-
-                  {isTpSlEnabled && (
                     <div className="grid grid-cols-2 gap-1.5 md:gap-2 animate-in fade-in slide-in-from-top-1 duration-150">
                       {/* Take Profit Target Price */}
                       <div className="relative">
