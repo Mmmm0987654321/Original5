@@ -15,6 +15,7 @@ import TVChart from "./TVChart";
 import MarketsPanel from "../dashboard/MarketsPanel";
 import TradingAccountTabBar, { type TradingTabId } from "./TradingAccountTabBar";
 import HideDexPositionHeader from "./HideDexPositionHeader";
+import HideDexPositionDetails from "./HideDexPositionDetails";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
 import HideDexOrderBookPanel, {type HideDexBookLevel} from "./HideDexOrderBookPanel";
 import HideDexMobileMarketHeader from "./HideDexMobileMarketHeader";
@@ -654,21 +655,31 @@ export default function LighterMarketPreview({
                     pnl={p.unrealizedPnl}
                     roi={null}
                   />
-                  {isExpanded && <div className="p-3 border-t border-brand-border grid grid-cols-2 gap-3">
-                    <div>Position Size<strong className="font-mono block text-brand-text">{formatPrice(Math.abs(p.signedSize),6)} {p.symbol}</strong></div>
-                    <div>Entry Price<strong className="font-mono block text-brand-text">{formatPrice(p.entryPrice)}</strong></div>
-                    <div>Unrealized PnL<strong className="font-mono block text-brand-text">{p.unrealizedPnl === null ? "—" : formatPrice(p.unrealizedPnl,2) + " USDC"}</strong></div>
-                    <div>Margin / Leverage<strong className="font-mono block text-brand-muted">Not verified</strong></div>
-                    <div className="col-span-2 flex items-center justify-between gap-2 border-t border-brand-border pt-3">
-                      <span className="text-brand-muted">TP/SL: Native bracket support on new Perp orders</span>
-                      <button type="button"
-                        onClick={() => closeLighterPosition(a.index,p.symbol,p.signedSize)}
-                        disabled={tradingBusy || !tradingIdentity || tradingIdentity.accountIndex !== a.index}
-                        className="px-2 py-1.5 rounded-lg border border-rose-500/40 text-rose-400 font-bold disabled:opacity-30 shrink-0">
-                        Close 100%
+                  {isExpanded && <HideDexPositionDetails
+                    left={[
+                      {label:"Position Size",value:formatPrice(Math.abs(p.signedSize),6)+" "+p.symbol,
+                        hint:p.entryPrice>0 ? "($"+formatPrice(Math.abs(p.signedSize)*p.entryPrice,1)+")" : undefined},
+                      {label:"Entry Price",value:p.entryPrice>0?"$"+formatPrice(p.entryPrice):"—"},
+                      {label:"Margin Ratio",value:"—",tone:"muted"},
+                      {label:"Liquidation Price",value:"—",tone:"muted"},
+                    ]}
+                    right={[
+                      {label:"Margin",value:"—",tone:"muted"},
+                      {label:"Mark Price",value:"—",tone:"muted"},
+                      {label:"TP / SL Target",value:"Not verified",tone:"muted"},
+                    ]}
+                    actions={<>
+                      <button type="button" disabled title="Existing-position TP/SL attachment is not verified for Lighter"
+                        className="w-full h-8 px-1 rounded-lg border bg-brand-overlay-subtle border-brand-primary/30 text-brand-primary text-[8px] sm:text-[10px] font-extrabold uppercase tracking-widest disabled:opacity-40">
+                        TP/SL
                       </button>
-                    </div>
-                  </div>}
+                      <button type="button" onClick={()=>closeLighterPosition(a.index,p.symbol,p.signedSize)}
+                        disabled={tradingBusy || !tradingIdentity || tradingIdentity.accountIndex!==a.index}
+                        className="w-full h-8 px-1 rounded-lg border bg-brand-loss/10 hover:bg-brand-loss/20 border-brand-loss/30 text-brand-loss text-[8px] sm:text-[10px] font-extrabold uppercase tracking-widest disabled:opacity-40">
+                        Close
+                      </button>
+                    </>}
+                  />}
                 </div>;
               })}
             {!walletAddress && <p className="text-xs text-brand-muted">Connect wallet to check Lighter positions.</p>}

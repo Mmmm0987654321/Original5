@@ -1,5 +1,6 @@
 import TradingAccountTabBar from "./TradingAccountTabBar";
 import HideDexPositionHeader from "./HideDexPositionHeader";
+import HideDexPositionDetails from "./HideDexPositionDetails";
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -772,75 +773,20 @@ export default function TradingDashboardTabs({
                     />
 
                     {isExpanded && (
-                      <div className="flex flex-col gap-3 pt-2.5 border-t border-brand-divider/30 animate-fadeIn duration-150">
-                        {/* 2-Column Side-by-Side Layout to optimize vertical spacing of the right column without affecting the left column */}
-                        <div className="grid grid-cols-2 gap-x-8 sm:gap-x-12 text-[10.5px] w-full px-0.5">
-                          
-                          {/* Left Column - 4 fields with exact existing spacing and position */}
-                          <div className="space-y-3">
-                            {/* Position Size */}
-                            <div className="flex flex-col">
-                              <span className="text-brand-muted uppercase text-[8px] sm:text-[9px] font-bold tracking-wider">Position Size</span>
-                              <span className="font-bold text-brand-text text-[11px] sm:text-[12px] mt-0.5 leading-tight">
-                                {pos.size} {pos.symbol}
-                              </span>
-                              <span className="text-[10px] text-brand-muted font-normal mt-0.5">
-                                (${(pos.size * pos.entryPrice).toLocaleString(undefined, { maximumFractionDigits: 1 })})
-                              </span>
-                            </div>
-
-                            {/* Entry Price */}
-                            <div className="flex flex-col">
-                              <span className="text-brand-muted uppercase text-[8px] sm:text-[9px] font-bold tracking-wider">Entry Price</span>
-                              <span className="font-bold text-brand-text text-[11px] sm:text-[12px] mt-0.5 leading-tight">
-                                ${pos.entryPrice.toLocaleString(undefined, { minimumFractionDigits: 1 })}
-                              </span>
-                            </div>
-
-                            {/* Margin Ratio */}
-                            <div className="flex flex-col">
-                              <span className="text-brand-muted uppercase text-[8px] sm:text-[9px] font-bold tracking-wider">Margin Ratio</span>
-                              <span className={`font-bold text-[11px] sm:text-[12px] mt-0.5 leading-tight ${
-                                marginRatio > 80 ? "text-brand-loss animate-pulse" : marginRatio > 50 ? "text-amber-400" : "text-brand-profit"
-                              }`}>
-                                {marginRatio.toFixed(2)}%
-                              </span>
-                            </div>
-
-                            {/* Liquidation Price */}
-                            <div className="flex flex-col">
-                              <span className="text-brand-muted uppercase text-[8px] sm:text-[9px] font-bold tracking-wider">Liquidation Price</span>
-                              <span className="font-bold text-brand-loss text-[11px] sm:text-[12px] mt-0.5 leading-tight">
-                                {pos.liqPrice > 0 ? `$${pos.liqPrice.toLocaleString(undefined, { minimumFractionDigits: 1 })}` : "None"}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Right Column - 3 fields vertically optimized with compact, balanced spacing */}
-                          <div className="flex flex-col gap-y-3 pt-0">
-                            {/* Margin */}
-                            <div className="flex flex-col">
-                              <span className="text-brand-muted uppercase text-[8px] sm:text-[9px] font-bold tracking-wider">Margin</span>
-                              <span className="font-bold text-brand-text text-[11px] sm:text-[12px] mt-0.5 leading-tight">
-                                ${pos.margin.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </span>
-                            </div>
-
-                            {/* Mark Price */}
-                            <div className="flex flex-col">
-                              <span className="text-brand-muted uppercase text-[8px] sm:text-[9px] font-bold tracking-wider">Mark Price</span>
-                              <span className="font-bold text-brand-text text-[11px] sm:text-[12px] mt-0.5 leading-tight">
-                                {Number.isFinite(pos.markPrice) && pos.markPrice > 0
-                                  ? `$${pos.markPrice.toLocaleString(undefined, { minimumFractionDigits: 1 })}`
-                                  : "--"}
-                              </span>
-                            </div>
-
-                            {/* TP/SL Target */}
-                            <div className="flex flex-col">
-                              <span className="text-brand-muted uppercase text-[8px] sm:text-[9px] font-bold tracking-wider">TP / SL Target</span>
-                              <div className="font-bold text-brand-text text-[10px] sm:text-[11.5px] mt-0.5 leading-tight">
-                                {(() => {
+                      <HideDexPositionDetails
+                        left={[
+                          {label:"Position Size",value:`${pos.size} ${pos.symbol}`,
+                            hint:`($${(pos.size*pos.entryPrice).toLocaleString(undefined,{maximumFractionDigits:1})})`},
+                          {label:"Entry Price",value:"$"+pos.entryPrice.toLocaleString(undefined,{minimumFractionDigits:1})},
+                          {label:"Margin Ratio",value:marginRatio.toFixed(2)+"%",
+                            tone:marginRatio>80?"loss":marginRatio>50?"normal":"profit"},
+                          {label:"Liquidation Price",value:pos.liqPrice>0?"$"+pos.liqPrice.toLocaleString(undefined,{minimumFractionDigits:1}):"None",tone:"loss"},
+                        ]}
+                        right={[
+                          {label:"Margin",value:"$"+pos.margin.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})},
+                          {label:"Mark Price",value:Number.isFinite(pos.markPrice)&&pos.markPrice>0 ?
+                            "$"+pos.markPrice.toLocaleString(undefined,{minimumFractionDigits:1}):"--"},
+                          {label:"TP / SL Target",value:{(() => {
                                   const posKey = pos.sourceCoin || pos.symbol;
                                   const matchingTriggers = posKey
                                     ? openOrders.filter((order) => {
@@ -875,30 +821,19 @@ export default function TradingDashboardTabs({
                                       })}
                                     </div>
                                   );
-                                })()}
-                              </div>
-                            </div>
-                          </div>
-
-                        </div>
-
-                        {/* Standardized, Identically-Sized 2 Action Buttons in a perfect grid */}
-                        <div className="grid grid-cols-2 gap-1.5 border-t border-brand-divider/30 pt-2 mt-0.5">
-                          <button
-                            onClick={() => handleOpenTpSlModal(pos)}
-                            className="w-full h-8 px-1 rounded-lg border bg-brand-overlay-subtle hover:bg-brand-overlay-normal border-brand-primary/30 hover:border-brand-primary/50 text-brand-primary text-[8px] sm:text-[10px] font-extrabold uppercase tracking-widest flex items-center justify-center text-center transition-all duration-150 cursor-pointer active:scale-95 select-none disabled:opacity-50"
-                          >
+                                })()}},
+                        ]}
+                        actions={<>
+                          <button type="button" onClick={()=>handleOpenTpSlModal(pos)}
+                            className="w-full h-8 px-1 rounded-lg border bg-brand-overlay-subtle hover:bg-brand-overlay-normal border-brand-primary/30 hover:border-brand-primary/50 text-brand-primary text-[8px] sm:text-[10px] font-extrabold uppercase tracking-widest flex items-center justify-center text-center transition-all duration-150 cursor-pointer active:scale-95 select-none">
                             TP/SL
                           </button>
-                          
-                          <button
-                            onClick={() => setSelectedClosePosition(pos)}
-                            className="w-full h-8 px-1 rounded-lg border bg-brand-loss/10 hover:bg-brand-loss/20 border-brand-loss/30 hover:border-brand-loss/50 text-brand-loss text-[8px] sm:text-[10px] font-extrabold uppercase tracking-widest flex items-center justify-center text-center transition-all duration-150 cursor-pointer active:scale-95 select-none disabled:opacity-50"
-                          >
+                          <button type="button" onClick={()=>setSelectedClosePosition(pos)}
+                            className="w-full h-8 px-1 rounded-lg border bg-brand-loss/10 hover:bg-brand-loss/20 border-brand-loss/30 hover:border-brand-loss/50 text-brand-loss text-[8px] sm:text-[10px] font-extrabold uppercase tracking-widest flex items-center justify-center transition-all duration-150 cursor-pointer active:scale-95 select-none">
                             Close
                           </button>
-                        </div>
-                      </div>
+                        </>}
+                      />
                     )}
                   </div>
                 );
