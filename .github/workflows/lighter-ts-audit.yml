@@ -1,0 +1,23 @@
+name: Lighter mainnet integration type audit
+on:
+  push:
+    branches:
+      - audit/lighter-signer-tscheck-20261016
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c24ca95254b3ba
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+          cache: npm
+      - name: Verify pinned install
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Typecheck application
+        run: npx tsc --noEmit --pretty false
