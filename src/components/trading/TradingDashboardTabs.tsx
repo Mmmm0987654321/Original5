@@ -437,19 +437,15 @@ export default function TradingDashboardTabs({
   }, [walletConnected, fundingHistory]);
 
   return (
-    <div className="bg-brand-bg border border-brand-border rounded-xl overflow-hidde      <TradingAccountTabBar
+    <div className="bg-brand-bg border border-brand-border rounded-xl overflow-hidden shadow-xl" id="terminal-dashboard-panel-unified">
+      
+      <TradingAccountTabBar
         activeTab={activeBottomTab as "BALANCES" | "POSITIONS" | "OPEN_ORDERS" | "TRADE_HISTORY"}
         onSelect={setActiveBottomTab}
         positionsCount={filteredPositions.length}
         ordersCount={filteredOrders.length}
         isFieldHidden={isFieldHidden}
       />
-
-
-            );
-          })}
-        </div>
-      </div>
 
       {/* Sub-Header Row: Balances - Close All Spot */}
       {activeBottomTab === "BALANCES" && typeof onCloseAllSpotPositions === "function" && hasAvailableSpotToClose === true && (
