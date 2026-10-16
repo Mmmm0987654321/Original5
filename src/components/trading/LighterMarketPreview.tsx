@@ -54,6 +54,7 @@ export default function LighterMarketPreview({
   const [orderType, setOrderType] = useState<"market" | "limit">("market");
   const [amount, setAmount] = useState("");
   const [limitPrice, setLimitPrice] = useState("");
+  const [orderBookSizeUnit, setOrderBookSizeUnit] = useState<"USD" | "COIN">("USD");
 
   // Market/Funds/Account navigation must not reset the user's selected Lighter spot/perp kind.
   // Explicit Trade routing is the only place where App's chosen mode takes precedence.
@@ -151,21 +152,29 @@ export default function LighterMarketPreview({
     setLimitPrice("");
   };
 
-  const bookLevels = (levels: LighterMarketFeed["bids"], sideName: "bid" | "ask") => (
-    <div className="space-y-0.5">
-      {levels.length === 0 && <div className="py-2 text-[10px] text-brand-muted">Waiting for live {sideName}s…</div>}
-      {levels.slice(0, 14).map((level, i) => {
-        const px = displayPrice(level.price);
-        const sz = displaySize(level.size);
+  const bookLevels = (levels: LighterMarketFeed["bids"], sideName: "bid" | "ask") => {
+    const visible = levels.slice(0, 14);
+    const totalSize = Math.max(1, visible.reduce((sum, row) => sum + Math.max(0, displaySize(row.size) ?? 0), 0));
+    let cumulative = 0;
+    return <div className="space-y-0.5 w-full">
+      {visible.length === 0 && <div className="py-2 text-[10px] text-brand-muted">Waiting for live {sideName}s…</div>}
+      {visible.map((level, i) => {
+        const px = displayPrice(level.price), sz = displaySize(level.size);
+        cumulative += Math.max(0, sz ?? 0);
+        const depth = Math.max(0, Math.min(100, cumulative / totalSize * 100));
+        const value = sz !== null && px !== null && orderBookSizeUnit === "USD" ? sz * px : sz;
         return <button type="button" key={level.price + "-" + i}
           onClick={() => { if (px !== null) setLimitPrice(String(px)); }}
-          className="grid grid-cols-2 w-full gap-1 text-[9px] sm:text-[11px] font-mono py-1 text-left hover:bg-brand-overlay-subtle rounded">
-          <span className={sideName === "bid" ? "text-emerald-500" : "text-rose-400"}>{formatPrice(px)}</span>
-          <span className="text-right text-brand-muted truncate">{formatPrice(sz, 4)}</span>
+          className="relative w-full grid grid-cols-2 gap-1 text-[9px] sm:text-[11px] font-mono py-1 text-left overflow-hidden rounded hover:bg-brand-overlay-subtle">
+          <span aria-hidden="true" className={"absolute right-0 top-0 bottom-0 rounded-r pointer-events-none " +
+            (sideName === "bid" ? "bg-emerald-500/20" : "bg-rose-500/20")} style={{ width: depth + "%" }}/>
+          <span className={"relative z-10 font-bold " + (sideName === "bid" ? "text-emerald-500" : "text-rose-400")}>{formatPrice(px, selected?.priceDecimals ?? 8)}</span>
+          <span className="relative z-10 text-right text-brand-text truncate">{value === null ? "—" :
+            (orderBookSizeUnit === "USD" ? "$" : "") + formatPrice(value, orderBookSizeUnit === "USD" ? 2 : 5)}</span>
         </button>;
       })}
-    </div>
-  );
+    </div>;
+  };
 
   const accountCards = (
     <div className="space-y-3">
@@ -425,9 +434,11 @@ export default function LighterMarketPreview({
           <p className="text-[9px] leading-tight text-amber-600">Lighter signing is not connected. This form cannot place a real order.</p>
         </div>
         <div id="terminal-order-book" className="col-span-5 min-w-0 rounded-xl border border-brand-border bg-brand-bg p-1.5 sm:p-3">
-          <div className="text-xs font-bold mb-2">Order Book</div>
-          <div className="grid grid-cols-2 gap-1 text-[9px] font-mono font-bold border-b border-brand-border pb-2 mb-1">
-            <span>Bid</span><span className="text-right">Size</span></div>
+          <div className="flex items-center justify-between gap-1 mb-2">
+            <strong className="text-[9px] text-brand-muted uppercase">Price</strong>
+            <button type="button" onClick={() => setOrderBookSizeUnit(v => v === "USD" ? "COIN" : "USD")}
+              className="text-[9px] uppercase font-bold text-brand-muted">Size <span className="text-cyan-500 border border-brand-border rounded px-1">{orderBookSizeUnit === "USD" ? "$" : selected?.symbol ?? "COIN"}</span></button>
+          </div>
           <div className="max-h-[340px] overflow-auto">{bookLevels(feed.asks.slice(0, 7).reverse(), "ask")}
             <div className="text-center py-2 border-y border-brand-border font-mono text-[10px] text-accent">
               {formatPrice(marketPrice)}
