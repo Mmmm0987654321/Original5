@@ -1517,7 +1517,9 @@ function TVChartComponent({
           /* Neutral No-Candle Placeholder */
           <div className="absolute inset-0 flex flex-col items-center justify-center text-gray-500 font-mono text-xs z-10">
             <Activity className="w-5 h-5 text-gray-600 mb-1 animate-pulse" />
-            <span>No live candle history available for this market</span>
+            <span className="text-center px-3">{candlesError
+              ? `Candle history unavailable: ${candleFetchError instanceof Error ? candleFetchError.message : "exchange API error"}`
+              : "No recent exchange candles available for this market and interval"}</span>
           </div>
         ) : (
           <div className="relative h-full w-full">

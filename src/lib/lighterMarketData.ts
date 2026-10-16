@@ -90,22 +90,49 @@ export async function getLighterCandles(
   const allowed = new Set(["1m","5m","15m","30m","1h","4h","12h","1d","1w"]);
   if (!allowed.has(resolution)) throw new Error("Lighter does not provide " + resolution + " candles");
   const validRes = resolution;
-  const start = Math.max(0, Math.floor(startMs / 1000));
   const end = Math.floor(endMs / 1000);
+  const start = Math.max(0, Math.floor(startMs / 1000));
   if (end <= start) return { candles: [] };
-  const query = new URLSearchParams({
-    market_id: String(marketId), resolution: validRes,
-    start_timestamp: String(start), end_timestamp: String(end), count_back: "500",
-  });
-  const data = await lighterPublicGet(`/api/v1/candles?${query.toString()}`, signal);
-  const candles = list(data.c).map(raw => {
-    const v = record(raw); if (!v) return null;
-    const t = finite(v.t), o = finite(v.o), h = finite(v.h),
-      l = finite(v.l), c = finite(v.c), vol = finite(v.v);
-    if (t === null || o === null || h === null || l === null || c === null ||
-        o <= 0 || h <= 0 || l <= 0 || c <= 0 || h < l) return null;
-    return { t, o, h, l, c, v: vol !== null && vol >= 0 ? vol : 0 };
-  }).filter((v): v is NonNullable<typeof v> => v !== null);
+  const spanSeconds = Math.max(60, end - start);
+
+  type NormalizedCandle = { t: number; o: number; h: number; l: number; c: number; v: number };
+  const loadWindow = async (from: number): Promise<NormalizedCandle[]> => {
+    const query = new URLSearchParams({
+      market_id: String(marketId),
+      resolution: validRes,
+      start_timestamp: String(from),
+      end_timestamp: String(end),
+      count_back: "500",
+    });
+    const data = await lighterPublicGet(`/api/v1/candles?${query.toString()}`, signal);
+    const unique = new Map<number, NormalizedCandle>();
+    for (const raw of list(data.c)) {
+      const v = record(raw); if (!v) continue;
+      const t = finite(v.t), o = finite(v.o), h = finite(v.h),
+        l = finite(v.l), c = finite(v.c), vol = finite(v.v);
+      if (t === null || o === null || h === null || l === null || c === null ||
+          o <= 0 || h <= 0 || l <= 0 || c <= 0 || h < l) continue;
+      if (t <= 0) continue;
+      unique.set(t, { t, o, h, l, c, v: vol !== null && vol >= 0 ? vol : 0 });
+    }
+    return [...unique.values()].sort((x,y) => x.t-y.t).slice(-500);
+  };
+
+  // Low-volume Lighter markets can have fewer than two 5m bars in a short
+  // window. Expand the REAL exchange OHLC lookback instead of generating or
+  // copying Hyperliquid candles. This also avoids a chart with indicators
+  // from older data but zero visible candlesticks.
+  let candles = await loadWindow(start);
+  if (candles.length < 2) {
+    const earliest = Math.max(0, end - 90 * 86400);
+    for (const factor of [6, 24]) {
+      const from = Math.max(earliest, end - spanSeconds * factor);
+      if (from >= start || from >= end) continue;
+      const extended = await loadWindow(from);
+      if (extended.length > candles.length) candles = extended;
+      if (candles.length >= 2) break;
+    }
+  }
   return { candles };
 }
 
