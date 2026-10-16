@@ -71,7 +71,8 @@ export default function LighterMarketPreview({
       setMarketError(null);
       setSelectedMarketId(current =>
         current !== null && rows.some(row => row.id === current)
-          ? current : (rows.find(row => row.kind === "perp")?.id ?? rows[0]?.id ?? null)
+          ? current : (rows.find(row => row.kind === "perp" && row.symbol === "BTC")?.id
+              ?? rows.find(row => row.kind === "perp")?.id ?? rows[0]?.id ?? null)
       );
     }).catch(error => {
       if (!ac.signal.aborted) setMarketError(error instanceof Error ? error.message : "Lighter markets unavailable");

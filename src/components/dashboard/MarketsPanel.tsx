@@ -536,6 +536,7 @@ export default function MarketsPanel({
                 selectedSymbol={selectedSymbol}
                 onSelectToken={handleSelectAsset}
                 onClose={() => setIsSelectorOpen(false)}
+                initialCategory={lighterMarketId !== undefined && chartIsSpot ? "spot" : undefined}
                 favorites={watchlist ?? []}
                 onToggleFavorite={onToggleWatchlist}
                 externalPricesOnly={lighterMarketId !== undefined}
