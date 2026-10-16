@@ -34,6 +34,8 @@ import { useLiveAssetCtxs, useLivePrices } from "../../providers/WebSocketProvid
 
 import TVChart from "../trading/TVChart";
 import OrderBook from "../trading/OrderBook";
+import TopOrderBookView from "../trading/TopOrderBookView";
+import type { LighterMarketFeed } from "../../lib/lighterMarketData";
 import TradingDashboardTabs from "../trading/TradingDashboardTabs";
 import MarketSelector, {
   renderAssetLogo,
@@ -71,6 +73,10 @@ interface MarketsPanelProps {
   hasBalance?: boolean;
   onSetupRequired?: () => void;
   onSelectOrderBookPrice?: (price: number, mode: "spot" | "perp") => void;
+  lighterMarketId?: number;
+  lighterLastPrice?: number | null;
+  lighterBook?: LighterMarketFeed;
+  lighterAccountSummary?: React.ReactNode;
 }
 
 export default function MarketsPanel({
@@ -102,6 +108,10 @@ export default function MarketsPanel({
   hasBalance = false,
   onSetupRequired = () => {},
   onSelectOrderBookPrice = () => {},
+  lighterMarketId,
+  lighterLastPrice,
+  lighterBook,
+  lighterAccountSummary,
 }: MarketsPanelProps) {
   // Navigation tabs inside the terminal
   const [activeCenterTab, setActiveCenterTab] = useState<"CHART" | "ORDER_BOOK">("CHART");
@@ -230,7 +240,7 @@ export default function MarketsPanel({
         ),
 
     enabled:
-      chartIsSpot &&
+      lighterMarketId === undefined && chartIsSpot &&
       !!chartMarketCoin,
 
     staleTime:
@@ -258,6 +268,7 @@ export default function MarketsPanel({
         const coins:
           string[] = [];
 
+        if (lighterMarketId !== undefined) return [];
         if (
           chartIsSpot
         ) {
@@ -365,7 +376,7 @@ export default function MarketsPanel({
 
   const marketsLiveAssetCtxs =
     useLiveAssetCtxs(
-      !chartIsSpot &&
+      lighterMarketId === undefined && !chartIsSpot &&
       chartMarketCoin
         ? [
             chartMarketCoin
@@ -376,6 +387,10 @@ export default function MarketsPanel({
   const marketsCurrentPrice =
     React.useMemo(
       () => {
+        if (lighterMarketId !== undefined) {
+          return typeof lighterLastPrice === "number" && Number.isFinite(lighterLastPrice) && lighterLastPrice > 0
+            ? lighterLastPrice : currentToken?.price ?? null;
+        }
         let raw:
           unknown = "";
 
@@ -432,12 +447,28 @@ export default function MarketsPanel({
           ?.midPx,
         marketsSpotAssetData
           ?.markPx,
+        lighterMarketId,
+        lighterLastPrice,
+        currentToken?.price,
         marketsLiveAssetCtxs,
         getFreshMarketsLivePrice,
       ],
     );
 
   const isCurrentTokenPerp = currentToken?.openInterest !== undefined;
+  const lighterDepth = React.useMemo(() => {
+    const convert = (levels: LighterMarketFeed["bids"] | undefined, reverse: boolean) => {
+      let sum = 0;
+      const rows = (levels ?? []).map(level => {
+        const price = Number(level.price), size = Number(level.size);
+        if (!Number.isFinite(price) || price <= 0 || !Number.isFinite(size) || size <= 0) return null;
+        sum += size;
+        return { price, size, total: sum };
+      }).filter((value): value is { price: number; size: number; total: number } => value !== null);
+      return reverse ? rows.reverse() : rows;
+    };
+    return { asks: convert(lighterBook?.asks, true), bids: convert(lighterBook?.bids, false) };
+  }, [lighterBook?.asks, lighterBook?.bids]);
 
   // Switch active token
   const handleSelectAsset = (
@@ -633,7 +664,8 @@ export default function MarketsPanel({
           <div className="w-full bg-brand-surface border border-brand-border rounded-xl p-0.5 shadow-xl overflow-hidden" id="desktop-main-chart">
             <TVChart 
               symbol={selectedSymbol} 
-              marketCoin={chartCandleCoin}
+              marketCoin={lighterMarketId !== undefined ? "" : chartCandleCoin}
+              lighterMarketId={lighterMarketId}
               isSpot={chartIsSpot}
               currentPrice={marketsCurrentPrice}
               high24h={currentToken?.high24h ?? null}
@@ -642,13 +674,14 @@ export default function MarketsPanel({
               fundingRate={currentToken?.fundingRate ?? null}
               openInterest={currentToken?.openInterest ?? null}
               change24h={currentToken?.change24h ?? null}
-              tradeHistory={tradeHistory}
+              tradeHistory={lighterMarketId !== undefined ? [] : tradeHistory}
               toolbarHostId="market-chart-toolbar-host"
             />
           </div>
 
           {/* BOTTOM SECTION: POSITIONS / OPEN ORDERS / HISTORY TABS */}
           <div className="w-full bg-brand-surface border border-brand-border rounded-xl p-1.5 shadow-lg">
+            {lighterMarketId !== undefined ? (lighterAccountSummary ?? <p className="p-4 text-xs text-brand-muted">Lighter account unavailable.</p>) : (
             <TradingDashboardTabs
               symbol={selectedSymbol}
               currentToken={currentToken}
@@ -669,6 +702,7 @@ export default function MarketsPanel({
               onSelectToken={(s) => onSelectToken(s, "spot")}
               walletConnected={walletConnected}
             />
+            )}
           </div>
         </div>
       )}
@@ -678,6 +712,11 @@ export default function MarketsPanel({
         <div className="w-full space-y-2 sm:space-y-2.5">
           <div className="grid grid-cols-12 gap-2.5">
             <div className="col-span-12 bg-brand-surface border border-brand-border rounded-xl p-3 shadow-lg">
+              {lighterMarketId !== undefined && currentToken ? (
+                <TopOrderBookView symbol={selectedSymbol} currentToken={{...currentToken, price: marketsCurrentPrice}}
+                  asks={lighterDepth.asks} bids={lighterDepth.bids}
+                  onSelectPrice={price => onSelectOrderBookPrice(price, chartIsSpot ? "spot" : "perp")} />
+              ) : (
               <OrderBook 
                 symbol={selectedSymbol} 
                 marketCoin={chartMarketCoin}
@@ -689,9 +728,11 @@ export default function MarketsPanel({
                   );
                 }} 
               />
+              )}
             </div>
           </div>
           <div className="w-full bg-brand-surface border border-brand-border rounded-xl p-1.5 shadow-lg">
+            {lighterMarketId !== undefined ? (lighterAccountSummary ?? <p className="p-4 text-xs text-brand-muted">Lighter account unavailable.</p>) : (
             <TradingDashboardTabs
               symbol={selectedSymbol}
               currentToken={currentToken}
@@ -712,6 +753,7 @@ export default function MarketsPanel({
               onSelectToken={(s) => onSelectToken(s, "spot")}
               walletConnected={walletConnected}
             />
+            )}
           </div>
         </div>
       )}
