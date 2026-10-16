@@ -17,6 +17,7 @@ import TradingAccountTabBar, { type TradingTabId } from "./TradingAccountTabBar"
 import HideDexPositionHeader from "./HideDexPositionHeader";
 import HideDexPositionDetails from "./HideDexPositionDetails";
 import HideDexTradeHistory from "./HideDexTradeHistory";
+import HideDexOpenOrders, {type HideDexOpenOrderRow} from "./HideDexOpenOrders";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
 import HideDexOrderBookPanel, {type HideDexBookLevel} from "./HideDexOrderBookPanel";
 import HideDexMobileMarketHeader from "./HideDexMobileMarketHeader";
@@ -686,32 +687,32 @@ export default function LighterMarketPreview({
             {!walletAddress && <p className="text-xs text-brand-muted">Connect wallet to check Lighter positions.</p>}
           </div>
         )}
-        {accountTab === "OPEN_ORDERS" && <div className="space-y-2 text-[11px]">
-          {!tradingIdentity && <p className="text-brand-muted">Authorize this Lighter account in Trade to load its real open orders.</p>}
-          {tradingIdentity && liveOrders === null && !openOrdersError &&
-            <p className="text-brand-muted">Loading authenticated Lighter open orders…</p>}
-          {openOrdersError && <p role="alert" className="text-rose-400">{openOrdersError}</p>}
-          {liveOrders && liveOrders.length === 0 &&
-            <p className="text-brand-muted">No open orders found for registered Lighter Account #{tradingIdentity?.accountIndex}.</p>}
-          {liveOrders?.map((order,i) => {
-            const marketId = Number(order.market_index ?? order.market_id);
-            const m = markets.find(x => x.id === marketId);
-            const orderIndex = Number(order.order_index);
-            return <div key={String(marketId) + ":" + String(orderIndex) + ":" + i}
-              className="rounded-xl border border-brand-border bg-brand-surface p-3 flex items-center justify-between gap-2">
-              <div className="min-w-0">
-                <p className="font-bold">{m?.symbol ?? "Unknown market #" + marketId}
-                  <span className="ml-2 text-brand-muted">{order.is_ask ? "SELL" : "BUY"}</span></p>
-                <p className="font-mono text-brand-muted">Order #{Number.isSafeInteger(orderIndex) ? orderIndex : "—"} · Price: {order.price ?? "—"} · Remaining: {order.remaining_base_amount ?? "—"}</p>
-              </div>
-              <button type="button" onClick={() => cancelLighterOrder(marketId,orderIndex)}
-                disabled={tradingBusy || !m || !Number.isSafeInteger(orderIndex)}
-                className="shrink-0 rounded-lg border border-rose-500/40 text-rose-400 px-2 py-1 font-bold disabled:opacity-30">
-                Cancel
-              </button>
-            </div>;
-          })}
-        </div>}
+        {accountTab === "OPEN_ORDERS" && <>
+          {openOrdersError && <p role="alert" className="text-xs text-rose-400 mb-2">{openOrdersError}</p>}
+          <HideDexOpenOrders
+            orders={!tradingIdentity || liveOrders===null ? null : liveOrders.map((order,i)=>{
+              const marketId=Number(order.market_index??order.market_id);
+              const market=markets.find(m=>m.id===marketId);
+              const index=Number(order.order_index);
+              const symbol=market?.symbol??"Unknown";
+              return {
+                id:marketId+":"+index+":"+i,symbol,isSpot:market?.kind==="spot",
+                side:order.is_ask?"SELL":"BUY",orderType:String(order.order_type??"Limit"),
+                priceLabel:String(order.price??"—"),trigger:false,
+                sizeLabel:String(order.initial_base_amount??order.base_amount??"—"),
+                filledLabel:"—",remainingLabel:String(order.remaining_base_amount??"—"),
+                status:"Open",timestamp:"—",
+                canCancel:!!market && Number.isSafeInteger(index)&&index>=0 && !tradingBusy,
+              } satisfies HideDexOpenOrderRow;
+            })}
+            unavailableMessage={!tradingIdentity ? "Enable Lighter trading to load authenticated open orders."
+              : openOrdersError || "Loading authenticated Lighter open orders…"}
+            onCancel={ord=>{
+              const parts=ord.id.split(":");
+              cancelLighterOrder(Number(parts[0]),Number(parts[1]));
+            }}
+          />
+        </>}
         {accountTab === "TRADE_HISTORY" && (
           <HideDexTradeHistory items={null}
             noDataMessage="Verified Lighter fills and historical fees have not been loaded. No trade history from Hyperliquid is substituted."/>

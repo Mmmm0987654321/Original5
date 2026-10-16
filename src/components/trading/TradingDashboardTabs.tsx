@@ -2,6 +2,7 @@ import TradingAccountTabBar from "./TradingAccountTabBar";
 import HideDexPositionHeader from "./HideDexPositionHeader";
 import HideDexPositionDetails from "./HideDexPositionDetails";
 import HideDexTradeHistory from "./HideDexTradeHistory";
+import HideDexOpenOrders, {type HideDexOpenOrderRow} from "./HideDexOpenOrders";
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -843,325 +844,31 @@ export default function TradingDashboardTabs({
           )
         )}
 
-        {/* TAB 3: OPEN ORDERS */}
-        {activeBottomTab === "OPEN_ORDERS" && (
-          filteredOrders.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-6 text-gray-500 text-center">
-              <Layers className="w-6 h-6 text-brand-text/5 mb-1" />
-              <p className="text-[10px]">No open limit orders pending.</p>
-            </div>
-          ) : (
-            <>
-              {/* Mobile Card View */}
-              <div className="block md:hidden flex flex-col gap-3 w-full max-h-[360px] overflow-y-auto pr-1">
-                {filteredOrders.map((ord) => {
-                  const isBuy = ord.side === "BUY";
-                  const filledDisplay =
-                    typeof ord.filled === 'number' &&
-                    Number.isFinite(ord.filled)
-                      ? `${ord.filled.toFixed(1)}%`
-                      : '--';
-
-                  const normalizeKey = (value?: string | null) =>
-                    String(value ?? "").trim().toUpperCase();
-
-                  const orderTpsl = ord.tpsl;
-                  const orderTriggerPx = ord.triggerPrice;
-                  const isTpSlOrder =
-                    orderTpsl === "tp" ||
-                    orderTpsl === "sl" ||
-                    (
-                      typeof orderTriggerPx === "number" &&
-                      Number.isFinite(orderTriggerPx) &&
-                      orderTriggerPx > 0
-                    );
-
-                  const orderCoin = ord.sourceCoin || ord.symbol;
-                  const posForOrder = isTpSlOrder
-                    ? positions.find(
-                        (p) =>
-                          normalizeKey(p.sourceCoin || p.symbol) ===
-                          normalizeKey(orderCoin)
-                      )
-                    : undefined;
-
-                  const rawSize =
-                    typeof ord.size === "number" && Number.isFinite(ord.size)
-                      ? ord.size
-                      : 0;
-
-                  const numericPositionSize =
-                    typeof posForOrder?.size === "number" && Number.isFinite(posForOrder.size)
-                      ? Math.abs(posForOrder.size)
-                      : 0;
-
-                  const rawPositionSize =
-                    Math.abs(parseFloat(posForOrder?.rawSzi ?? "0")) || 0;
-
-                  const positionSize =
-                    numericPositionSize > 0
-                      ? numericPositionSize
-                      : rawPositionSize;
-
-                  const displaySize =
-                    isTpSlOrder && rawSize === 0 && positionSize > 0
-                      ? positionSize
-                      : rawSize;
-
-                  const isExplicitPositionTpSl =
-                    orderTpsl === "tp" ||
-                    orderTpsl === "sl";
-
-                  const rawRemaining =
-                    typeof ord.remainingSize === "number" &&
-                    Number.isFinite(ord.remainingSize)
-                      ? Math.abs(ord.remainingSize)
-                      : null;
-
-                  const displayRemaining =
-                    isExplicitPositionTpSl &&
-                    rawSize === 0 &&
-                    positionSize > 0 &&
-                    (
-                      rawRemaining === null ||
-                      rawRemaining === 0
-                    )
-                      ? positionSize
-                      : rawRemaining;
-
-                  const remainingDisplay =
-                    typeof displayRemaining === "number" &&
-                    Number.isFinite(displayRemaining)
-                      ? `${displayRemaining.toFixed(4)} ${ord.symbol}`
-                      : "--";
-
-                  const displayPrice =
-                    isTpSlOrder &&
-                    typeof orderTriggerPx === "number" &&
-                    Number.isFinite(orderTriggerPx) &&
-                    orderTriggerPx > 0
-                      ? orderTriggerPx
-                      : ord.price;
-
-                  const displayType =
-                    orderTpsl === "tp"
-                      ? "Take Profit"
-                      : orderTpsl === "sl"
-                        ? "Stop Loss"
-                        : ord.type;
-
-                  return (
-                    <div key={ord.id} className="bg-brand-card border border-brand-border/60 hover:border-brand-primary/30 rounded-xl p-3 flex flex-col gap-2.5 transition-all duration-150 shadow-md text-brand-sub">
-                      <div className="flex items-center justify-between border-b border-brand-divider/30 pb-2">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-[12px] text-brand-text">{ord.symbol}{ord.isSpot ? "-SPOT" : "-PERP"}</span>
-                          <span className={`px-1.5 py-0.2 rounded text-[8px] font-black tracking-wider ${
-                            isBuy ? "bg-brand-profit/10 text-brand-profit border border-brand-profit/20" : "bg-brand-loss/10 text-brand-loss border border-brand-loss/20"
-                          }`}>
-                            {ord.side}
-                          </span>
-                          <span className="text-[9px] text-brand-muted font-bold bg-brand-overlay-subtle px-1.5 py-0.2 rounded border border-brand-border/30">
-                            {displayType}
-                          </span>
-                        </div>
-                        <button
-                          onClick={() => onCancelOrder(ord.id)}
-                          className="p-1 rounded text-brand-muted hover:text-brand-loss hover:bg-brand-loss/10 transition-colors cursor-pointer"
-                          title="Cancel Order"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] text-brand-sub font-mono">
-                        <div>
-                          <span className="text-brand-muted block text-[8px] font-bold uppercase tracking-wider">{isTpSlOrder ? "Trigger Price" : "Price"}</span>
-                          <span className="font-semibold text-brand-text">${displayPrice.toLocaleString(undefined, { minimumFractionDigits: 1 })}</span>
-                        </div>
-                        <div>
-                          <span className="text-brand-muted block text-[8px] font-bold uppercase tracking-wider">Size</span>
-                          <span className="font-semibold text-brand-text">{displaySize} {ord.symbol}</span>
-                        </div>
-                        <div>
-                          <span className="text-brand-muted block text-[8px] font-bold uppercase tracking-wider">Filled / Remaining</span>
-                          <span className="font-semibold text-brand-sub">
-                            {filledDisplay} / {remainingDisplay}
-                          </span>
-                        </div>
-                        <div>
-                          <span className="text-brand-muted block text-[8px] font-bold uppercase tracking-wider">Time / Status</span>
-                          <span className="font-semibold text-brand-sub flex items-center gap-1.5">
-                            <span>{ord.timestamp}</span>
-                            <span className="text-[8px] text-cyan-400 bg-cyan-400/10 px-1 rounded font-bold uppercase">{ord.status}</span>
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-
-              {/* Desktop Table View */}
-              <div className="hidden md:block max-h-[360px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-brand-border/60 scrollbar-track-transparent">
-                <table className="w-full text-left border-collapse text-xs font-mono">
-                  <thead>
-                    <tr className="text-[10px] font-mono text-brand-muted uppercase border-b border-brand-border pb-2">
-                      <th className="py-2.5">Symbol</th>
-                      <th className="py-2.5">Side</th>
-                      <th className="py-2.5">Order Type</th>
-                      <th className="py-2.5">Price</th>
-                      <th className="py-2.5">Size</th>
-                      <th className="py-2.5">Filled %</th>
-                      <th className="py-2.5">Remaining</th>
-                      <th className="py-2.5">Status</th>
-                      <th className="py-2.5">Time</th>
-                      <th className="py-2.5 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-brand-divider/30 text-brand-sub">
-                    {filteredOrders.map((ord) => {
-                      const isBuy = ord.side === "BUY";
-                      const filledDisplay =
-                        typeof ord.filled === 'number' &&
-                        Number.isFinite(ord.filled)
-                          ? `${ord.filled.toFixed(1)}%`
-                          : '--';
-
-                      const normalizeKey = (value?: string | null) =>
-                        String(value ?? "").trim().toUpperCase();
-
-                      const orderTpsl = ord.tpsl;
-                      const orderTriggerPx = ord.triggerPrice;
-                      const isTpSlOrder =
-                        orderTpsl === "tp" ||
-                        orderTpsl === "sl" ||
-                        (
-                          typeof orderTriggerPx === "number" &&
-                          Number.isFinite(orderTriggerPx) &&
-                          orderTriggerPx > 0
-                        );
-
-                      const orderCoin = ord.sourceCoin || ord.symbol;
-                      const posForOrder = isTpSlOrder
-                        ? positions.find(
-                            (p) =>
-                              normalizeKey(p.sourceCoin || p.symbol) ===
-                              normalizeKey(orderCoin)
-                          )
-                        : undefined;
-
-                      const rawSize =
-                        typeof ord.size === "number" && Number.isFinite(ord.size)
-                          ? ord.size
-                          : 0;
-
-                      const numericPositionSize =
-                        typeof posForOrder?.size === "number" && Number.isFinite(posForOrder.size)
-                          ? Math.abs(posForOrder.size)
-                          : 0;
-
-                      const rawPositionSize =
-                        Math.abs(parseFloat(posForOrder?.rawSzi ?? "0")) || 0;
-
-                      const positionSize =
-                        numericPositionSize > 0
-                          ? numericPositionSize
-                          : rawPositionSize;
-
-                      const displaySize =
-                        isTpSlOrder && rawSize === 0 && positionSize > 0
-                          ? positionSize
-                          : rawSize;
-
-                      const isExplicitPositionTpSl =
-                        orderTpsl === "tp" ||
-                        orderTpsl === "sl";
-
-                      const rawRemaining =
-                        typeof ord.remainingSize === "number" &&
-                        Number.isFinite(ord.remainingSize)
-                          ? Math.abs(ord.remainingSize)
-                          : null;
-
-                      const displayRemaining =
-                        isExplicitPositionTpSl &&
-                        rawSize === 0 &&
-                        positionSize > 0 &&
-                        (
-                          rawRemaining === null ||
-                          rawRemaining === 0
-                        )
-                          ? positionSize
-                          : rawRemaining;
-
-                      const remainingDisplay =
-                        typeof displayRemaining === "number" &&
-                        Number.isFinite(displayRemaining)
-                          ? `${displayRemaining.toFixed(4)} ${ord.symbol}`
-                          : "--";
-
-                      const displayPrice =
-                        isTpSlOrder &&
-                        typeof orderTriggerPx === "number" &&
-                        Number.isFinite(orderTriggerPx) &&
-                        orderTriggerPx > 0
-                          ? orderTriggerPx
-                          : ord.price;
-
-                      const displayType =
-                        orderTpsl === "tp"
-                          ? "Take Profit"
-                          : orderTpsl === "sl"
-                            ? "Stop Loss"
-                            : ord.type;
-
-                      return (
-                        <tr key={ord.id} className="hover:bg-brand-overlay-subtle transition-colors">
-                          <td className="py-2.5 font-bold text-brand-text">{ord.symbol}{ord.isSpot ? "-SPOT" : "-PERP"}</td>
-                          <td className="py-2.5">
-                            <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${isBuy ? "bg-brand-profit/10 text-brand-profit border border-brand-profit/20" : "bg-brand-loss/10 text-brand-loss border border-brand-loss/20"}`}>
-                              {ord.side}
-                            </span>
-                          </td>
-                          <td className="py-2.5">
-                            <span className="text-[10px] text-brand-sub">{displayType}</span>
-                          </td>
-                          <td className="py-2.5 font-semibold text-brand-text">
-                            <span className="flex items-center gap-1.5">
-                              <span>${displayPrice.toLocaleString(undefined, { minimumFractionDigits: 1 })}</span>
-                              {isTpSlOrder && (
-                                <span className="text-[8px] px-1 py-0.2 rounded bg-violet-500/10 text-violet-400 font-bold border border-violet-500/20">
-                                  Trigger
-                                </span>
-                              )}
-                            </span>
-                          </td>
-                          <td className="py-2.5 text-brand-text">{displaySize} {ord.symbol}</td>
-                          <td className="py-2.5 text-brand-sub">{filledDisplay}</td>
-                          <td className="py-2.5 text-brand-sub">{remainingDisplay}</td>
-                          <td className="py-2.5">
-                            <span className="text-[9px] font-bold text-cyan-400 bg-cyan-400/10 px-1.5 py-0.2 rounded border border-cyan-400/20">
-                              {ord.status}
-                            </span>
-                          </td>
-                          <td className="py-2.5 text-brand-muted">{ord.timestamp}</td>
-                          <td className="py-2.5 text-right">
-                            <button
-                              onClick={() => onCancelOrder(ord.id)}
-                              className="p-1 rounded text-brand-muted hover:text-brand-loss hover:bg-brand-loss/10 transition-colors cursor-pointer"
-                              title="Cancel Order"
-                            >
-                              <Trash2 className="w-3.5 h-3.5 inline" />
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </>
-          )
-        )}
+        {/* TAB 3: OPEN ORDERS — one shared original responsive UI */}
+        {activeBottomTab==="OPEN_ORDERS" && <HideDexOpenOrders
+          orders={filteredOrders.map(ord=>{
+            const normalize=(s?:string|null)=>String(s??"").trim().toUpperCase();
+            const trigger=ord.tpsl==="tp" || ord.tpsl==="sl" ||
+              (typeof ord.triggerPrice==="number" && Number.isFinite(ord.triggerPrice) && ord.triggerPrice>0);
+            const pos=trigger ? positions.find(p=>normalize(p.sourceCoin||p.symbol)===normalize(ord.sourceCoin||ord.symbol)) : undefined;
+            const positionSize=(pos && Number.isFinite(pos.size) && pos.size>0 ? pos.size : Math.abs(parseFloat(pos?.rawSzi??"0"))) || 0;
+            const size=trigger && ord.size===0 && positionSize>0?positionSize:ord.size;
+            const remain=ord.tpsl && ord.size===0 && positionSize>0 && (!ord.remainingSize || ord.remainingSize===0)
+              ? positionSize : ord.remainingSize;
+            const price=trigger && typeof ord.triggerPrice==="number" && Number.isFinite(ord.triggerPrice)
+              ? ord.triggerPrice:ord.price;
+            const type=ord.tpsl==="tp"?"Take Profit":ord.tpsl==="sl"?"Stop Loss":ord.type;
+            return {
+              id:ord.id,symbol:ord.symbol,isSpot:ord.isSpot===true,side:ord.side,
+              orderType:type,priceLabel:Number.isFinite(price)?"$"+price.toLocaleString(undefined,{minimumFractionDigits:1}):"—",
+              trigger,sizeLabel:Number.isFinite(size)?String(size)+" "+ord.symbol:"—",
+              filledLabel:Number.isFinite(ord.filled)?ord.filled.toFixed(1)+"%":"--",
+              remainingLabel:typeof remain==="number" && Number.isFinite(remain)?Math.abs(remain).toFixed(4)+" "+ord.symbol:"--",
+              status:ord.status,timestamp:ord.timestamp,canCancel:Boolean(onCancelOrder),
+            } satisfies HideDexOpenOrderRow;
+          })}
+          onCancel={ord=>onCancelOrder?.(ord.id)}
+        />}
 
         {/* TAB 5: TRADE_HISTORY — original shared UI for both venues */}
         {activeBottomTab==="TRADE_HISTORY" && !isFieldHidden("tradeHistory") && (
