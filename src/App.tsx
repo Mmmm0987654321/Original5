@@ -4147,6 +4147,7 @@ export default function App() {
           ) && (
             <LighterMarketPreview
               walletAddress={walletConnected ? walletAddress : ""}
+              getWalletProvider={getTradingSetupProvider}
               section={
                 activeTab === ActiveTab.Markets || activeTab === ActiveTab.Dashboard ? "markets" :
                 activeTab === ActiveTab.Portfolio ? "funds" :

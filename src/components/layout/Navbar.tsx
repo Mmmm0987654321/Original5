@@ -293,7 +293,8 @@ export default function Navbar({
           className="flex items-center cursor-pointer group shrink-0"
           id="navbar-logo"
         >
-          <HideDexLogo size={trustShieldMode === "ANONYMOUS" ? 28 : 32} showText={true} textSize={trustShieldMode === "ANONYMOUS" ? "text-xs sm:text-base" : "text-sm sm:text-base"} />
+          <span className="min-[390px]:hidden"><HideDexLogo size={27} showText={false} /></span>
+          <span className="hidden min-[390px]:inline-flex"><HideDexLogo size={trustShieldMode === "ANONYMOUS" ? 28 : 32} showText={true} textSize={trustShieldMode === "ANONYMOUS" ? "text-xs sm:text-base" : "text-sm sm:text-base"} /></span>
         </div>
 
         {/* Compact header venue switcher. Keep name/logo/wallet room on narrow phones.
@@ -462,12 +463,13 @@ export default function Navbar({
                 <div className="relative shrink-0">
                   <button
                     onClick={() => setWalletDropdownOpen(!walletDropdownOpen)}
-                    className={`flex items-center gap-1 sm:gap-2 ${trustShieldMode === "ANONYMOUS" ? "px-1.5 sm:px-3" : "px-2 sm:px-3"} py-1 sm:py-1.5 rounded-lg sm:rounded-xl bg-accent/10 border border-accent/25 hover:border-accent text-[10px] sm:text-xs font-semibold transition-all cursor-pointer text-brand-text shadow-sm shrink-0`}
+                    className={`flex items-center gap-0.5 sm:gap-2 px-1 sm:px-3 py-1 sm:py-1.5 rounded-lg sm:rounded-xl bg-accent/10 border border-accent/25 hover:border-accent text-[10px] sm:text-xs font-semibold transition-all cursor-pointer text-brand-text shadow-sm shrink-0`}
                     id="wallet-user-dropdown-btn"
                   >
                     <span className="w-1 sm:w-1.5 h-1 sm:h-1.5 rounded-full bg-emerald-400 animate-pulse" />
                     <span className="font-mono text-[9px] sm:text-[11px] tracking-wide">
-                      {formatAddress(walletAddress)}
+                      <span className="sm:hidden">{walletAddress.startsWith("0x") ? walletAddress.slice(0, 4) + "…" + walletAddress.slice(-2) : formatAddress(walletAddress)}</span>
+                      <span className="hidden sm:inline">{formatAddress(walletAddress)}</span>
                     </span>
                     <ChevronDown className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-gray-400" />
                   </button>
@@ -538,7 +540,7 @@ export default function Navbar({
                 {/* Quick Disconnect Button */}
                 <button
                   onClick={onDisconnectWallet}
-                  className={`p-1 sm:p-1.5 rounded-lg sm:rounded-xl text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition-all cursor-pointer shrink-0 items-center justify-center border border-rose-500/15 hover:border-rose-500/30 ${trustShieldMode === "ANONYMOUS" ? "hidden sm:flex" : "flex"}`}
+                  className="hidden sm:flex p-1 sm:p-1.5 rounded-lg sm:rounded-xl text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 transition-all cursor-pointer shrink-0 items-center justify-center border border-rose-500/15 hover:border-rose-500/30"
                   title="Disconnect Wallet"
                   id="quick-disconnect-btn"
                 >
@@ -686,11 +688,9 @@ export default function Navbar({
             )}
 
             <div className="flex items-center justify-around text-gray-400 text-[11px] py-2">
-              {trustShieldMode !== "PRIVATE" && (
-                <button onClick={() => { handleNavClick(ActiveTab.Support); }} className="flex items-center gap-1 hover:text-brand-text cursor-pointer">
-                  <HelpCircle className="w-4 h-4" /> Support
-                </button>
-              )}
+              <button onClick={() => { handleNavClick(ActiveTab.Support); }} className="flex items-center gap-1 hover:text-brand-text cursor-pointer">
+                <HelpCircle className="w-4 h-4" /> Support
+              </button>
               {trustShieldMode !== "ANONYMOUS" && (
                 <button onClick={() => { handleNavClick(ActiveTab.Profile); }} className="flex items-center gap-1 hover:text-brand-text cursor-pointer">
                   <Settings className="w-4 h-4" /> Profile

@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Layers, Wallet, TrendingUp, Unlock, Lock, ArrowUpRight, ArrowDownRight, ChevronRight } from "lucide-react";
 import { TrustShieldValue } from "../common/TrustShieldValue";
+import { depositLighterUsdcOnEthereum, type LighterWalletProvider } from "../../lib/lighterFunding";
 import TVChart from "./TVChart";
 import MarketsPanel from "../dashboard/MarketsPanel";
 import TradingAccountTabBar, { type TradingTabId } from "./TradingAccountTabBar";
@@ -16,6 +17,7 @@ type Section = "markets" | "trade" | "funds" | "account" | "orders";
 type Kind = "perp" | "spot";
 type Props = {
   walletAddress: string;
+  getWalletProvider: () => Promise<LighterWalletProvider>;
   section: Section;
   initialKind?: Kind;
   onSelectSection: (section: Section, marketKind?: Kind) => void;
@@ -37,7 +39,7 @@ function labelKind(kind: Kind) { return kind === "perp" ? "Perpetual" : "Spot"; 
  * per-wallet API-key registration can be verified end-to-end.
  */
 export default function LighterMarketPreview({
-  walletAddress, section, initialKind = "perp", onSelectSection,
+  walletAddress, getWalletProvider, section, initialKind = "perp", onSelectSection,
 }: Props) {
   const [markets, setMarkets] = useState<LighterMarket[]>([]);
   const [selectedMarketId, setSelectedMarketId] = useState<number | null>(null);
@@ -55,6 +57,11 @@ export default function LighterMarketPreview({
   const [amount, setAmount] = useState("");
   const [limitPrice, setLimitPrice] = useState("");
   const [orderBookSizeUnit, setOrderBookSizeUnit] = useState<"USD" | "COIN">("USD");
+  const [fundsModal, setFundsModal] = useState<"deposit" | "withdraw" | null>(null);
+  const [depositAmount, setDepositAmount] = useState("");
+  const [fundingBusy, setFundingBusy] = useState(false);
+  const [fundingStatus, setFundingStatus] = useState("");
+  const [accountReload, setAccountReload] = useState(0);
 
   // Market/Funds/Account navigation must not reset the user's selected Lighter spot/perp kind.
   // Explicit Trade routing is the only place where App's chosen mode takes precedence.
@@ -94,7 +101,7 @@ export default function LighterMarketPreview({
       if (!ac.signal.aborted) setAccountError(error instanceof Error ? error.message : "Lighter account unavailable");
     }).finally(() => { if (!ac.signal.aborted) setAccountsLoading(false); });
     return () => ac.abort();
-  }, [walletAddress]);
+  }, [walletAddress, accountReload]);
 
   const available = useMemo(() => markets.filter(market => market.kind === kind), [markets, kind]);
   const selected = useMemo(
@@ -339,8 +346,9 @@ export default function LighterMarketPreview({
           </span>
         </span>
         <button type="button" onClick={() => switchKind(kind === "perp" ? "spot" : "perp")}
-          className="shrink-0 w-9 h-5 rounded-full p-0.5 bg-accent" aria-label="Switch spot or perpetual">
-          <span className="block w-4 h-4 rounded-full bg-brand-bg shadow" />
+          className="shrink-0 min-w-12 px-1.5 h-7 rounded-lg border border-brand-border bg-brand-surface text-[9px] font-bold text-accent"
+          aria-label="Switch spot or perpetual" title="Switch between actual Lighter Spot and Perp markets">
+          {kind === "perp" ? "PERP" : "SPOT"} ↕
         </button>
       </div>
       <div id="terminal-unified-market-header" className="hidden md:block rounded-xl border border-brand-border bg-brand-surface p-2 mb-2">
@@ -515,20 +523,20 @@ export default function LighterMarketPreview({
           {accountError && <p role="alert" className="mt-3 text-[10px] text-rose-400">{accountError}</p>}
         </div>
         <div className="grid grid-cols-2 max-[359px]:grid-cols-1 gap-2 sm:gap-3" id="funds-action-buttons-row">
-          <a href="https://app.lighter.xyz/" target="_blank" rel="noopener noreferrer"
+          <button type="button" onClick={() => { setFundsModal("deposit"); setFundingStatus(""); }}
             className="p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl bg-accent text-brand-bg font-extrabold flex items-center justify-between shadow-md text-left group min-w-0">
             <div className="flex items-center gap-2 min-w-0"><ArrowUpRight className="w-5 h-5" />
               <div className="min-w-0"><div className="text-xs sm:text-sm uppercase font-black truncate">DEPOSIT</div>
-                <div className="text-[9px] sm:text-[11px] opacity-90">Official Lighter ↗</div></div>
+                <div className="text-[9px] sm:text-[11px] opacity-90">Direct on HideDex</div></div>
             </div><ChevronRight className="w-4 h-4"/>
-          </a>
-          <a href="https://app.lighter.xyz/" target="_blank" rel="noopener noreferrer"
+          </button>
+          <button type="button" onClick={() => { setFundsModal("withdraw"); setFundingStatus(""); }}
             className="p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl bg-brand-surface border border-brand-border text-brand-text font-extrabold flex items-center justify-between shadow-sm text-left group min-w-0">
             <div className="flex items-center gap-2 min-w-0"><ArrowDownRight className="w-5 h-5 text-accent"/>
               <div className="min-w-0"><div className="text-xs sm:text-sm uppercase font-black truncate">WITHDRAWAL</div>
-                <div className="text-[9px] sm:text-[11px] text-brand-muted">Official Lighter ↗</div></div>
+                <div className="text-[9px] sm:text-[11px] text-brand-muted">Lighter authorization required</div></div>
             </div><ChevronRight className="w-4 h-4 text-brand-muted"/>
-          </a>
+          </button>
         </div>
         <div className="grid grid-cols-2 max-[359px]:grid-cols-1 gap-2 sm:gap-3" id="balances-grid-display">
           {[
@@ -546,11 +554,57 @@ export default function LighterMarketPreview({
               <div className="text-[9px] sm:text-[11px] font-mono text-brand-muted leading-tight">{row.subtitle}</div>
             </div>)}
         </div>
-        <p className="text-[10px] text-brand-muted px-1">Lighter account amounts only. Unsupported spot/margin details remain unavailable—not estimated or copied from Hyperliquid. Deposit and withdrawal open the official exchange until HideDex Lighter signing is verified.</p>
+        <p className="text-[10px] text-brand-muted px-1">Lighter account amounts only. Unsupported spot/margin details remain unavailable—not estimated or copied from Hyperliquid. Ethereum USDC deposits can be signed from HideDex. Withdrawals still require verified per-user Lighter authorization.</p>
         {lighterAssetCards}
-        {accountCards}
       </div>;
     })()}
+
+    {fundsModal && section === "funds" && (
+      <div role="presentation" className="fixed inset-0 z-[120] flex items-center justify-center bg-black/70 p-3 sm:p-5"
+        onMouseDown={event => { if (event.target === event.currentTarget && !fundingBusy) setFundsModal(null); }}>
+        <section role="dialog" aria-modal="true" aria-label={fundsModal === "deposit" ? "Deposit to Lighter" : "Withdraw from Lighter"}
+          className="w-full max-w-md rounded-2xl border border-brand-border bg-brand-surface text-brand-text p-4 sm:p-5 space-y-3 shadow-2xl">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-base font-bold">{fundsModal === "deposit" ? "Deposit · Lighter" : "Withdrawal · Lighter"}</h2>
+            <button type="button" disabled={fundingBusy} onClick={() => setFundsModal(null)} aria-label="Close"
+              className="p-1.5 rounded-lg border border-brand-border disabled:opacity-50">✕</button>
+          </div>
+          {fundsModal === "deposit" ? <>
+            <p className="text-xs text-brand-muted">USDC · Ethereum mainnet → Lighter Perps. Transactions are approved and signed by your connected wallet, without leaving HideDex.</p>
+            <label className="block text-xs font-semibold" htmlFor="lighter-deposit-amount">USDC amount (minimum 1)</label>
+            <input id="lighter-deposit-amount" type="text" inputMode="decimal" autoComplete="off"
+              value={depositAmount} disabled={fundingBusy} onChange={event => setDepositAmount(event.target.value)}
+              placeholder="1.00" className="w-full bg-brand-bg border border-brand-border rounded-lg p-3 text-sm font-mono disabled:opacity-50"/>
+            <p className="text-[11px] text-brand-muted">Your wallet needs Ethereum-mainnet USDC and ETH for gas. A separate exact-amount approval may be required.</p>
+            <button type="button" disabled={fundingBusy || !walletAddress || !depositAmount.trim()}
+              onClick={async () => {
+                if (fundingBusy) return;
+                setFundingBusy(true);
+                setFundingStatus("");
+                try {
+                  await depositLighterUsdcOnEthereum({
+                    walletAddress, amount: depositAmount, getWalletProvider,
+                    onStage: setFundingStatus,
+                  });
+                  setAccountReload(value => value + 1);
+                  setDepositAmount("");
+                } catch (error) {
+                  setFundingStatus(error instanceof Error ? error.message : "Deposit failed. Verify wallet transactions.");
+                } finally {
+                  setFundingBusy(false);
+                }
+              }}
+              className="w-full p-3 rounded-lg bg-accent text-brand-bg font-bold text-sm disabled:opacity-50">
+              {fundingBusy ? "Confirm in wallet…" : "Deposit USDC"}
+            </button>
+          </> : <>
+            <p className="text-xs text-brand-muted">A secure withdrawal must be signed by a registered per-user Lighter API key and confirmed on Lighter mainnet. Your existing wallet connection alone cannot authorize it.</p>
+            <p className="text-xs text-amber-500">Withdrawals are not yet enabled. No funds will be moved, and you will not be redirected to another website.</p>
+          </>}
+          {fundingStatus && <p role="status" className="text-xs break-all rounded-lg border border-brand-border p-2">{fundingStatus}</p>}
+        </section>
+      </div>
+    )}
 
     {section === "orders" && <div className="rounded-xl border border-brand-border bg-brand-bg p-3">
       {lighterAccountTabs}
