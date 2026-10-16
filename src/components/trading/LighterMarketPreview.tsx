@@ -3,6 +3,7 @@ import { Layers, Wallet, TrendingUp, Unlock, Lock, ArrowUpRight, ArrowDownRight,
 import { TrustShieldValue } from "../common/TrustShieldValue";
 import HideDexFundsOverview from "../dashboard/HideDexFundsOverview";
 import HideDexAssetAllocation from "../dashboard/HideDexAssetAllocation";
+import HideDexFundsPerformance, {type HideDexPerformancePeriod, type HideDexPerformanceMarket} from "../dashboard/HideDexFundsPerformance";
 import {
   registerLighterTradingKey, reconnectLighterTradingKey, getActiveLighterSigner,
   clearLighterTradingKey, submitLighterOrder, withdrawLighterUsdc,
@@ -77,6 +78,8 @@ export default function LighterMarketPreview({
   const [authSheetOpen, setAuthSheetOpen] = useState(false);
   const [marginSheetOpen, setMarginSheetOpen] = useState(false);
   const [isMarketInfoOpen, setIsMarketInfoOpen] = useState(false);
+  const [performancePeriod, setPerformancePeriod] = useState<HideDexPerformancePeriod>("day");
+  const [performanceMarket, setPerformanceMarket] = useState<HideDexPerformanceMarket>("all");
   const [marginMode, setMarginMode] = useState<"cross" | "isolated">("cross");
   const [chosenLeverage, setChosenLeverage] = useState(1);
   const [marginBusy, setMarginBusy] = useState(false);
@@ -1070,24 +1073,31 @@ export default function LighterMarketPreview({
           ]}
           footnote="Lighter does not supply a verified combined Spot + Perp asset valuation here. No percentage chart or synthetic allocation is shown."
         />
-        <section className="rounded-2xl border border-brand-border bg-brand-surface p-3.5 sm:p-5 space-y-4">
-          <h3 className="text-sm sm:text-base font-black uppercase">PERFORMANCE ANALYTICS & FEES</h3>
-          <p className="text-[11px] text-brand-muted flex gap-2 items-center"><BarChart3 className="w-4 h-4"/> Verified Lighter account data only</p>
-          <div className="grid grid-cols-2 gap-2 sm:gap-3">
-            {[
-              {label:"UNREALIZED PNL",value:unrealizedPnl === null ? "—" : (unrealizedPnl < 0 ? "-$" : "$") + formatPrice(Math.abs(unrealizedPnl),2)},
+        <HideDexFundsPerformance
+          period={performancePeriod}
+          onPeriod={setPerformancePeriod}
+          market={performanceMarket}
+          onMarket={setPerformanceMarket}
+          summary={<div className="grid grid-cols-2 gap-2 sm:gap-3">
+            {([
+              {label:"NET PNL",value:"—"},
               {label:"TOTAL VOLUME",value:"—"},
               {label:"FEES (LOADED FILLS)",value:"—"},
-              {label:"EXECUTED ORDERS",value:"—"}
-            ].map(item => <div key={item.label} className="rounded-xl border border-brand-border p-3 min-w-0">
+              {label:"EXECUTED ORDERS",value:"—"},
+            ]).map(item=><div key={item.label}
+              className="rounded-xl border border-brand-border p-3 min-w-0">
               <span className="block text-[10px] text-brand-muted font-bold uppercase truncate">{item.label}</span>
-              <strong className="block text-lg font-mono mt-2">{hideBalance ? "••••" : item.value}</strong>
+              <strong className="block text-lg font-mono mt-2">{hideBalance?"••••":item.value}</strong>
             </div>)}
-          </div>
-          <div className="h-32 sm:h-40 border border-dashed border-brand-border rounded-xl px-3 flex items-center justify-center text-xs text-center text-brand-muted">
-            Verified Lighter equity timeseries has not been loaded. No fake PnL graph is drawn.
-          </div>
-        </section>
+          </div>}
+          chart={<div className="h-[180px] sm:h-[220px] w-full rounded-xl bg-brand-overlay-subtle/50 border border-brand-border/40 flex flex-col items-center justify-center text-center p-4">
+            <TrendingUp className="w-6 h-6 text-brand-muted/60 mb-2"/>
+            <span className="text-xs font-semibold text-brand-muted">
+              Verified Lighter fills and equity timeseries are not loaded for this period and market.
+            </span>
+            <span className="text-[10px] text-brand-muted mt-1">No historical PnL or trading volume is estimated.</span>
+          </div>}
+        />
         <section className="rounded-2xl border border-brand-border bg-brand-surface p-3.5 sm:p-5">
           <h3 className="text-sm sm:text-base font-black uppercase mb-2">DAILY TRADING VOLUME <span className="text-xs font-normal text-brand-muted">(LOADED FILLS)</span></h3>
           <p className="text-xs text-brand-muted">Verified Lighter historical fills are not yet loaded; volume is not estimated.</p>

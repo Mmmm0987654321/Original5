@@ -6,6 +6,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import HideDexFundsOverview from "./HideDexFundsOverview";
 import HideDexAssetAllocation from "./HideDexAssetAllocation";
+import HideDexFundsPerformance from "./HideDexFundsPerformance";
 import { 
   Wallet, 
   Eye, 
@@ -1011,53 +1012,12 @@ export default function PortfolioPanel({
               }))}
             />
 
-            {/* PERFORMANCE CARD */}
-            <div className="bg-brand-surface border border-brand-border/60 rounded-xl sm:rounded-2xl p-3 sm:p-4 shadow-xs" id="performance-section">
-              <h2 className="text-brand-text text-xs sm:text-sm font-bold uppercase tracking-wider mb-2">
-                Performance Analytics &amp; Fees
-              </h2>
-              {/* Single compact row: 24H / 7D / 30D / All Time / Market selector. */}
-              <div className="flex items-center gap-1 mb-3 w-full min-w-0">
-                <div className="flex flex-1 min-w-0 items-center justify-between gap-0.5 bg-brand-overlay-subtle p-0.5 rounded-lg border border-brand-border/40">
-                  {(
-                    [
-                      { id: "day", label: "24H" },
-                      { id: "week", label: "7D" },
-                      { id: "month", label: "30D" },
-                      { id: "allTime", label: "All Time" },
-                    ] as const
-                  ).map((p) => {
-                    const isActive = performancePeriod === p.id;
-                    return (
-                      <button
-                        key={p.id}
-                        type="button"
-                        onClick={() => setPerformancePeriod(p.id)}
-                        className={`min-w-0 px-1 py-1 sm:px-2 sm:py-1 rounded-md text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-                          isActive
-                            ? "bg-brand-surface text-brand-text shadow-xs border border-brand-border/60"
-                            : "text-brand-muted hover:text-brand-text"
-                        }`}
-                      >
-                        {p.label}
-                      </button>
-                    );
-                  })}
-                </div>
-                <select
-                  aria-label="Market type"
-                  value={performanceMarket}
-                  onChange={(event) => setPerformanceMarket(event.target.value as "all" | "spot" | "perps")}
-                  className="shrink-0 w-[108px] sm:w-[128px] min-w-0 py-1.5 px-1 sm:px-2 rounded-lg border border-brand-border/60 bg-brand-overlay-subtle text-brand-text text-[10px] sm:text-xs font-bold cursor-pointer"
-                >
-                  <option value="all">Spot + Perps</option>
-                  <option value="spot">Spot</option>
-                  <option value="perps">Perps</option>
-                </select>
-              </div>
-
-              {/* One compact performance/fees summary. Existing equity chart untouched. */}
-              <AnalyticsPanel
+            <HideDexFundsPerformance
+              period={performancePeriod}
+              onPeriod={setPerformancePeriod}
+              market={performanceMarket}
+              onMarket={setPerformanceMarket}
+              summary={<><AnalyticsPanel
                 walletConnected={walletConnected}
                 walletAddress={walletAddress}
                 fills={userFills}
@@ -1068,11 +1028,8 @@ export default function PortfolioPanel({
                 period={performancePeriod}
                 market={performanceMarket}
                 sensitiveHidden={shouldHideBalances}
-              />
-
-              {/* Equity History Chart */}
-              <div className="mt-3 w-full">
-                {shouldHideBalances ? (
+              /></>}
+              chart={<>{shouldHideBalances ? (
                   <div className="h-[180px] sm:h-[220px] w-full rounded-xl bg-brand-overlay-subtle/50 border border-brand-border/40 flex flex-col items-center justify-center text-center p-4">
                     <EyeOff className="w-6 h-6 text-brand-muted mb-2" />
                     <span className="text-xs font-semibold text-brand-muted">
@@ -1187,9 +1144,8 @@ export default function PortfolioPanel({
                       </AreaChart>
                     </ResponsiveContainer>
                   </div>
-                )}
-              </div>
-            </div>
+                )}</>}
+            />
 
             {/* Last Funds section: visual daily executed trading volume, replacing Holdings. */}
             <DailyFillVolumeBars
