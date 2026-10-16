@@ -25,7 +25,7 @@ export default function TradingAccountTabBar({
                 { id: "POSITIONS" as const, name: "Positions", field: "positions" },
                 { id: "OPEN_ORDERS" as const, name: "Open Orders", field: "openOrders" },
                 { id: "TRADE_HISTORY" as const, name: "Trade History", field: "tradeHistory" },
-              ].filter(tab => !!isFieldHidden || !isFieldHidden(tab.field)).map((tab) => {
+              ].filter(tab => !isFieldHidden || !isFieldHidden(tab.field)).map((tab) => {
                 const isSelected = activeTab === tab.id;
                 let labelSuffix = "";
                 if (tab.id === "POSITIONS" && positionsCount !== undefined) labelSuffix = ` (${positionsCount})`;
