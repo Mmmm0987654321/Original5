@@ -162,6 +162,7 @@ export default function LighterMarketPreview({
   const submitTrade = async () => {
     if (!walletAddress || !selected || !tradingIdentity || tradingBusy) return;
     if (!marketPrice || feed.status !== "live" || !(sizeInCoin > 0) ||
+        (reduceOnly && !hasReduciblePosition) ||
         (attachTpSl && (!takeProfit.trim() && !stopLoss.trim())) ||
         (orderType === "limit" && !(Number(limitPrice) > 0))) {
       setTradingNotice("Choose a live Lighter market with a valid order size and limit price.");
@@ -293,11 +294,15 @@ export default function LighterMarketPreview({
           setTradingNotice("Session key disconnected. Your registered key remains on Lighter.");
         }} className="underline text-brand-muted">Disconnect</button>
       </div> : <>
-        <button type="button" disabled={!walletAddress || tradingBusy} onClick={beginLighterAuthorization}
-          className="w-full border border-accent/40 rounded-lg p-2 font-bold text-accent disabled:opacity-40">
-          {tradingBusy ? "Authorize in wallet…" : "Enable real Lighter trading & withdrawal"}
-        </button>
-        <p className="text-brand-muted leading-relaxed">One wallet signature authorizes a personal trading key. That key can also make secure withdrawals to your original wallet. No key is sent to HideDex servers.</p>
+        <p className="text-brand-muted leading-relaxed">One wallet signature authorizes a personal key for Lighter mainnet orders and verified-wallet withdrawals. Review the request carefully. HideDex does not store the key.</p>
+        <div className="grid grid-cols-[1fr_1.9fr] gap-2 pt-2">
+          <button type="button" disabled={tradingBusy} onClick={() => setAuthSheetOpen(false)}
+            className="rounded-xl border border-brand-border bg-brand-surface px-2 py-3 font-bold text-brand-muted disabled:opacity-40">Cancel</button>
+          <button type="button" disabled={!walletAddress || tradingBusy} onClick={beginLighterAuthorization}
+            className="rounded-xl bg-white text-black px-2 py-3 font-black tracking-wide text-[11px] sm:text-xs disabled:opacity-40">
+            {tradingBusy ? "SIGNING…" : "SIGN TO ENABLE TRADING →"}
+          </button>
+        </div>
         <button type="button" className="underline text-brand-muted" onClick={() => setShowExistingKey(v => !v)}>
           {showExistingKey ? "Hide" : "Reconnect an existing Lighter API key"}
         </button>
@@ -441,6 +446,7 @@ export default function LighterMarketPreview({
     setAmount("");
     setLimitPrice("");
     setBookGroup(1);
+    setReduceOnly(false);
     setMarginUpdateMarketId(null);
     setMarginStatus("");
     setOrderTypeOpen(false);
@@ -464,6 +470,7 @@ export default function LighterMarketPreview({
     setSelectedMarketId(nextMarket?.id ?? null);
     setAmount("");
     setLimitPrice("");
+    setReduceOnly(false);
     setMarginUpdateMarketId(null);
     setOrderTypeOpen(false);
     if (!nextMarket) setMarketSelectorOpen(true);
@@ -475,6 +482,9 @@ export default function LighterMarketPreview({
   const sizeInCoin = Number.isFinite(inputAmount) && inputAmount > 0 && inputPrice !== null && inputPrice > 0
     ? sizeUnit === "USD" ? inputAmount / inputPrice : inputAmount : 0;
   const orderValueUsd = sizeInCoin && inputPrice ? sizeInCoin * inputPrice : null;
+  const hasReduciblePosition = Boolean(selected && tradingIdentity && publicAccounts?.some(a =>
+    a.index === tradingIdentity.accountIndex && a.positions.some(p =>
+      p.symbol === selected.symbol && (side === "sell" ? p.signedSize > 0 : p.signedSize < 0))));
   const bookLevels = (levels: LighterMarketFeed["bids"], sideName: "bid" | "ask") => {
     // Sum real exchange sizes into rounded price groups; never synthesize levels.
     const decimalPrecision = Math.min(10, selected?.priceDecimals ?? 2);
@@ -923,11 +933,11 @@ export default function LighterMarketPreview({
             </button>}
           </div>
           <div className="flex bg-brand-overlay-subtle rounded-lg p-0.5 border border-brand-border">
-            <button type="button" onClick={() => setSide("buy")} className={"flex-1 py-2 rounded-md font-bold text-[10px] md:text-xs " +
+            <button type="button" onClick={() => {setSide("buy");setReduceOnly(false);}} className={"flex-1 py-2 rounded-md font-bold text-[10px] md:text-xs " +
               (side === "buy" ? "bg-[#18c29c] text-[#030610]" : "text-brand-text")}>
               {kind === "perp" ? "LONG" : "BUY"}
             </button>
-            <button type="button" onClick={() => setSide("sell")} className={"flex-1 py-2 rounded-md font-bold text-[10px] md:text-xs " +
+            <button type="button" onClick={() => {setSide("sell");setReduceOnly(false);}} className={"flex-1 py-2 rounded-md font-bold text-[10px] md:text-xs " +
               (side === "sell" ? "bg-[#f25c5c] text-white" : "text-brand-text")}>
               {kind === "perp" ? "SHORT" : "SELL"}
             </button>
@@ -973,7 +983,9 @@ export default function LighterMarketPreview({
           </div>
           {kind === "perp" && <>
             <div className="border-t border-brand-border pt-3 flex items-center gap-2">
-              <input type="checkbox" checked={reduceOnly} disabled={!tradingIdentity || tradingBusy}
+              <input type="checkbox" checked={reduceOnly}
+                disabled={!tradingIdentity || tradingBusy || !hasReduciblePosition}
+                title={!hasReduciblePosition ? "Reduce Only requires a verified opposite-side open position" : ""}
                 onChange={e => setReduceOnly(e.target.checked)} aria-label="Reduce Only" className="w-4 h-4"/>
               <span className="font-bold text-[10px] text-brand-muted">Reduce Only</span>
             </div>
