@@ -10,8 +10,8 @@ export default function TradingAccountTabBar({
 }: {
   activeTab: TradingTabId;
   onSelect: (tab: TradingTabId) => void;
-  positionsCount: number;
-  ordersCount: number;
+  positionsCount?: number;
+  ordersCount?: number;
   isFieldHidden?: (field: string) => boolean;
 }) {
   return (
@@ -28,8 +28,8 @@ export default function TradingAccountTabBar({
               ].filter(tab => !!isFieldHidden || !isFieldHidden(tab.field)).map((tab) => {
                 const isSelected = activeTab === tab.id;
                 let labelSuffix = "";
-                if (tab.id === "POSITIONS") labelSuffix = ` (${positionsCount})`;
-                else if (tab.id === "OPEN_ORDERS") labelSuffix = ` (${ordersCount})`;
+                if (tab.id === "POSITIONS" && positionsCount !== undefined) labelSuffix = ` (${positionsCount})`;
+                else if (tab.id === "OPEN_ORDERS" && ordersCount !== undefined) labelSuffix = ` (${ordersCount})`;
                 
                 return (
                   <button

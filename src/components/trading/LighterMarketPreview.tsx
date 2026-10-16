@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import TVChart from "./TVChart";
 import MarketsPanel from "../dashboard/MarketsPanel";
+import TradingAccountTabBar, { type TradingTabId } from "./TradingAccountTabBar";
 import type { TokenMetadata } from "../../types";
 import { renderAssetLogo } from "./MarketSelector";
 import {
@@ -46,6 +47,7 @@ export default function LighterMarketPreview({
   const [publicAccounts, setPublicAccounts] = useState<LighterPublicAccount[] | null>(null);
   const [feed, setFeed] = useState<LighterMarketFeed>(emptyBook);
   const [viewMode, setViewMode] = useState<"chart" | "orderbook">("chart");
+  const [accountTab, setAccountTab] = useState<TradingTabId>("POSITIONS");
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [orderType, setOrderType] = useState<"market" | "limit">("market");
   const [amount, setAmount] = useState("");
@@ -189,6 +191,54 @@ export default function LighterMarketPreview({
     </div>
   );
 
+  const knownPositionCount = publicAccounts === null ? undefined :
+    publicAccounts.reduce((sum, acct) => sum + acct.positions.length, 0);
+  const lighterAccountTabs = (
+    <div className="bg-brand-bg border border-brand-border rounded-xl overflow-hidden shadow-xl" id="terminal-dashboard-panel-unified">
+      <TradingAccountTabBar
+        activeTab={accountTab}
+        onSelect={setAccountTab}
+        positionsCount={knownPositionCount}
+        ordersCount={undefined}
+      />
+      <div className="p-2 md:p-3 min-h-[110px] overflow-y-auto overflow-x-hidden">
+        {accountTab === "BALANCES" && accountCards}
+        {accountTab === "POSITIONS" && (
+          <div className="space-y-2">
+            {accountsLoading && <p className="text-xs text-brand-muted">Checking Lighter positions…</p>}
+            {accountError && <p className="text-xs text-rose-400">Unable to verify positions: {accountError}</p>}
+            {publicAccounts !== null && knownPositionCount === 0 &&
+              <p className="text-xs text-brand-muted">No open positions reported by connected Lighter accounts.</p>}
+            {publicAccounts?.flatMap(acct => acct.positions.map((p, index) => (
+              <div key={acct.index + ":" + p.symbol + ":" + index}
+                className="bg-brand-card border border-brand-border/60 rounded-xl p-3 text-[11px]">
+                <div className="flex items-center justify-between gap-2 border-b border-brand-border pb-2 mb-2">
+                  <strong>{p.symbol} · {p.signedSize > 0 ? "LONG" : "SHORT"}</strong>
+                  <span className="font-mono">Account #{acct.index}</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <p>Size <strong className="block font-mono">{formatPrice(Math.abs(p.signedSize), 6)}</strong></p>
+                  <p>Entry <strong className="block font-mono">{formatPrice(p.entryPrice)}</strong></p>
+                  <p>Unrealized PnL <strong className="block font-mono">{formatPrice(p.unrealizedPnl)}</strong></p>
+                  <p className="text-brand-muted">TP/SL and Close require verified Lighter signing</p>
+                </div>
+              </div>
+            )))}
+            {!walletAddress && <p className="text-xs text-brand-muted">Connect wallet to check Lighter positions.</p>}
+          </div>
+        )}
+        {accountTab === "OPEN_ORDERS" && (
+          <p className="text-xs text-brand-muted">Open orders have not been verified from Lighter's account API.
+            Cancel actions are disabled until account authorization is implemented.</p>
+        )}
+        {accountTab === "TRADE_HISTORY" && (
+          <p className="text-xs text-brand-muted">Lighter fills and historical fees are not integrated.
+            No Hyperliquid history or fabricated fills are shown.</p>
+        )}
+      </div>
+    </div>
+  );
+
   return <div className="w-full min-w-0 text-brand-text pb-6" data-exchange="lighter">
     {marketError && <div role="alert" className="mb-2 p-3 border border-rose-500/40 rounded-lg text-xs text-rose-400">
       Lighter market API unavailable: {marketError}. Hyperliquid prices are never substituted.
@@ -230,7 +280,7 @@ export default function LighterMarketPreview({
         lighterBook={feed}
         lighterMultiplier={selected?.multiplier}
         lighterPriceDecimals={selected?.priceDecimals}
-        lighterAccountSummary={accountCards}
+        lighterAccountSummary={lighterAccountTabs}
       />
     )}
 
@@ -319,16 +369,7 @@ export default function LighterMarketPreview({
             </div>{bookLevels(feed.bids.slice(0, 7), "bid")}</div>
         </div>
       </div>
-      <div id="trading-dashboard-tabs" className="rounded-xl border border-brand-border bg-brand-bg p-3">
-        <div className="flex gap-3 items-center border-b border-brand-border pb-2 mb-3">
-          <h3 className="text-xs font-bold">Positions / Orders</h3>
-          <button type="button" onClick={() => onSelectSection("funds")} className="text-[10px] text-accent underline">Full account ↗</button>
-        </div>
-        {accountCards}
-        <p className="text-[10px] text-brand-muted mt-3">
-          Lighter cancellation and TP/SL actions require verified signing and are not enabled yet.
-        </p>
-      </div>
+      {lighterAccountTabs}
     </>}
 
     {(section === "funds" || section === "account" || section === "orders") && <div className="space-y-3">
