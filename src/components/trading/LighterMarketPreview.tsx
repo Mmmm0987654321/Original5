@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import TVChart from "./TVChart";
+import { renderAssetLogo } from "./MarketSelector";
 import {
   getLighterAccountIndexes, getLighterMarkets, getLighterPublicAccounts,
   subscribeLighterBook,
@@ -199,7 +200,7 @@ export default function LighterMarketPreview({
           </tr></thead>
           <tbody>{available.map(m => <tr key={m.id} className="border-b border-brand-border/40 cursor-pointer hover:bg-brand-overlay-subtle"
             onClick={() => chooseMarket(m, true)}>
-              <td className="p-2 font-semibold">{m.symbol}</td>
+              <td className="p-2 font-semibold"><span className="inline-flex items-center gap-2"><span className="shrink-0">{renderAssetLogo(m.symbol)}</span>{m.symbol}</span></td>
               <td className="p-2 font-mono text-right">{formatPrice(m.lastTradePrice)}</td>
               <td className="p-2 font-mono text-right">{m.volume24hUsd === null ? "—" : "$" + formatPrice(m.volume24hUsd, 2)}</td>
               <td className="p-2 font-mono text-right">{m.change24h === null ? "—" : formatPrice(m.change24h, 3)}</td>
@@ -212,6 +213,7 @@ export default function LighterMarketPreview({
       <div id="terminal-unified-market-header" className="rounded-xl border border-brand-border bg-brand-surface p-2 mb-2">
         <div className="flex flex-wrap justify-between items-center gap-2">
           <div className="flex items-center gap-2">
+            {selected && <span className="shrink-0">{renderAssetLogo(selected.symbol)}</span>}
             <select value={selected?.id ?? ""} aria-label="Lighter symbol" onChange={e => {
               const m = available.find(x => x.id === Number(e.target.value)); if (m) chooseMarket(m, false);
             }} className="border border-brand-border rounded-lg bg-brand-bg px-2 py-2 text-xs font-bold max-w-[140px]">
