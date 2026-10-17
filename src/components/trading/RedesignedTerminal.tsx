@@ -80,6 +80,7 @@ import {HideDexTradePercentPresets,HideDexTradeOptionToggle} from "./HideDexTrad
 import HideDexTradeTriggerPrice from "./HideDexTradeTriggerPrice";
 import HideDexMobileMarketHeader from "./HideDexMobileMarketHeader";
 import HideDexDesktopMarketBar from "./HideDexDesktopMarketBar";
+import HideDexMarketInfoDropdown from "./HideDexMarketInfoDropdown";
 import { HideDexSideAndAvailability, HideDexBasicOrderInputs } from "./HideDexTradeEntry";
 import MarketSelector, {
   renderAssetLogo,
@@ -4487,95 +4488,17 @@ export default function RedesignedTerminal({
           onMarketInfo={()=>setIsMarketInfoOpen(v=>!v)}
         />
 
-        {/* Market Info Dropdown Card */}
-        {isMarketInfoOpen && (
-          <div 
-            data-market-info-dropdown="true"
-            className="absolute top-full mt-2 left-2 right-2 sm:left-auto sm:right-2 sm:w-80 max-w-[calc(100vw-24px)] bg-brand-surface border border-brand-border rounded-xl shadow-2xl z-[80] p-3.5 space-y-3"
-            id="market-info-dropdown"
-          >
-            <div className="flex items-center justify-between border-b border-brand-border pb-1.5">
-              <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest font-sans">
-                {headerTicker || "--"} Market Metrics
-              </span>
-              {/* Spot/Perp control or badge */}
-              {isSpotOnly ? (
-                <span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono text-[9px] font-bold uppercase">
-                  SPOT
-                </span>
-              ) : canToggleSpot ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    const nextPerp = !isPerp;
-                    setIsPerp(nextPerp);
-                  }}
-                  className="px-2 py-0.5 rounded bg-brand-overlay-subtle hover:bg-brand-overlay-normal border border-brand-border text-[9px] font-mono font-bold text-brand-text transition-colors cursor-pointer"
-                >
-                  {isPerp ? "PERP → Switch Spot" : "SPOT → Switch Perp"}
-                </button>
-              ) : (
-                <span className="px-1.5 py-0.5 rounded bg-accent/10 text-accent font-mono text-[9px] font-bold uppercase">
-                  {leverage}x PERPETUAL
-                </span>
-              )}
-            </div>
-
-            <div className="flex flex-col items-start gap-3 font-mono text-xs">
-              {/* Mark Price / Real Price */}
-              <div className="border-b border-brand-border/20 pb-1.5">
-                <span className="text-gray-500 block text-[9px] font-sans font-bold uppercase tracking-wider leading-tight">Mark Price</span>
-                <span className="text-emerald-400 font-extrabold text-sm block mt-0.5">
-                  {typeof realCurrentPrice === "number" && Number.isFinite(realCurrentPrice) && realCurrentPrice > 0 
-                    ? `$${realCurrentPrice.toLocaleString(undefined, { minimumFractionDigits: symbol === "PURR" ? 4 : 2 })}` 
-                    : "--"}
-                </span>
-              </div>
-
-              {/* 24H Change */}
-              <div className="border-b border-brand-border/20 pb-1.5">
-                <span className="text-gray-500 block text-[9px] font-sans font-bold uppercase tracking-wider leading-tight">24H Change</span>
-                <span className={`text-xs font-extrabold flex items-center gap-0.5 mt-1 leading-none ${
-                  typeof effectiveChange24h === "number" && Number.isFinite(effectiveChange24h)
-                    ? (effectiveChange24h >= 0 ? "text-emerald-400" : "text-rose-400") 
-                    : "text-gray-400"
-                }`}>
-                  {typeof effectiveChange24h === "number" && Number.isFinite(effectiveChange24h)
-                    ? `${effectiveChange24h >= 0 ? "+" : ""}${effectiveChange24h.toFixed(2)}%` 
-                    : "--"}
-                </span>
-              </div>
-
-              {/* Funding rate is only defined for perpetual markets. */}
-              {isPerp && (
-              <div>
-                <span className="text-gray-500 block text-[9px] font-sans font-bold uppercase tracking-wider leading-tight">Funding Rate</span>
-                <span className={`font-bold block mt-0.5 text-xs ${
-                  isPerp && typeof effectiveFundingRate === "number" && Number.isFinite(effectiveFundingRate)
-                    ? (effectiveFundingRate >= 0 ? "text-violet-400" : "text-rose-400")
-                    : "text-gray-400"
-                }`}>
-                  {isPerp && typeof effectiveFundingRate === "number" && Number.isFinite(effectiveFundingRate)
-                    ? `${effectiveFundingRate >= 0 ? "+" : ""}${effectiveFundingRate.toFixed(4)}%`
-                    : "--"}
-                </span>
-              </div>
-              )}
-
-              {/* Open Interest (if Perp) */}
-              {isPerp && (
-                <div className="w-full border-t border-brand-border/20 pt-2">
-                  <span className="text-gray-500 block text-[9px] font-sans font-bold uppercase tracking-wider leading-tight">Open Interest</span>
-                  <span className="text-indigo-400 font-bold block mt-0.5">
-                    {typeof effectiveOpenInterest === "number" && Number.isFinite(effectiveOpenInterest)
-                      ? `$${(effectiveOpenInterest / 1_000_000).toFixed(1)}M`
-                      : "--"}
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-        )}
+        {isMarketInfoOpen && <HideDexMarketInfoDropdown
+          ticker={headerTicker}
+          mode={isPerp?"perp":"spot"}
+          priceLabel={typeof realCurrentPrice==="number"&&Number.isFinite(realCurrentPrice)&&realCurrentPrice>0
+            ? "$"+realCurrentPrice.toLocaleString(undefined,{minimumFractionDigits:symbol==="PURR"?4:2}) : "—"}
+          change24h={effectiveChange24h}
+          fundingRate={isPerp?effectiveFundingRate:null}
+          openInterestUsd={isPerp?effectiveOpenInterest:null}
+          onSwitch={canToggleSpot?()=>setIsPerp(!isPerp):undefined}
+          badge={isSpotOnly?<span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono text-[9px] font-bold uppercase">SPOT</span>:undefined}
+        />}
 
         {/* Below ROW 1: thin divider and ROW 2 host for chart toolbar */}
         {topViewMode === "chart" && (

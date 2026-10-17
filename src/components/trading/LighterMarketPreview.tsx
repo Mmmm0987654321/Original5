@@ -30,6 +30,7 @@ import {HideDexTradePercentPresets,HideDexTradeOptionToggle} from "./HideDexTrad
 import HideDexTradeTriggerPrice from "./HideDexTradeTriggerPrice";
 import HideDexMobileMarketHeader from "./HideDexMobileMarketHeader";
 import HideDexDesktopMarketBar from "./HideDexDesktopMarketBar";
+import HideDexMarketInfoDropdown from "./HideDexMarketInfoDropdown";
 import { HideDexSideAndAvailability, HideDexBasicOrderInputs } from "./HideDexTradeEntry";
 import type { TokenMetadata } from "../../types";
 import MarketSelector, { renderAssetLogo } from "./MarketSelector";
@@ -832,22 +833,15 @@ export default function LighterMarketPreview({
             <span className={"block w-4 h-4 rounded-full bg-brand-bg transition-transform "+(kind==="perp"?"translate-x-4":"translate-x-0")}/>
           </button>}
         />
-        {isMarketInfoOpen && <div data-market-info-dropdown="true" id="market-info-dropdown"
-          className="absolute top-full mt-2 left-2 right-2 sm:left-auto sm:right-2 sm:w-80 max-w-[calc(100vw-24px)] bg-brand-surface border border-brand-border rounded-xl shadow-2xl z-[80] p-3.5 space-y-3">
-          <div className="flex justify-between items-center border-b border-brand-border pb-1.5">
-            <span className="text-[10px] font-black text-gray-400 uppercase tracking-widest">{selected?.symbol??"--"} Market Metrics</span>
-            <span className="px-1.5 py-0.5 bg-accent/10 text-accent rounded text-[9px] font-bold">{kind==="perp"?"PERP":"SPOT"}</span>
-          </div>
-          <div className="flex flex-col gap-3 font-mono text-xs">
-            <div><span className="block text-gray-500 text-[9px] uppercase font-bold">Last Price</span>
-              <strong className="text-emerald-400 text-sm">{formatPrice(marketPrice)}</strong></div>
-            <div className="border-t border-brand-border/20 pt-2"><span className="block text-gray-500 text-[9px] uppercase font-bold">24H Change</span>
-              <strong className={(selected?.change24h??0)>=0?"text-emerald-400":"text-rose-400"}>
-                {selected?.change24h == null ? "—" : (selected.change24h>=0?"+":"")+formatPrice(selected.change24h,2)+"%"}</strong></div>
-            <div className="border-t border-brand-border/20 pt-2"><span className="block text-gray-500 text-[9px] uppercase font-bold">24H Volume</span>
-              <strong>{selected?.volume24hUsd == null ? "—" : "$"+formatPrice(selected.volume24hUsd,2)}</strong></div>
-          </div>
-        </div>}
+        {isMarketInfoOpen && <HideDexMarketInfoDropdown
+          ticker={selected?.symbol??"--"}
+          mode={kind}
+          priceLabel={marketPrice===null?"—":"$"+formatPrice(marketPrice,Math.min(8,selected?.priceDecimals??2))}
+          change24h={selected?.change24h}
+          fundingRate={null}
+          openInterestUsd={null}
+          onSwitch={hasSpotMarkets&&selected?()=>switchKind(kind==="perp"?"spot":"perp"):undefined}
+        />}
         {viewMode==="chart" && <>
           <div className="w-full h-px bg-brand-border/60 my-1 sm:my-1.5"/>
           <div id="market-chart-toolbar-host" className="w-full min-w-0 flex items-center min-h-[28px] border-b border-brand-border/40"/>
