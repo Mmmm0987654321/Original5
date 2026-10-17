@@ -5,7 +5,7 @@
  * The pinned browser SDK packages Go's Lighter signer WASM. It is an
  * independent TypeScript wrapper, not an endorsement by Lighter.
  */
-import { BrowserProvider, getAddress } from "ethers";
+import { BrowserProvider, getAddress, parseUnits } from "ethers";
 import {
   initLighterSigner, LighterClient, LighterOnboarding, LighterHelper, LighterConstant,
   type LighterSignerContext, type LighterActiveOrder,
@@ -13,7 +13,7 @@ import {
 import wasmUrl from "@hitesh23k/lighter-sdk/lighterSigner.wasm?url";
 import wasmExecUrl from "@hitesh23k/lighter-sdk/wasm_exec.js?url";
 import { getLighterAccountIndexes, getLighterPublicAccounts, getLighterMarkets, type LighterMarket } from "./lighterMarketData";
-import type { LighterWalletProvider } from "./lighterFunding";
+import { verifiedUsdcAssetIndex, type LighterWalletProvider } from "./lighterFunding";
 
 type Session = {
   address: string;
@@ -435,22 +435,34 @@ export async function withdrawLighterUsdc(args: {
     const available = Number(account?.available_balance);
     if (!Number.isFinite(available) || amount > available)
       throw new Error("Amount exceeds verified Lighter available balance.");
-    // This pinned SDK's documented high-level secure-withdrawal API accepts
-    // {amount}. It selects its own correct default route/asset. Explicitly
-    // injecting routeType:0 was rejected in the live browser as
-    // "invalid route type" despite 0 being a valid *protocol* perp route.
-    // Do NOT guess another numeric route or use a different SDK/signing flow.
-    // Secure withdrawal always targets the verified L1 owner above.
+    // IMPORTANT: pinned @hitesh23k/lighter-sdk@0.4.1 high-level
+    // client.withdraw({amount}) defaults to ROUTE_TYPE.FAST (1).
+    // This UI expressly promises SECURE withdrawal of PERP USDC, not
+    // fast/spot. The official Lighter SignWithdraw asset route is
+    // 0=Perps, 1=Spot; use the verified native USDC asset ID.
+    // SDK constants misleadingly label the same field standard/fast.
+    // This is the SDK's own low-level signed withdraw path and nonce manager,
+    // never custom signing, an unverified transfer, or a signed retry.
+    const assetIndex=await verifiedUsdcAssetIndex();
+    if(!Number.isSafeInteger(assetIndex)||assetIndex<1)
+      throw new Error("Lighter USDC withdrawal asset index is incompatible with the pinned signer. No withdrawal was sent.");
+    const scaledAmount=parseUnits(args.amount.trim(),6);
+    if(scaledAmount>BigInt(Number.MAX_SAFE_INTEGER))
+      throw new Error("Withdrawal amount exceeds the Lighter signer safe-integer limit.");
     try {
-      const tx = await s.client.withdraw({ amount: args.amount.trim() });
+      const tx=await s.client.rest.withdraw(s.signer,{
+        assetIndex,routeType:0,amount:scaledAmount,
+      });
       return accepted(tx);
     } catch (error) {
       const raw=error instanceof Error?error.message:String(error);
       if(/invalid route type/i.test(raw)) {
         // It may be an SDK/protocol compatibility error. A failed response
         // alone cannot establish transaction status; never auto retry.
-        throw new Error("Lighter did not confirm the secure Ethereum withdrawal route. Check your Lighter withdrawal history before attempting it again.");
+        throw new Error("Lighter rejected the verified secure Perps withdrawal route. No automatic retry was sent. Check withdrawal history and confirm Lighter SDK compatibility before retrying.");
       }
+      if(/not enough collateral|insufficient collateral/i.test(raw))
+        throw new Error("Insufficient withdrawable Perps collateral according to Lighter. The displayed trading balance is not a guaranteed withdrawal limit. Check active orders/margin and refresh the account before retrying.");
       throw error;
     }
   });
