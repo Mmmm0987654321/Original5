@@ -39,6 +39,10 @@ import HideDexFundsDialogShell from "../dashboard/HideDexFundsDialogShell";
 import HideDexOpenOrders, {type HideDexOpenOrderRow} from "./HideDexOpenOrders";
 import HideDexBalancesView, {type HideDexBalanceItem} from "./HideDexBalancesView";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
+import HideDexUnifiedMarketHeader from "./HideDexUnifiedMarketHeader";
+import HideDexOrderSummary from "./HideDexOrderSummary";
+import HideDexPositionActions from "./HideDexPositionActions";
+import HideDexDisconnectedOverlay from "./HideDexDisconnectedOverlay";
 import HideDexOrderBookPanel, {type HideDexBookLevel} from "./HideDexOrderBookPanel";
 import {HideDexTradeGrid,HideDexOrderForm,HideDexTopMarketPane} from "./HideDexTradeLayout";
 import {HideDexTradePercentPresets,HideDexTradeOptionToggle} from "./HideDexTradeOptions";
@@ -1353,19 +1357,11 @@ export default function LighterMarketPreview({
                         return tp||sl?(tp?"TP set":"")+(tp&&sl?" · ":"")+(sl?"SL set":""):"Not set";
                       })(),tone:"muted"},
                     ]}
-                    actions={<>
-                      <button type="button"
-                        onClick={()=>setTpSlTarget({accountIndex:a.index,symbol:p.symbol,signedSize:p.signedSize})}
-                        disabled={tradingBusy} title="Real Lighter TP/SL triggers"
-                        className="w-full h-8 px-1 rounded-lg border bg-brand-overlay-subtle hover:bg-brand-overlay-normal border-brand-primary/30 hover:border-brand-primary/50 text-brand-primary text-[8px] sm:text-[10px] font-extrabold uppercase tracking-widest flex items-center justify-center text-center transition-all duration-150 cursor-pointer active:scale-95 disabled:opacity-40">
-                        TP/SL
-                      </button>
-                      <button type="button" onClick={()=>requestLighterPositionClose(a.index,p.symbol,p.signedSize)}
-                        disabled={tradingBusy}
-                        className="w-full h-8 px-1 rounded-lg border bg-brand-loss/10 hover:bg-brand-loss/20 border-brand-loss/30 hover:border-brand-loss/50 text-brand-loss text-[8px] sm:text-[10px] font-extrabold uppercase tracking-widest flex items-center justify-center text-center transition-all duration-150 cursor-pointer active:scale-95 select-none disabled:opacity-40">
-                        Close
-                      </button>
-                    </>}
+                    actions={<HideDexPositionActions
+                      onTpSl={()=>setTpSlTarget({accountIndex:a.index,symbol:p.symbol,signedSize:p.signedSize})}
+                      onClose={()=>requestLighterPositionClose(a.index,p.symbol,p.signedSize)}
+                      tpSlDisabled={tradingBusy} closeDisabled={tradingBusy}
+                    />}
                   />}
                 </HideDexPositionCard>;
               })}
@@ -1561,44 +1557,39 @@ export default function LighterMarketPreview({
         No matching {kind === "spot" ? "Spot" : "Perp"} market is selected. Choose an actual Lighter market before trading.
         <button type="button" onClick={() => setMarketSelectorOpen(true)} className="ml-2 underline text-accent">Select market</button>
       </p>}
-      <HideDexMobileMarketHeader
-        logo={selected ? renderAssetLogo(selected.symbol) : null}
-        ticker={selected?.symbol ?? "SELECT MARKET"}
-        modeLabel={kind==="perp" ? (selected?.maxLeverage ? selected.maxLeverage + "x Perp" : "Perpetual") : "Spot"}
-        priceLabel={formatPrice(marketPrice)}
-        change24h={selected?.change24h}
-        onSelectMarket={() => setMarketSelectorOpen(true)}
-        mode={kind}
-        switchMode="toggle"
-        onSwitchMode={() => switchKind(kind==="perp"?"spot":"perp")}
+      <HideDexUnifiedMarketHeader
+        mobile={{
+          logo:selected?renderAssetLogo(selected.symbol):null,
+          ticker:selected?.symbol??"SELECT MARKET",
+          modeLabel:kind==="perp"?(selected?.maxLeverage?selected.maxLeverage+"x Perp":"Perpetual"):"Spot",
+          priceLabel:formatPrice(marketPrice),
+          change24h:selected?.change24h,
+          onSelectMarket:()=>setMarketSelectorOpen(true),
+          mode:kind,
+          switchMode:"toggle",
+          onSwitchMode:()=>switchKind(kind==="perp"?"spot":"perp"),
+        }}
+        desktop={{
+          logo:selected?renderAssetLogo(selected.symbol):null,
+          ticker:selected?.symbol??"SELECT MARKET",
+          sublabel:kind==="perp"?(selected?.maxLeverage?selected.maxLeverage+"x Perpetual":"Perpetual"):"Spot Asset",
+          onMarket:()=>setMarketSelectorOpen(true),
+          view:viewMode,
+          onView:setViewMode,
+          marketInfoOpen:isMarketInfoOpen,
+          onMarketInfo:()=>setIsMarketInfoOpen(v=>!v),
+        }}
+        info={{
+          ticker:selected?.symbol??"--",
+          mode:kind,
+          priceLabel:marketPrice===null?"—":"$"+formatPrice(marketPrice,Math.min(8,selected?.priceDecimals??2)),
+          change24h:selected?.change24h,
+          fundingRate:null,
+          openInterestUsd:null,
+          onSwitch:hasSpotMarkets&&selected?()=>switchKind(kind==="perp"?"spot":"perp"):undefined,
+        }}
+        showChartToolbar={viewMode==="chart"}
       />
-      <div id="terminal-unified-market-header"
-        className="hidden md:block relative glass-panel rounded-xl border border-brand-border bg-brand-surface py-1.5 px-2 sm:px-2.5 select-none shadow-sm mb-1.5 md:mb-2">
-        <HideDexDesktopMarketBar
-          logo={selected ? renderAssetLogo(selected.symbol) : null}
-          ticker={selected?.symbol??"SELECT MARKET"}
-          sublabel={kind==="perp" ? (selected?.maxLeverage ? selected.maxLeverage+"x Perpetual":"Perpetual") : "Spot Asset"}
-          onMarket={()=>setMarketSelectorOpen(true)}
-          view={viewMode}
-          onView={setViewMode}
-          marketInfoOpen={isMarketInfoOpen}
-          onMarketInfo={()=>setIsMarketInfoOpen(v=>!v)}
-
-        />
-        {isMarketInfoOpen && <HideDexMarketInfoDropdown
-          ticker={selected?.symbol??"--"}
-          mode={kind}
-          priceLabel={marketPrice===null?"—":"$"+formatPrice(marketPrice,Math.min(8,selected?.priceDecimals??2))}
-          change24h={selected?.change24h}
-          fundingRate={null}
-          openInterestUsd={null}
-          onSwitch={hasSpotMarkets&&selected?()=>switchKind(kind==="perp"?"spot":"perp"):undefined}
-        />}
-        {viewMode==="chart" && <>
-          <div className="w-full h-px bg-brand-border/60 my-1 sm:my-1.5"/>
-          <div id="market-chart-toolbar-host" className="w-full min-w-0 flex items-center min-h-[28px] border-b border-brand-border/40"/>
-        </>}
-      </div>
       <HideDexTopMarketPane>
         {viewMode === "chart" ? selected ? <TVChart key={"lighter-chart-" + selected.id}
           symbol={selected.symbol} marketCoin="" lighterMarketId={selected.id}
@@ -1620,19 +1611,7 @@ export default function LighterMarketPreview({
       </HideDexTopMarketPane>
       <HideDexTradeGrid>
         <HideDexOrderForm>
-          {!walletAddress && (
-            <div className="absolute inset-0 bg-brand-bg/95 backdrop-blur-md z-20 flex flex-col items-center justify-center p-2 text-center rounded-xl">
-              <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center mb-1.5">
-                <Wallet className="w-4 h-4 text-indigo-400"/>
-              </div>
-              <h4 className="font-sans font-bold text-brand-text text-[10px] md:text-xs uppercase tracking-wider mb-0.5">Not Connected</h4>
-              <p className="text-[9px] md:text-[10px] text-gray-500 max-w-[180px] leading-snug mb-2.5">Connect your wallet to trade.</p>
-              <button type="button" onClick={onConnectWallet}
-                className="w-full max-w-[130px] py-1.5 text-[9px] md:text-[10px] font-bold uppercase tracking-wider rounded-lg bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-brand-text shadow-lg cursor-pointer transition-all active:scale-98">
-                Connect
-              </button>
-            </div>
-          )}
+          {!walletAddress && <HideDexDisconnectedOverlay onConnect={onConnectWallet}/>}
           <div className="flex flex-1 flex-col gap-2 md:gap-3">
           <HideDexTradeSelectors
             isPerp={kind === "perp"}
@@ -1717,13 +1696,12 @@ export default function LighterMarketPreview({
                 disabled={tradingBusy}/>
             </div>}
           </>}
-          <div className="bg-brand-bg/50 border border-brand-border rounded-lg p-1.5 text-[9px] md:text-[10px] font-mono space-y-0.5 mt-auto">
-            {kind === "perp" && <div className="flex justify-between text-brand-muted"><span>Liq. Price</span><span>—</span></div>}
-            <div className="flex justify-between text-brand-muted"><span>Order Value</span>
-              <span>{orderValueUsd !== null ? "$" + formatPrice(orderValueUsd, 2) : "—"}</span>
-            </div>
-            {kind === "perp" && <div className="flex justify-between text-brand-muted"><span>Margin</span><span>—</span></div>}
-          </div>
+          <HideDexOrderSummary
+            isPerp={kind==="perp"}
+            liquidation="—"
+            orderValue={orderValueUsd!==null?"$"+formatPrice(orderValueUsd,2):"—"}
+            margin="—"
+          />
           <HideDexPlaceOrderButton type="button" onClick={submitTrade}
             side={side==="buy"?"BUY":"SELL"}
             busy={tradingBusy}

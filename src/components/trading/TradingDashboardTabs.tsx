@@ -3,6 +3,7 @@ import HideDexPositionActionBar from "./HideDexPositionActionBar";
 import HideDexCancelAllOrdersBar from "./HideDexCancelAllOrdersBar";
 import HideDexPositionHeader from "./HideDexPositionHeader";
 import HideDexPositionCard from "./HideDexPositionCard";
+import HideDexPositionActions from "./HideDexPositionActions";
 import HideDexPositionDetails from "./HideDexPositionDetails";
 import HideDexTradeHistory from "./HideDexTradeHistory";
 import HideDexOpenOrders, {type HideDexOpenOrderRow} from "./HideDexOpenOrders";
@@ -602,16 +603,7 @@ export default function TradingDashboardTabs({
                                   );
                                 })()},
                         ]}
-                        actions={<>
-                          <button type="button" onClick={()=>handleOpenTpSlModal(pos)}
-                            className="w-full h-8 px-1 rounded-lg border bg-brand-overlay-subtle hover:bg-brand-overlay-normal border-brand-primary/30 hover:border-brand-primary/50 text-brand-primary text-[8px] sm:text-[10px] font-extrabold uppercase tracking-widest flex items-center justify-center text-center transition-all duration-150 cursor-pointer active:scale-95 select-none">
-                            TP/SL
-                          </button>
-                          <button type="button" onClick={()=>setSelectedClosePosition(pos)}
-                            className="w-full h-8 px-1 rounded-lg border bg-brand-loss/10 hover:bg-brand-loss/20 border-brand-loss/30 hover:border-brand-loss/50 text-brand-loss text-[8px] sm:text-[10px] font-extrabold uppercase tracking-widest flex items-center justify-center transition-all duration-150 cursor-pointer active:scale-95 select-none">
-                            Close
-                          </button>
-                        </>}
+                        actions={<HideDexPositionActions onTpSl={()=>handleOpenTpSlModal(pos)} onClose={()=>setSelectedClosePosition(pos)}/>}
                       />
                     )}
                   </HideDexPositionCard>

@@ -73,6 +73,9 @@ import TradingDashboardTabs from "./TradingDashboardTabs";
 import HideDexTradingToast from "./HideDexTradingToast";
 import HideDexPlaceOrderButton from "./HideDexPlaceOrderButton";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
+import HideDexUnifiedMarketHeader from "./HideDexUnifiedMarketHeader";
+import HideDexOrderSummary from "./HideDexOrderSummary";
+import HideDexDisconnectedOverlay from "./HideDexDisconnectedOverlay";
 import HideDexOrderBookPanel from "./HideDexOrderBookPanel";
 import {HideDexTradeGrid,HideDexOrderForm,HideDexTopMarketPane} from "./HideDexTradeLayout";
 import {HideDexTradePercentPresets,HideDexTradeOptionToggle} from "./HideDexTradeOptions";
@@ -4429,53 +4432,42 @@ export default function RedesignedTerminal({
         }}
       />}
 
-      <HideDexMobileMarketHeader
-        logo={renderAssetLogo(symbol,currentToken?.displayBaseAsset,currentToken?.sourceCoin)}
-        ticker={headerTicker}
-        modeLabel={isPerp ? mobileTradeMarketLeverage + " Perp" : "Spot"}
-        priceLabel={typeof realCurrentPrice === "number" && Number.isFinite(realCurrentPrice) && realCurrentPrice>0
-          ? realCurrentPrice.toLocaleString(undefined,{minimumFractionDigits:symbol==="PURR"?4:2}) : "--"}
-        change24h={effectiveChange24h}
-        onSelectMarket={() => setShowTokenDropdown(v=>!v)}
-        mode={isPerp?"perp":"spot"}
-        switchMode={isSpotOnly?"spot-only":canToggleSpot?"toggle":"perp-only"}
-        onSwitchMode={() => setIsPerp(!isPerp)}
+      <HideDexUnifiedMarketHeader
+        mobile={{
+          logo:renderAssetLogo(symbol,currentToken?.displayBaseAsset,currentToken?.sourceCoin),
+          ticker:headerTicker,
+          modeLabel:isPerp?mobileTradeMarketLeverage+" Perp":"Spot",
+          priceLabel:typeof realCurrentPrice==="number"&&Number.isFinite(realCurrentPrice)&&realCurrentPrice>0
+            ?realCurrentPrice.toLocaleString(undefined,{minimumFractionDigits:symbol==="PURR"?4:2}):"--",
+          change24h:effectiveChange24h,
+          onSelectMarket:()=>setShowTokenDropdown(v=>!v),
+          mode:isPerp?"perp":"spot",
+          switchMode:isSpotOnly?"spot-only":canToggleSpot?"toggle":"perp-only",
+          onSwitchMode:()=>setIsPerp(!isPerp),
+        }}
+        desktop={{
+          logo:renderAssetLogo(symbol,currentToken?.displayBaseAsset,currentToken?.sourceCoin),
+          ticker:headerTicker,
+          sublabel:isPerp?leverage+"x Perpetual":"Spot Asset",
+          onMarket:()=>setShowTokenDropdown(v=>!v),
+          view:topViewMode==="orderbook"?"orderbook":"chart",
+          onView:setTopViewMode,
+          marketInfoOpen:isMarketInfoOpen,
+          onMarketInfo:()=>setIsMarketInfoOpen(v=>!v),
+        }}
+        info={{
+          ticker:headerTicker,
+          mode:isPerp?"perp":"spot",
+          priceLabel:typeof realCurrentPrice==="number"&&Number.isFinite(realCurrentPrice)&&realCurrentPrice>0
+            ?"$"+realCurrentPrice.toLocaleString(undefined,{minimumFractionDigits:symbol==="PURR"?4:2}):"—",
+          change24h:effectiveChange24h,
+          fundingRate:isPerp?effectiveFundingRate:null,
+          openInterestUsd:isPerp?effectiveOpenInterest:null,
+          onSwitch:canToggleSpot?()=>setIsPerp(!isPerp):undefined,
+          badge:isSpotOnly?<span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono text-[9px] font-bold uppercase">SPOT</span>:undefined,
+        }}
+        showChartToolbar={topViewMode==="chart"}
       />
-
-      {/* 1. TOP INTERACTIVE HEADER SECTION: ONE unified compact upper market panel */}
-      <div className="hidden md:block relative glass-panel rounded-xl border border-brand-border bg-brand-surface py-1.5 px-2 sm:px-2.5 select-none shadow-sm mb-1.5 md:mb-2" id="terminal-unified-market-header">
-        
-        <HideDexDesktopMarketBar
-          logo={renderAssetLogo(symbol,currentToken?.displayBaseAsset,currentToken?.sourceCoin)}
-          ticker={headerTicker}
-          sublabel={isPerp ? leverage + "x Perpetual" : "Spot Asset"}
-          onMarket={()=>setShowTokenDropdown(v=>!v)}
-          view={topViewMode==="orderbook"?"orderbook":"chart"}
-          onView={setTopViewMode}
-          marketInfoOpen={isMarketInfoOpen}
-          onMarketInfo={()=>setIsMarketInfoOpen(v=>!v)}
-        />
-
-        {isMarketInfoOpen && <HideDexMarketInfoDropdown
-          ticker={headerTicker}
-          mode={isPerp?"perp":"spot"}
-          priceLabel={typeof realCurrentPrice==="number"&&Number.isFinite(realCurrentPrice)&&realCurrentPrice>0
-            ? "$"+realCurrentPrice.toLocaleString(undefined,{minimumFractionDigits:symbol==="PURR"?4:2}) : "—"}
-          change24h={effectiveChange24h}
-          fundingRate={isPerp?effectiveFundingRate:null}
-          openInterestUsd={isPerp?effectiveOpenInterest:null}
-          onSwitch={canToggleSpot?()=>setIsPerp(!isPerp):undefined}
-          badge={isSpotOnly?<span className="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 font-mono text-[9px] font-bold uppercase">SPOT</span>:undefined}
-        />}
-
-        {/* Below ROW 1: thin divider and ROW 2 host for chart toolbar */}
-        {topViewMode === "chart" && (
-          <>
-            <div className="w-full h-px bg-brand-border/60 my-1 sm:my-1.5" />
-            <div id="market-chart-toolbar-host" className="w-full min-w-0 flex items-center min-h-[28px] border-b border-brand-border/40" />
-          </>
-        )}
-      </div>
 
       {/* SHARED TRADE MARKET SELECTOR — MOBILE + DESKTOP */}
       {showTokenDropdown && (
@@ -4550,24 +4542,7 @@ export default function RedesignedTerminal({
         <HideDexOrderForm>
           
           {/* Locked Overlay: Wallet Not Connected */}
-          {!walletAddress && (
-            <div className="absolute inset-0 bg-brand-bg/95 backdrop-blur-md z-20 flex flex-col items-center justify-center p-2 text-center rounded-xl">
-              <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center mb-1.5">
-                <Wallet className="w-4 h-4 text-indigo-400" />
-              </div>
-              <h4 className="font-sans font-bold text-brand-text text-[10px] md:text-xs uppercase tracking-wider mb-0.5">{t("not_connected")}</h4>
-              <p className="text-[9px] md:text-[10px] text-gray-500 max-w-[180px] leading-snug mb-2.5">
-                Connect your wallet to trade.
-              </p>
-              <button
-                type="button"
-                onClick={onConnectWallet}
-                className="w-full max-w-[130px] py-1.5 text-[9px] md:text-[10px] font-bold uppercase tracking-wider rounded-lg bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-brand-text shadow-lg cursor-pointer transition-all active:scale-98"
-              >
-                Connect
-              </button>
-            </div>
-          )}
+          {!walletAddress && <HideDexDisconnectedOverlay title={t("not_connected")} onConnect={onConnectWallet}/>}
 
           <form onSubmit={handleSubmitOrder} className="flex flex-1 flex-col gap-2 md:gap-3">
             
@@ -4902,32 +4877,13 @@ export default function RedesignedTerminal({
             )}
 
             {/* Calculations and limits stats list */}
-            <div className="bg-brand-bg/50 border border-brand-border rounded-lg p-1.5 text-[9px] md:text-[10px] font-mono space-y-0.5 mt-auto">
-              {isPerp && (
-                <div className="flex justify-between text-gray-500 font-bold">
-                  <span>Liq. Price</span>
-                  <span className="text-gray-300 font-semibold">
-                    {liquidationPrice ? `$${liquidationPrice.toLocaleString(undefined, { minimumFractionDigits: 1 })}` : "N/A"}
-                  </span>
-                </div>
-              )}
-              <div className="flex justify-between text-gray-500 font-bold">
-                <span>Order Value</span>
-                <span className="text-gray-300 font-semibold">
-                  {typeof orderValue === "number" && Number.isFinite(orderValue) && orderValue > 0
-                    ? `$${orderValue.toLocaleString(undefined, { minimumFractionDigits: 1 })}`
-                    : "--"}
-                </span>
-              </div>
-              {isPerp && (
-                <div className="flex justify-between text-gray-500 font-bold">
-                  <span>Margin</span>
-                  <span className="text-gray-300 font-semibold">
-                    {marginRequired > 0 ? `$${marginRequired.toLocaleString(undefined, { minimumFractionDigits: 1 })}` : "N/A"}
-                  </span>
-                </div>
-              )}
-            </div>
+            <HideDexOrderSummary
+              isPerp={isPerp}
+              liquidation={liquidationPrice?"$"+liquidationPrice.toLocaleString(undefined,{minimumFractionDigits:1}):"N/A"}
+              orderValue={typeof orderValue==="number"&&Number.isFinite(orderValue)&&orderValue>0
+                ?"$"+orderValue.toLocaleString(undefined,{minimumFractionDigits:1}):"--"}
+              margin={marginRequired>0?"$"+marginRequired.toLocaleString(undefined,{minimumFractionDigits:1}):"N/A"}
+            />
 
             {/* Action Placement Button */}
             <HideDexPlaceOrderButton
