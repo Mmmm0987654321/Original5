@@ -29,13 +29,16 @@ import TVChart from "./TVChart";
 import HideDexTradingAuthorizationSheet from "./HideDexTradingAuthorizationSheet";
 import HideDexBalancesView,{type HideDexBalanceItem} from "./HideDexBalancesView";
 import {reconnectAsterAgent,registerAsterTradingAgent,getAsterFuturesBalances,
-  clearAsterSession,type AsterWalletProvider,type AsterIdentity,type AsterAccountBalance} from "../../lib/asterTradingAuth";
+  getAsterAllVerifiedLeverageBrackets,
+  clearAsterSession,type AsterWalletProvider,type AsterIdentity,type AsterAccountBalance,
+  type AsterVerifiedLeverage} from "../../lib/asterTradingAuth";
 
 type Kind=AsterMarketKind;
 type Section="dashboard"|"markets"|"trade"|"funds"|"account"|"orders";
 type Props={
  walletAddress:string;
  getWalletProvider:()=>Promise<AsterWalletProvider>;
+ onSwitchToBsc:()=>Promise<void>;
  onConnectWallet:()=>void;
  section:Section;
  initialKind:Kind;
@@ -49,7 +52,7 @@ type Props={
 const numeric=(v:unknown)=>{
  const n=Number(v);return Number.isFinite(n)&&n>0?n:null;
 };
-function toToken(m:AsterMarket):TokenMetadata{
+function toToken(m:AsterMarket,maxLeverage?:number):TokenMetadata{
  const name=m.baseAsset+"/"+m.quoteAsset;
  return {
   symbol:m.kind==="spot"?name+"-SPOT":name,
@@ -57,7 +60,7 @@ function toToken(m:AsterMarket):TokenMetadata{
   price:m.lastPrice,change24h:m.change24hPercent,
   volume24h:["USDT","USDC","USD1"].includes(m.quoteAsset)?m.quoteVolume24h:null,
   high24h:m.high24h,low24h:m.low24h,
-  maxLeverage:undefined, // Private signed bracket query required.
+  maxLeverage:m.kind==="perp"?maxLeverage:undefined, // Only signed Aster tiers.
   openInterest:m.kind==="perp"?null:undefined,
   category:m.kind==="spot"?"spot":"perps",
   isSpotOnly:m.kind==="spot",hasSpot:m.kind==="spot",
@@ -79,7 +82,7 @@ function formatPrice(value:number|null):string{
  return value.toLocaleString("en-US",{maximumFractionDigits:8});
 }
 export default function AsterVenueAdapter({
- walletAddress,getWalletProvider,onConnectWallet,section,initialKind,onSelectSection,
+ walletAddress,getWalletProvider,onSwitchToBsc,onConnectWallet,section,initialKind,onSelectSection,
  onMarketCatalog,watchlist=[],onToggleFavorite,sidebarMarketRequest,initialOrdersTab,
 }:Props){
  const [markets,setMarkets]=useState<AsterMarket[]>([]);
@@ -110,11 +113,14 @@ export default function AsterVenueAdapter({
  const [futuresBalances,setFuturesBalances]=useState<AsterAccountBalance[]|null>(null);
  const [balanceError,setBalanceError]=useState("");
  const [balanceLoading,setBalanceLoading]=useState(false);
+ const [leverageLimits,setLeverageLimits]=useState<Record<string,AsterVerifiedLeverage>>({});
+ const [leverageStatus,setLeverageStatus]=useState("");
  // Agent is owner-scoped; navigating or disconnecting never reuses another wallet's key.
  useEffect(()=>{
   let alive=true;
   clearAsterSession();
   setAgentIdentity(null);setFuturesBalances(null);setBalanceError("");
+  setLeverageLimits({});setLeverageStatus("");
   setAuthStatus("");setAuthSheetOpen(false);
   if(!walletAddress){setAgentRestoring(false);return ()=>{alive=false;};}
   setAgentRestoring(true);
@@ -130,7 +136,7 @@ export default function AsterVenueAdapter({
   if(authBusy||agentIdentity||agentRestoring)return;
   setAuthBusy(true);setAuthStatus("");
   try{
-   const identity=await registerAsterTradingAgent({walletAddress,getWalletProvider});
+   const identity=await registerAsterTradingAgent({walletAddress,getWalletProvider,onSwitchToBsc});
    setAgentIdentity(identity);setAuthSheetOpen(false);
    setAuthStatus("Aster authorized Spot/Perp trading agent. Withdrawal permission was NOT granted. Signed account verification in progress; orders remain disabled.");
   }catch(error){
@@ -160,6 +166,18 @@ export default function AsterVenueAdapter({
   const interval=window.setInterval(()=>void refresh(),45_000);
   return ()=>{controller.abort();window.clearInterval(interval);};
  },[walletAddress,agentIdentity?.agent,section]);
+ useEffect(()=>{
+  setLeverageLimits({});setLeverageStatus("");
+  if(!walletAddress||!agentIdentity)return;
+  const controller=new AbortController();
+  void getAsterAllVerifiedLeverageBrackets(walletAddress,controller.signal).then(data=>{
+   if(!controller.signal.aborted){setLeverageLimits(data);setLeverageStatus("");}
+  }).catch(error=>{
+   if(!controller.signal.aborted)setLeverageStatus(error instanceof Error?
+    error.message:"Aster leverage brackets unavailable");
+  });
+  return ()=>controller.abort();
+ },[walletAddress,agentIdentity?.agent]);
  const usdtPerp=futuresBalances?.find(row=>row.asset==="USDT")??null;
  const parsedUsd=(s:string|null|undefined):number|null=>{
   if(typeof s!=="string"||!s.trim())return null;
@@ -205,7 +223,8 @@ export default function AsterVenueAdapter({
  },[]);
  useEffect(()=>{if(section==="orders")setAccountTab(initialOrdersTab??"OPEN_ORDERS");},
   [section,initialOrdersTab]);
- const tokens=useMemo(()=>markets.map(toToken),[markets]);
+ const tokens=useMemo(()=>markets.map(m=>toToken(m,leverageLimits[m.symbol]?.maxLeverage)),
+  [markets,leverageLimits]);
  useEffect(()=>{onMarketCatalog?.(tokens);},[tokens,onMarketCatalog]);
  const selected=useMemo(()=>markets.find(m=>m.id===selectedId)??null,[markets,selectedId]);
  useEffect(()=>{
@@ -248,7 +267,9 @@ export default function AsterVenueAdapter({
   const timer=window.setInterval(()=>void read(),5000);
   return ()=>{disposed=true;controller.abort();window.clearInterval(timer);};
  },[selected?.id,section]);
- const token=selected?toToken(selected):null;
+ const verifiedMaxLeverage=selected?.kind==="perp"?
+   leverageLimits[selected.symbol]?.maxLeverage??null:null;
+ const token=selected?toToken(selected,verifiedMaxLeverage??undefined):null;
  const asks=useMemo(()=>bookLevels(book,"asks"),[book]);
  const bids=useMemo(()=>bookLevels(book,"bids"),[book]);
  const quoteSymbol=selected?.quoteAsset??"USDT";
@@ -290,7 +311,8 @@ export default function AsterVenueAdapter({
  />:<p className="p-4 text-xs text-brand-muted">Aster order book unavailable.</p>;
  const header=<HideDexUnifiedMarketHeader
   mobile={{
-   logo,ticker,modeLabel:kind==="perp"?"Perp · Aster":"Spot · Aster",
+   logo,ticker,modeLabel:kind==="perp"?
+   (verifiedMaxLeverage?verifiedMaxLeverage+"x Perp · Aster":"Perp · Aster"):"Spot · Aster",
    priceLabel,change24h:selected?.change24hPercent,
    onSelectMarket:()=>setMarketPopup(true),mode:kind,
    switchMode:"toggle",onSwitchMode:toggleKind,
@@ -314,7 +336,8 @@ export default function AsterVenueAdapter({
     if(t==="MARKET"||t==="LIMIT")setOrderType(t);
    },
    availableOrderTypes:["MARKET","LIMIT"],
-   marginMode:"CROSS",leverage:1,maxLeverage:null,leverageDisabled:true,
+   marginMode:"CROSS",leverage:1,maxLeverage:verifiedMaxLeverage,
+   leverageDisabled:true,readOnlyMaxLeverage:true,
   }}
   side={{isPerp:kind==="perp",side,onSide:setSide,
     available:usdtAvailable!==null?usdtAvailable.toLocaleString("en-US",{maximumFractionDigits:6})+" USDT · Perps":
@@ -325,7 +348,11 @@ export default function AsterVenueAdapter({
   presets={{onSelect:()=>{},disabled:true}}
   options={{visible:false,tpsl:{checked:false,disabled:true,onChange:()=>{}}}}
   summary={{isPerp:kind==="perp",liquidation:"—",orderValue:"—",margin:"—"}}
-  place={{type:"button",disabled:true,side,label:"ASTER TRADING NOT YET ENABLED"}}
+  place={!agentIdentity?{
+    type:"button",disabled:!walletAddress||agentRestoring||authBusy,side,
+    label:agentRestoring?"RESTORING ASTER WALLET…":"ENABLE TRADING",
+    onClick:()=>{if(walletAddress)setAuthSheetOpen(true);}
+  }:{type:"button",disabled:true,side,label:"ASTER TRADING NOT YET ENABLED"}}
  />;
  const account=<HideDexUnifiedAccountPanel
   tabs={<TradingAccountTabBar activeTab={accountTab} onSelect={setAccountTab}/>}
@@ -350,12 +377,11 @@ export default function AsterVenueAdapter({
     primaryLabel={authBusy?"CHECK YOUR WALLET":"SIGN TO ENABLE ASTER →"}
     onPrimary={()=>{void enableTrading();}}
     description={<div className="space-y-2 py-2 text-xs text-brand-sub">
-      <p>Authorize a separate Aster V3 Agent for Spot and Perpetual trading on HideDex.</p>
-      <p>Wallet permission is signed using Aster's official EIP-712 chain 56 format.
-        Aster withdrawals are <strong>NOT authorized</strong>. The agent key is encrypted on this browser device.</p>
-      <p>An initial main-wallet Aster deposit is required by Aster before authenticated
-        account and trade endpoints work. Nothing is deposited or traded by this approval.</p>
-    </div>}
+      <p>Authorize Aster Spot/Perp trading with your connected wallet on BNB Smart Chain (56).</p>
+      <p>Withdrawals are <strong>not authorized</strong>. No deposit or order is placed.
+        The trading key stays encrypted on this device.</p>
+      <p>Aster may require an initial deposit before authenticated account APIs work.</p>
+    </div>
   >
     {authStatus&&<p role="status" className="my-2 text-xs text-amber-500 break-words">{authStatus}</p>}
   </HideDexTradingAuthorizationSheet>}
@@ -464,22 +490,8 @@ export default function AsterVenueAdapter({
     {account}
   </div>}
   {section==="trade"&&<>
-    {!agentIdentity&&<div className="mb-2 flex items-center justify-between gap-2 rounded-xl border border-brand-border bg-brand-surface p-2.5">
-      <span className="text-xs text-brand-sub">{agentRestoring?"Restoring encrypted Aster key…":
-        walletAddress?"Aster trading authorization required":"Connect wallet for Aster"}</span>
-      <button type="button" onClick={()=>
-        walletAddress?setAuthSheetOpen(true):onConnectWallet()}
-        disabled={agentRestoring}
-        className="shrink-0 rounded-lg border border-brand-primary bg-accent px-3 py-2 text-xs font-bold text-brand-bg disabled:opacity-40">
-        {walletAddress?"Enable Trading":"Connect Wallet"}
-      </button>
-    </div>}
-    {agentIdentity&&<p role="status" className="mb-2 text-[10px] text-brand-muted">
-      Aster Agent authorized · Signed balances {futuresBalances!==null?"verified":
-      balanceLoading?"loading":"unavailable"} · Builder approval and real order execution pending
-    </p>}
-    {authStatus&&<p role="status" className="mb-2 text-xs text-amber-500">{authStatus}</p>}
-    {balanceError&&agentIdentity&&<p role="status" className="mb-2 text-xs text-amber-500">{balanceError}</p>}
+    {/* Aster trading authorization is only in the original bottom sheet,
+        never a second top-of-page banner/toast. */}
     {header}
     <HideDexUnifiedTradeCanvas
       marketView={<HideDexUnifiedMarketView
