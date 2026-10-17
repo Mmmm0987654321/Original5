@@ -4258,7 +4258,7 @@ export default function App() {
           {selectedExchange === "aster" && (
             activeTab === ActiveTab.Markets || activeTab === ActiveTab.Dashboard ||
             activeTab === ActiveTab.Spot || activeTab === ActiveTab.Perp ||
-            activeTab === ActiveTab.Portfolio || activeTab === ActiveTab.Profile ||
+            activeTab === ActiveTab.Portfolio ||
             activeTab === ActiveTab.Orders || activeTab === ActiveTab.TradeHistory
           ) && (
             <AsterVenueAdapter
@@ -4338,7 +4338,7 @@ export default function App() {
           )}
 
           {/* ACCOUNT & SETTINGS PAGE */}
-          {(selectedExchange === "hyperliquid" || selectedExchange === "lighter") && activeTab === ActiveTab.Profile && (
+          {(selectedExchange === "hyperliquid" || selectedExchange === "lighter" || selectedExchange === "aster") && activeTab === ActiveTab.Profile && (
             <AccountSettingsPanel
               walletConnected={walletConnected}
               onDisconnectWallet={handleDisconnectWallet}
