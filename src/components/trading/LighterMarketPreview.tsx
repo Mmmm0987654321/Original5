@@ -401,7 +401,7 @@ export default function LighterMarketPreview({
     setFundingBusy(true); setFundingStatus("Verifying Lighter owner and available USDC…");
     try {
       const tx = await withdrawLighterUsdc({ walletAddress, amount: withdrawAmount });
-      setFundingStatus("Lighter accepted standard withdrawal: " + tx + ". Final settlement may take time.");
+      setFundingStatus("Lighter accepted a secure Ethereum withdrawal request: " + tx + ". Settlement to your owner wallet is pending; check withdrawal history before retrying.");
       setWithdrawAmount(""); setAccountReload(v => v + 1);
     } catch (e) {
       setFundingStatus(e instanceof Error ? e.message : "Lighter withdrawal failed.");
@@ -2070,14 +2070,14 @@ export default function LighterMarketPreview({
             <p className="text-xs text-brand-muted">Secure STANDARD USDC withdrawal to the L1 wallet that owns this Lighter account. No external website and no arbitrary recipient. Wallet and Lighter ownership are verified before submission.</p>
             {!tradingIdentity && <button type="button" onClick={() => setAuthSheetOpen(true)}
               className="text-xs font-bold text-accent underline">Enable Lighter trading to withdraw</button>}
-            <HideDexFundingNetworkAsset network="Lighter settlement" />
+            <HideDexFundingNetworkAsset network="Ethereum Mainnet · Secure Withdrawal" chainId={1} />
             <HideDexFundingDestination address={walletAddress}/>
             <HideDexFundingAmount id="lighter-withdraw-amount" amount={withdrawAmount}
               onAmount={setWithdrawAmount} disabled={!tradingIdentity||fundingBusy}
               balanceLabel="Available Balance"
               balance={displayTradingAccount?.availableBalance==null?"—":formatPrice(displayTradingAccount.availableBalance,4)+" USDC"}
               minLabel="Minimum secure withdrawal: 1 USDC. Destination: your account owner wallet on Ethereum."/>
-            <p className="text-[10px] text-brand-muted">Destination: {walletAddress || "Connect wallet"}. This is the secure Ethereum settlement route (not fast withdrawal). Settlement may require an L1 claim; Lighter does not publish a fixed fee quote for this action.</p>
+            <p className="text-[10px] text-brand-muted">Destination: {walletAddress || "Connect wallet"}. Secure withdrawal uses your Lighter Perps USDC and settles to its verified owner on Ethereum Mainnet (chain 1), not an arbitrary address. Settlement may require a claim. Fees are not quoted in advance.</p>
             <HideDexFundingFeeCard deposit={false}
               fee="Not quoted by Lighter"
               receive={null}/>
