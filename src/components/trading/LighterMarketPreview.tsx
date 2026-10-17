@@ -2108,7 +2108,7 @@ export default function LighterMarketPreview({
                 {value:"ethereum",label:"Ethereum Mainnet",chainId:1,
                   description:"Direct USDC deposit · Minimum 1 USDC · ETH gas"},
               ]}
-              pickerStyle="modal"
+              pickerStyle="modal" showChainLogo
               value={depositNetwork} disabled={fundingBusy}
               onNetworkChange={v=>{setDepositNetwork(v as "arbitrum"|"ethereum");setFundingStatus("");}}
             />
@@ -2119,9 +2119,10 @@ export default function LighterMarketPreview({
                 depositWalletUsdc===null?"Unavailable":depositWalletUsdc+" USDC"}
               minLabel={`Minimum deposit is ${depositNetwork==="arbitrum"?5:1} USDC.`}/>
             <HideDexFundingFeeCard deposit
+              feeLabel={depositNetwork==="ethereum"?"Deposit Fee (ETH)":"Deposit Fee"}
               fee={depositNetwork==="ethereum"
-                ?depositFeeQuote??"Approval + deposit ETH gas"
-                :"Arbitrum ETH gas (wallet quote)"}
+                ?depositFeeQuote?.match(/^up to (\d+(?:\.\d+)?) ETH gas$/)?.[1]??"—"
+                :"—"}
               receive={depositNetwork==="ethereum"&&
                 /^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?$/.test(depositAmount.trim())&&
                 Number(depositAmount)>=1
@@ -2172,7 +2173,7 @@ export default function LighterMarketPreview({
           </> : <>
             {!tradingIdentity && <button type="button" onClick={() => setAuthSheetOpen(true)}
               className="text-xs font-bold text-accent underline">Enable Lighter trading to withdraw</button>}
-            <HideDexFundingNetworkAsset network="Ethereum Mainnet · Secure Withdrawal" chainId={1} />
+            <HideDexFundingNetworkAsset network="Ethereum Mainnet · Secure Withdrawal" chainId={1} showChainLogo />
             <HideDexFundingDestination address={walletAddress}/>
             <HideDexFundingAmount id="lighter-withdraw-amount" amount={withdrawAmount}
               onAmount={setWithdrawAmount} disabled={!tradingIdentity||fundingBusy}
