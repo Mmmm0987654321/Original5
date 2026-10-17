@@ -522,13 +522,24 @@ export default function LighterMarketPreview({
     return ()=>{stale=true;};
   },[walletAddress,tradingIdentity,accountTab,section,accountReload]);
 
-  // Keep SDK rate-limit JSON/escaped responses out of the user-facing popup.
-  // A rejected margin update must not look like an applied leverage setting.
+  // A successful response can contain {"ratelimit":"didn't use volume quota"}:
+  // this is informational, NOT an HTTP 429. Only real quota failures qualify.
+  const isRealLighterRateLimit=(error:unknown):boolean=>{
+    const candidate=error as {status?:unknown;httpStatus?:unknown;code?:unknown}|null;
+    if(candidate?.status===429||candidate?.httpStatus===429||
+       candidate?.code===23000)return true;
+    const raw=error instanceof Error?error.message:String(error??"");
+    if(/didn['’]t use volume quota/i.test(raw))return false;
+    return /(?:\b429\b|\b23000\b|too many requests|rate.?limit (?:reached|exceeded)|rate.?limited|quota (?:exceeded|exhausted))/i.test(raw);
+  };
   const readableMarginError=(error:unknown):string=>{
     const raw=error instanceof Error?error.message:String(error??"");
-    if(/rate.?limit|ratelimit|volume quota|429|too many requests/i.test(raw))
-      return "Lighter API rate limit reached. Wait and retry the margin update; leverage was not confirmed.";
-    return raw.replace(/\\n/g,"\n").trim()||"Lighter rejected leverage update.";
+    if(isRealLighterRateLimit(error))
+      return "Lighter temporarily rejected this margin request due to an API limit. No automatic retries will be made.";
+    if(/didn['’]t use volume quota/i.test(raw))
+      return "Lighter returned a volume-quota note, not a confirmed margin transaction. Check the active account leverage before retrying.";
+    return raw.replace(/\\n/g,"\n").trim()||
+      "Lighter margin update was not confirmed by the exchange.";
   };
 
 
@@ -616,7 +627,7 @@ export default function LighterMarketPreview({
         return true;
       }catch(error){
         const text=error instanceof Error?error.message:String(error);
-        if(/rate.?limit|ratelimit|volume quota|429|too many requests/i.test(text))
+        if(isRealLighterRateLimit(error))
           marginRetryUntilRef.current=Date.now()+60000;
         if(latestMarginRequestRef.current===request.key){
           const message=readableMarginError(error);
@@ -770,9 +781,9 @@ export default function LighterMarketPreview({
     return subscribeLighterBook(selected.id, next => setFeed(next));
   }, [selected?.id, section]);
 
-  // No per-pixel network writes. Slider release/quick chip or margin-mode
-  // selection triggers one debounced signed request; retry a single 429 after
-  // cooldown, never hide a server rejection or silently place an order.
+  // No per-pixel network writes. Slider release / chip selection starts at
+  // most one debounced signed request. A failed request is NOT retried
+  // automatically and can never authorize a real order.
   useEffect(()=>{
     // Read the real account setting before consuming a signed leverage update.
     if(!marginIntent||kind!=="perp"||!selected||accountsLoading||
@@ -783,10 +794,9 @@ export default function LighterMarketPreview({
       if(latestMarginRequestRef.current!==req.key)return;
       const ok=await applyLighterMargin(req);
       if(latestMarginRequestRef.current!==req.key)return;
-      if(ok){setMarginIntent(null);return;}
-      if(marginRetryUntilRef.current>Date.now()&&req.attempt===0)
-        setMarginIntent({...req,attempt:1});
-      else setMarginIntent(null);
+      // A rejected request must never be sent again just because the timer
+      // fires. The user may explicitly choose a setting after recovery.
+      setMarginIntent(null);
     },wait);
     return ()=>window.clearTimeout(timer);
   },[marginIntent?.key,marginIntent?.attempt,selected?.id,kind,
@@ -1223,7 +1233,7 @@ export default function LighterMarketPreview({
   return <div className="w-full min-w-0 text-brand-text pb-1" data-exchange="lighter">
     {tradingNotice && !authSheetOpen && <HideDexTradingToast
       type={tradingBusy||fundingBusy||marginBusy?"pending":
-        /(?:fail|reject|error|invalid|unavailable|rate limit|cannot|unable|not verified|not confirmed|requires|did not)/i.test(tradingNotice)
+        /(?:fail|reject|error|invalid|unavailable|rate.?limit|cannot|unable|not verified|not confirmed|did not|does not match|mismatch|not accepted|no order sent|not permitted|no orders sent|not authorized|insufficient|too many requests|expired)/i.test(tradingNotice)
           ?"error":"success"}
       title="Lighter"
       message={tradingNotice}
