@@ -452,8 +452,23 @@ export default function LighterMarketPreview({
         walletAddress, market:m, side:signedSize > 0 ? "sell":"buy",
         type:"market", coinSize, referencePrice:m.lastTradePrice, reduceOnly:true,
       });
-      setTradingNotice(""); // Real account refresh below handles completion.
+      // The shared ClosePositionModal spinner remains active until the
+      // real Lighter account confirms that this position has become flat.
+      let verifiedClosed=false;
+      for(const delay of [900,1600,2600,3900]){
+        await new Promise<void>(resolve=>window.setTimeout(resolve,delay));
+        try{
+          const [accountAfter]=await getLighterPublicAccounts([accountIndex]);
+          if(accountAfter&&!accountAfter.positions.some(x=>
+            x.symbol===symbol&&Math.abs(x.signedSize)>1e-10)){
+            verifiedClosed=true;break;
+          }
+        }catch{/* Only authoritative reads; never resend a signed close. */}
+      }
       refreshAfterLighterWrite();
+      if(!verifiedClosed)
+        throw new Error("Close submitted but final Lighter position state is not verified yet. Check Positions before another close.");
+      setTradingNotice("");
     } catch (e) {
       const message=e instanceof Error?e.message:String(e);
       if(/didn['’]t use volume quota/i.test(message)){
@@ -1325,7 +1340,10 @@ export default function LighterMarketPreview({
                       {label:"Margin",
                         value:p.allocatedMargin!==null&&p.allocatedMargin>0 ?
                           "$"+formatPrice(p.allocatedMargin,4):"—",tone:"muted"},
-                      {label:"Mark Price",value:"—",tone:"muted"},
+                      {label:"Mark Price",value:(()=>{
+                        const m=markets.find(x=>x.kind==="perp"&&x.symbol===p.symbol);
+                        return m?.markPrice&&m.markPrice>0?"$"+formatPrice(m.markPrice,2):"—";
+                      })(),tone:"muted"},
                       {label:"TP / SL Target",value:(()=>{
                         const market=markets.find(m=>m.kind==="perp"&&m.symbol===p.symbol);
                         const orders=tradingIdentity?.accountIndex===a.index&&market?
@@ -1952,7 +1970,7 @@ export default function LighterMarketPreview({
         walletAddress={walletAddress} verifiedOnly positionData={{
           symbol:p.symbol,type:p.signedSize>0?"LONG":"SHORT",
           size:Math.abs(p.signedSize),entryPrice:p.entryPrice,
-          markPrice:null,margin:p.allocatedMargin,
+          markPrice:market?.markPrice??null,margin:p.allocatedMargin,
           leverage:lev&&Number.isInteger(lev)&&lev>0&&lev<=(market?.maxLeverage??0)?lev:null,
           unrealizedPnl:p.unrealizedPnl,unrealizedPnlPercent:null,
         }}/>;

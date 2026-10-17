@@ -265,6 +265,15 @@ export async function setLighterPositionTriggers(args:{
        (args.stopLoss!=null&&(!Number.isFinite(args.stopLoss)||args.stopLoss<=0||
         (closeSell?args.stopLoss>=anchor:args.stopLoss<=anchor))))
       throw new Error("TP/SL direction must match current market and position side.");
+    // Do not stack duplicate native triggers against one open position.
+    // Existing orders must be cancelled explicitly by the user first.
+    const existing=await s.client.getOpenOrders();
+    const duplicate=(orderType:number)=>existing.some(o=>
+      Number(o.market_index??o.market_id)===market.id&&
+      Number(o.type)===orderType&&o.reduce_only!==false);
+    if((args.takeProfit!==null&&duplicate(LighterConstant.ORDER_TYPE.TAKE_PROFIT))||
+       (args.stopLoss!==null&&duplicate(LighterConstant.ORDER_TYPE.STOP_LOSS)))
+      throw new Error("Existing Lighter TP/SL trigger detected. Manage or cancel the old trigger in Open Orders before setting another.");
     const out:string[]=[];
     for(const [label,trigger] of [["TP",args.takeProfit],["SL",args.stopLoss]] as const){
       if(trigger===null)continue;

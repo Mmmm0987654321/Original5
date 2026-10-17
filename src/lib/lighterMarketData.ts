@@ -16,6 +16,8 @@ export type LighterMarket = {
   maxLeverage: number | null;
   multiplier: number;
   lastTradePrice: number | null;
+  /** Verified Lighter orderBookDetails mark_price; snapshot at last market refresh. */
+  markPrice?: number | null;
   volume24hUsd: number | null;
   change24h: number | null;
   high24h: number | null;
@@ -71,6 +73,7 @@ export async function getLighterMarkets(signal?: AbortSignal): Promise<LighterMa
     result.push({ id, symbol, kind, priceDecimals: pd, sizeDecimals: sd, maxLeverage,
       multiplier: mult !== null && mult > 0 ? mult : 1,
       lastTradePrice: finite(obj.last_trade_price),
+      markPrice: finite(obj.mark_price),
       volume24hUsd: finite(obj.daily_quote_token_volume),
       change24h: finite(obj.daily_price_change),
       high24h: finite(obj.daily_price_high),

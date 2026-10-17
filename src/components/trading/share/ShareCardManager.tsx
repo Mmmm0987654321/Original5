@@ -106,7 +106,8 @@ export default function ShareCardPopup({
   const verifiedConfig=verifiedOnly?{
     ...config,
     showLeverage:config.showLeverage&&Number.isFinite(positionData?.leverage)&&positionData.leverage>0,
-    showMarkPrice:false,showPnlPercent:false,
+    showMarkPrice:config.showMarkPrice&&Number.isFinite(positionData?.markPrice)&&positionData.markPrice>0,
+    showPnlPercent:false,
     showMargin:config.showMargin&&Number.isFinite(positionData?.margin)&&positionData.margin>0,
     showPnlDollar:config.showPnlDollar&&Number.isFinite(positionData?.unrealizedPnl),
     showEntryPrice:config.showEntryPrice&&Number.isFinite(positionData?.entryPrice)&&positionData.entryPrice>0,
