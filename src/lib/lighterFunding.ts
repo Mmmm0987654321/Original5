@@ -4,7 +4,7 @@
  * Never moves funds unless the user explicitly confirms wallet transactions.
  * Does NOT implement withdrawal or Lighter order signing.
  */
-import { BrowserProvider, Contract, getAddress, parseUnits } from "ethers";
+import { BrowserProvider, Contract, getAddress, parseUnits, formatEther } from "ethers";
 import { lighterPublicGet } from "./lighterMarketData";
 
 const LIGHTER_L1 = "0x3B4D794a66304F130a4Db8F2551B0070dfCf5ca7";
@@ -39,6 +39,42 @@ async function verifiedUsdcAssetIndex(): Promise<number> {
     throw new Error("Invalid USDC asset index. No transaction was sent.");
   }
   return id;
+}
+
+/**
+ * Read-only gas quote for the actual Ethereum direct deposit transaction.
+ * If an ERC20 approval is still required, a complete two-tx fee quote cannot
+ * be calculated in advance: do not display the fee of just one transaction.
+ * No approval, signing, sending, or network switching occurs here.
+ */
+export async function quoteLighterEthereumDepositNetworkFee(args:{
+  walletAddress:string;
+  amount:string;
+  getWalletProvider:()=>Promise<LighterWalletProvider>;
+}):Promise<string|null>{
+  if(!/^0x[0-9a-fA-F]{40}$/.test(args.walletAddress)||
+     !/^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?$/.test(args.amount.trim()))
+    return null;
+  const amount=parseUnits(args.amount.trim(),6);
+  if(amount<1000000n)return null;
+  const wallet=await args.getWalletProvider();
+  if(!wallet || typeof wallet.request!=="function")return null;
+  const current=await wallet.request({method:"eth_chainId"});
+  if(Number(BigInt(current))!==1)return null;
+  const provider=new BrowserProvider(wallet as any);
+  const owner=getAddress(args.walletAddress);
+  const usdc=new Contract(ETHEREUM_USDC,USDC_ABI,provider);
+  const approved=await usdc.allowance(owner,LIGHTER_L1) as bigint;
+  if(approved<amount)return null;
+  const assetIndex=await verifiedUsdcAssetIndex();
+  const feeData=await provider.getFeeData();
+  const price=feeData.maxFeePerGas??feeData.gasPrice;
+  if(price===null||price<=0n)return null;
+  const contract=new Contract(LIGHTER_L1,LIGHTER_ABI,provider);
+  const gas=await contract.deposit.estimateGas(owner,assetIndex,0,amount,{from:owner}) as bigint;
+  if(gas<=0n)return null;
+  const maxFeeWei=gas*price;
+  return "up to "+Number(formatEther(maxFeeWei)).toFixed(6)+" ETH gas";
 }
 
 export async function depositLighterUsdcOnEthereum(args: {
