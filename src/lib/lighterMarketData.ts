@@ -14,6 +14,8 @@ export type LighterMarket = {
   priceDecimals: number;
   sizeDecimals: number;
   maxLeverage: number | null;
+  /** Official market maintenance threshold in basis points. */
+  maintenanceMarginFractionBps: number | null;
   multiplier: number;
   lastTradePrice: number | null;
   /** Verified Lighter orderBookDetails mark_price; snapshot at last market refresh. */
@@ -69,8 +71,11 @@ export async function getLighterMarkets(signal?: AbortSignal): Promise<LighterMa
         pd === null || sd === null || pd < 0 || sd < 0) return;
     const mult = finite(obj.multiplier);
     const f = finite(obj.min_initial_margin_fraction);
+    const maintenanceFraction=finite(obj.maintenance_margin_fraction);
     const maxLeverage = kind === "perp" && f !== null && f > 0 && f <= 10000 ? Math.floor(10000 / f) : null;
     result.push({ id, symbol, kind, priceDecimals: pd, sizeDecimals: sd, maxLeverage,
+      maintenanceMarginFractionBps:kind==="perp"&&maintenanceFraction!==null&&
+        maintenanceFraction>0&&maintenanceFraction<10000?maintenanceFraction:null,
       multiplier: mult !== null && mult > 0 ? mult : 1,
       lastTradePrice: finite(obj.last_trade_price),
       markPrice: finite(obj.mark_price),
