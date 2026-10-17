@@ -4,6 +4,7 @@
  */
 
 import React from "react";
+import HideDexMobileL2Book from "./HideDexMobileL2Book";
 import { TokenMetadata } from "../../types";
 
 interface TopOrderBookViewProps {
@@ -41,7 +42,13 @@ export const TopOrderBookView: React.FC<TopOrderBookViewProps> = React.memo(({
   const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
   const levelLimit = isMobile ? 6 : 10;
 
-  return (
+  return (<>
+    <div className="md:hidden">
+      <HideDexMobileL2Book symbol={symbol} asks={asks} bids={bids}
+        lastPrice={hasPrice ? currentToken.price : null} decimals={decimals}
+        onSelectPrice={onSelectPrice}/>
+    </div>
+    <div className="hidden md:block">
     <div className="w-full bg-brand-surface text-brand-text rounded-xl p-3 sm:p-4 font-mono border border-brand-border shadow-md min-h-[380px] flex flex-col justify-between select-none">
       {/* Top Info Bar */}
       <div className="flex items-center justify-between pb-2.5 border-b border-brand-border text-xs">
@@ -144,7 +151,8 @@ export const TopOrderBookView: React.FC<TopOrderBookViewProps> = React.memo(({
         </div>
       </div>
     </div>
-  );
+    </div>
+  </>);
 });
 
 export default TopOrderBookView;

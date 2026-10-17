@@ -652,7 +652,7 @@ export default function LighterMarketPreview({
                     className="text-brand-text">Expand All</button>
                   <button type="button" onClick={() => setExpandedPositions(Object.fromEntries(
                     (publicAccounts ?? []).flatMap(a => a.positions.map((p,i) => [a.index + ":" + p.symbol + ":" + i, false]))))}
-                    className="text-rose-400">Close All</button>
+                    className="text-brand-sub">Collapse All</button>
                 </div>
               </div>
             )}
@@ -672,6 +672,13 @@ export default function LighterMarketPreview({
                     leverageLabel={null}
                     pnl={p.unrealizedPnl}
                     roi={null}
+                    shareAction={!isExpanded && <button type="button"
+                      onClick={event=>{event.preventDefault();event.stopPropagation();closeLighterPosition(a.index,p.symbol,p.signedSize);}}
+                      disabled={tradingBusy||!tradingIdentity||tradingIdentity.accountIndex!==a.index}
+                      title={!tradingIdentity?"Enable trading to close this real position":tradingIdentity.accountIndex!==a.index?"Select signer for this account":"Close real Lighter position"}
+                      className="px-2 py-1 rounded border border-brand-loss/40 bg-brand-loss/10 text-brand-loss text-[9px] font-extrabold uppercase disabled:opacity-40">
+                      Close
+                    </button>}
                   />
                   {isExpanded && <HideDexPositionDetails
                     left={[
