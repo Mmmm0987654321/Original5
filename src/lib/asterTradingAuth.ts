@@ -259,3 +259,50 @@ export async function getAsterVerifiedLeverageBrackets(
   throw new Error("Aster leverage bracket does not cover zero notional");
  return {symbol,maxLeverage:minimumTier.initialLeverage,brackets};
 }
+
+/** One read-only signed request for all active Aster perpetual symbols.
+ * One catalog fetch rather than a rate-limit-triggering request per row.
+ * The 1x..max leverage shown is the minimum notional tier; full size tiers
+ * MUST be enforced when real order execution is implemented later.
+ */
+export async function getAsterAllVerifiedLeverageBrackets(
+ wallet:string,signal?:AbortSignal
+):Promise<Record<string,AsterVerifiedLeverage>>{
+ const signed=active(wallet);
+ const query=new URLSearchParams({
+  user:signed.user,signer:signed.agent,nonce:nonce(),
+ });
+ const signature=await new Wallet(signed.privateKey).signTypedData(
+  TRADE_DOMAIN,RECORD_TYPE,{msg:query.toString()}
+ );
+ query.set("signature",signature);
+ const res=await fetch(ASTER_FUTURES_MAINNET+"/fapi/v3/leverageBrackets?"+query.toString(),{
+  method:"GET",headers:{Accept:"application/json"},signal,cache:"no-store"
+ });
+ const body:unknown=await res.json();
+ if(isAsterInitialDepositRequired(body))
+  throw new Error("Aster requires an initial deposit before leverage brackets can be verified.");
+ const err=apiError(body);
+ if(!res.ok||err)throw new Error(err??"Aster leverage brackets unavailable (HTTP "+res.status+")");
+ if(!Array.isArray(body))throw new Error("Aster returned no verified symbol brackets");
+ const result:Record<string,AsterVerifiedLeverage>={};
+ for(const item of body){
+  const row=parseRecord(item),symbol=row?.symbol;
+  if(typeof symbol!=="string"||! /^[A-Z0-9_]{2,50}$/.test(symbol)||!Array.isArray(row?.brackets))
+   continue;
+  const data:Array<{initialLeverage:number;notionalFloor:number;notionalCap:number}>=[];
+  for(const item of row.brackets){
+   const b=parseRecord(item),lev=Number(b?.initialLeverage),
+     floor=Number(b?.notionalFloor),cap=Number(b?.notionalCap);
+   if(!Number.isSafeInteger(lev)||lev<1||lev>1000||
+      !Number.isFinite(floor)||floor<0||!Number.isFinite(cap)||cap<=floor)
+    continue;
+   data.push({initialLeverage:lev,notionalFloor:floor,notionalCap:cap});
+  }
+  const first=data.sort((a,b)=>a.notionalFloor-b.notionalFloor)[0];
+  if(first?.notionalFloor!==0)continue;
+  result[symbol]={symbol,maxLeverage:first.initialLeverage,brackets:data};
+ }
+ if(!Object.keys(result).length)throw new Error("No valid Aster leverage brackets were returned");
+ return result;
+}
