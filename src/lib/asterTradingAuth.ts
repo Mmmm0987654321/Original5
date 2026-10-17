@@ -54,6 +54,45 @@ function active(wallet:string):SavedAsterAgent{
   throw new Error("Enable Aster trading for this connected wallet before reading account data");
  return session;
 }
+/** EIP-1193 providers should return a 0x chain ID, but some WalletConnect
+ * adapters expose a decimal, numeric, CAIP-2 or {chainId} result instead.
+ * Accept only well-formed, positive safe integers; never guess a network.
+ */
+function normalizeWalletChainId(raw:unknown):number|null{
+ if(typeof raw==="number")return Number.isSafeInteger(raw)&&raw>0?raw:null;
+ if(typeof raw==="bigint")
+  return raw>0n&&raw<=BigInt(Number.MAX_SAFE_INTEGER)?Number(raw):null;
+ if(typeof raw==="string"){
+  const value=raw.trim();
+  const matched=value.match(/^eip155:([1-9][0-9]*)$/i);
+  const candidate=matched?matched[1]:value;
+  if(!/^(?:0x[0-9a-f]+|[0-9]+)$/i.test(candidate))return null;
+  try{
+   const id=BigInt(candidate);
+   return id>0n&&id<=BigInt(Number.MAX_SAFE_INTEGER)?Number(id):null;
+  }catch{return null;}
+ }
+ if(raw!==null&&typeof raw==="object"&&"chainId" in raw)
+  return normalizeWalletChainId((raw as {chainId:unknown}).chainId);
+ return null;
+}
+
+/** Read after an approved switch, allowing WalletConnect chain state to settle.
+ * These are three READS only — no repeated wallet prompts or sign attempts.
+ */
+async function verifiedWalletChainId(wallet:AsterWalletProvider,tries=1):Promise<number|null>{
+ for(let i=0;i<tries;i++){
+  try{
+   const id=normalizeWalletChainId(await wallet.request({method:"eth_chainId"}));
+   if(id===56||i===tries-1)return id;
+  }catch{
+   if(i===tries-1)return null;
+  }
+  await new Promise<void>(resolve=>setTimeout(resolve,300));
+ }
+ return null;
+}
+
 /** Explicit user click invokes this; signature is never triggered on render.
  * EIP-712 owner signature authorizes Spot and Perp trading but NOT withdrawals.
  */
@@ -71,18 +110,17 @@ export async function registerAsterTradingAgent(args:{
   const native=await args.getWalletProvider();
   // Agent registration requires owner EIP-712 domain chainId 56. Ask the
   // wallet to switch to BNB Smart Chain; never infer the connected chain.
-  const connectedChain=await native.request({method:"eth_chainId"});
-  if(typeof connectedChain!=="string"||!/^0x[0-9a-f]+$/i.test(connectedChain))
-    throw new Error("Connected wallet network could not be verified");
-  if(Number.parseInt(connectedChain,16)!==56){
+  const connectedChain=await verifiedWalletChainId(native);
+  if(connectedChain!==56){
+    // An unrecognized/missing response is NOT assumed to be BSC.
+    // Only the wallet can authorize an actual switch to chain 56.
     try{
       await native.request({method:"wallet_switchEthereumChain",params:[{chainId:"0x38"}]});
     }catch{
-      throw new Error("Switch your wallet to BNB Smart Chain (chain 56) to authorize Aster. No agent was created.");
+      throw new Error("Wallet network is not confirmed as BNB Smart Chain (56). Approve switching to BNB Smart Chain in your wallet, then retry. No agent was registered.");
     }
-    const verified=await native.request({method:"eth_chainId"});
-    if(typeof verified!=="string"||Number.parseInt(verified,16)!==56)
-      throw new Error("Wallet did not confirm BNB Smart Chain. No agent was created.");
+    if(await verifiedWalletChainId(native,3)!==56)
+      throw new Error("BNB Smart Chain (56) could not be verified after switching. Reopen your wallet and choose BNB Smart Chain; no authorization request was sent.");
   }
   const browser=new BrowserProvider(native as any);
   const ownerSigner=await browser.getSigner();
