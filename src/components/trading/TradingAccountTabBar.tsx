@@ -1,18 +1,19 @@
 import React from "react";
 
-export type TradingTabId = "BALANCES" | "POSITIONS" | "OPEN_ORDERS" | "TRADE_HISTORY";
+export type TradingTabId = "BALANCES" | "POSITIONS" | "OPEN_ORDERS" | "TRADE_HISTORY" | "FUNDING_HISTORY";
 
 /** The exact HideDex account tabs presentation is shared by Hyperliquid and Lighter.
  * Exchange-specific account data belongs to the parent, not this UI component.
  */
 export default function TradingAccountTabBar({
-  activeTab, onSelect, positionsCount, ordersCount, isFieldHidden,
+  activeTab, onSelect, positionsCount, ordersCount, isFieldHidden, showFundingHistory = false,
 }: {
   activeTab: TradingTabId;
   onSelect: (tab: TradingTabId) => void;
   positionsCount?: number;
   ordersCount?: number;
   isFieldHidden?: (field: string) => boolean;
+  showFundingHistory?: boolean;
 }) {
   return (
     <div className="flex items-center justify-between border-b border-brand-border px-2 py-1.5 bg-brand-surface/20">
@@ -25,6 +26,7 @@ export default function TradingAccountTabBar({
                 { id: "POSITIONS" as const, name: "Positions", field: "positions" },
                 { id: "OPEN_ORDERS" as const, name: "Open Orders", field: "openOrders" },
                 { id: "TRADE_HISTORY" as const, name: "Trade History", field: "tradeHistory" },
+                ...(showFundingHistory ? [{ id: "FUNDING_HISTORY" as const, name: "Funding History", field: "fundingHistory" }] : []),
               ].filter(tab => !isFieldHidden || !isFieldHidden(tab.field)).map((tab) => {
                 const isSelected = activeTab === tab.id;
                 let labelSuffix = "";

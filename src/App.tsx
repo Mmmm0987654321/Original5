@@ -4179,7 +4179,7 @@ export default function App() {
           {selectedExchange === "lighter" && (
             activeTab === ActiveTab.Markets || activeTab === ActiveTab.Dashboard ||
             activeTab === ActiveTab.Spot || activeTab === ActiveTab.Perp ||
-            activeTab === ActiveTab.Portfolio || activeTab === ActiveTab.Profile ||
+            activeTab === ActiveTab.Portfolio ||
             activeTab === ActiveTab.Orders || activeTab === ActiveTab.TradeHistory
           ) && (
             <LighterMarketPreview
@@ -4189,6 +4189,7 @@ export default function App() {
               sidebarMarketRequest={lighterMarketRequest}
               walletAddress={walletConnected ? walletAddress : ""}
               getWalletProvider={getTradingSetupProvider}
+              onConnectWallet={() => setShowWalletModal(true)}
               initialOrdersTab={activeTab===ActiveTab.TradeHistory?"TRADE_HISTORY":"OPEN_ORDERS"}
               section={
                 activeTab === ActiveTab.Dashboard ? "dashboard" :
@@ -4260,7 +4261,7 @@ export default function App() {
           )}
 
           {/* ACCOUNT & SETTINGS PAGE */}
-          {selectedExchange === "hyperliquid" && activeTab === ActiveTab.Profile && (
+          {(selectedExchange === "hyperliquid" || selectedExchange === "lighter") && activeTab === ActiveTab.Profile && (
             <AccountSettingsPanel
               walletConnected={walletConnected}
               onDisconnectWallet={handleDisconnectWallet}

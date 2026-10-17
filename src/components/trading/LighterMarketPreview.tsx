@@ -51,6 +51,7 @@ type Kind = "perp" | "spot";
 type Props = {
   walletAddress: string;
   getWalletProvider: () => Promise<LighterWalletProvider>;
+  onConnectWallet: () => void;
   section: Section;
   initialKind?: Kind;
   onSelectSection: (section: Section, marketKind?: Kind) => void;
@@ -77,7 +78,7 @@ function labelKind(kind: Kind) { return kind === "perp" ? "Perpetual" : "Spot"; 
  * per-wallet API-key registration can be verified end-to-end.
  */
 export default function LighterMarketPreview({
-  walletAddress, getWalletProvider, section, initialKind = "perp", onSelectSection,
+  walletAddress, getWalletProvider, onConnectWallet, section, initialKind = "perp", onSelectSection,
   onMarketCatalog,watchlist=[],onToggleFavorite,sidebarMarketRequest,initialOrdersTab,
 }: Props) {
   const [markets, setMarkets] = useState<LighterMarket[]>([]);
@@ -665,6 +666,16 @@ export default function LighterMarketPreview({
   // Public read-only balance for a single verified account may be displayed
   // before signing, but never combine independent subaccounts for order sizing.
   const displayTradingAccount = signedAccount ?? (publicAccounts?.length===1 ? publicAccounts[0] : null);
+  // Never present PERP collateral as SPOT purchasing power. Use verified
+  // unlocked quote balance belonging to this specific Lighter subaccount.
+  const selectedQuote = selected?.symbol.split("/")[1]?.toUpperCase() ?? null;
+  const spotQuote = kind==="spot" && displayTradingAccount?.assets !== null
+    ? displayTradingAccount?.assets?.find(asset=>asset.symbol.toUpperCase()===selectedQuote)
+    : undefined;
+  const availableForMarket = kind==="perp"
+    ? displayTradingAccount?.availableBalance ?? null
+    : selectedQuote==="USDC" && spotQuote && spotQuote.lockedBalance!==null
+      ? Math.max(0,spotQuote.balance-spotQuote.lockedBalance) : null;
   const inputPrice = orderType === "limit" ? Number(limitPrice) : marketPrice;
   // Original4 presentation: gain/loss fields represent *price change* from
   // the selected entry/limit reference, never execution PnL or guaranteed fill.
@@ -803,8 +814,9 @@ export default function LighterMarketPreview({
       <TradingAccountTabBar
         activeTab={accountTab}
         onSelect={setAccountTab}
+        showFundingHistory={true}
         positionsCount={knownPositionCount}
-        ordersCount={undefined}
+        ordersCount={liveOrders?.length}
       />
       <div className="p-2 md:p-3 min-h-[110px] overflow-y-auto overflow-x-hidden">
         {accountTab === "BALANCES" && <HideDexBalancesView
@@ -818,7 +830,7 @@ export default function LighterMarketPreview({
             {accountsLoading && <p className="text-xs text-brand-muted">Checking Lighter positions…</p>}
             {accountError && <p className="text-xs text-rose-400">Unable to verify positions: {accountError}</p>}
             {knownPositionCount !== undefined && (
-              <div className="flex justify-between gap-2 items-center border-b border-brand-border pb-2 text-[10px] sm:text-xs text-brand-muted">
+              <div className="flex items-center justify-between px-2.5 py-1.5 bg-brand-bg/50 border-b border-brand-border text-[9px] md:text-[10px] text-gray-500 font-bold uppercase tracking-wider relative">
                 <label>Sort By:
                   <select aria-label="Sort Lighter positions" value={positionSort}
                     onChange={e => setPositionSort(e.target.value as "default" | "pnl" | "size")}
@@ -924,6 +936,14 @@ export default function LighterMarketPreview({
             }}
           />
         </>}
+        {accountTab === "FUNDING_HISTORY" && (
+          <div className="flex flex-col items-center justify-center py-8 text-brand-muted text-center">
+            <Layers className="w-6 h-6 text-brand-text/5 mb-2"/>
+            <p className="text-xs font-mono font-medium text-brand-sub">
+              Verified Lighter account funding-history records are not loaded.
+            </p>
+          </div>
+        )}
         {accountTab === "TRADE_HISTORY" && <div>
 
           <HideDexTradeHistory items={lighterFillRows}
@@ -1123,6 +1143,19 @@ export default function LighterMarketPreview({
       </HideDexTopMarketPane>
       <HideDexTradeGrid>
         <HideDexOrderForm>
+          {!walletAddress && (
+            <div className="absolute inset-0 bg-brand-bg/95 backdrop-blur-md z-20 flex flex-col items-center justify-center p-2 text-center rounded-xl">
+              <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/30 flex items-center justify-center mb-1.5">
+                <Wallet className="w-4 h-4 text-indigo-400"/>
+              </div>
+              <h4 className="font-sans font-bold text-brand-text text-[10px] md:text-xs uppercase tracking-wider mb-0.5">Not Connected</h4>
+              <p className="text-[9px] md:text-[10px] text-gray-500 max-w-[180px] leading-snug mb-2.5">Connect your wallet to trade.</p>
+              <button type="button" onClick={onConnectWallet}
+                className="w-full max-w-[130px] py-1.5 text-[9px] md:text-[10px] font-bold uppercase tracking-wider rounded-lg bg-gradient-to-r from-cyan-500 to-indigo-600 hover:from-cyan-400 hover:to-indigo-500 text-brand-text shadow-lg cursor-pointer transition-all active:scale-98">
+                Connect
+              </button>
+            </div>
+          )}
           <div className="flex flex-1 flex-col gap-2 md:gap-3">
           <HideDexTradeSelectors
             isPerp={kind === "perp"}
@@ -1143,8 +1176,8 @@ export default function LighterMarketPreview({
             isPerp={kind==="perp"}
             side={side==="buy"?"BUY":"SELL"}
             onSide={next=>{setSide(next==="BUY"?"buy":"sell");setReduceOnly(false);}}
-            available={displayTradingAccount?.availableBalance != null
-              ? formatPrice(displayTradingAccount.availableBalance,5)+" USDC" : "—"}
+            available={availableForMarket !== null
+              ? formatPrice(availableForMarket,5)+" USDC" : "—"}
           />
                     <HideDexBasicOrderInputs
             type={orderType==="market"?"MARKET":"LIMIT"}
@@ -1162,9 +1195,9 @@ export default function LighterMarketPreview({
             }}
           />
           <HideDexTradePercentPresets
-            disabled={!marketPrice || displayTradingAccount?.availableBalance == null}
+            disabled={!marketPrice || availableForMarket === null}
             onSelect={percent => {
-              const available=displayTradingAccount?.availableBalance??0;
+              const available=availableForMarket??0;
               const price=orderType==="limit"?Number(limitPrice):marketPrice;
               if(price&&price>0&&available>0)setAmount(String(Number((sizeUnit==="USD"
                 ? available*percent/100:available*percent/100/price).toFixed(6))));

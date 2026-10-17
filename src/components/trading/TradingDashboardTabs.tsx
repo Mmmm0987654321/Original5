@@ -445,8 +445,9 @@ export default function TradingDashboardTabs({
     <div className="bg-brand-bg border border-brand-border rounded-xl overflow-hidden shadow-xl" id="terminal-dashboard-panel-unified">
       
       <TradingAccountTabBar
-        activeTab={activeBottomTab as "BALANCES" | "POSITIONS" | "OPEN_ORDERS" | "TRADE_HISTORY"}
+        activeTab={activeBottomTab}
         onSelect={setActiveBottomTab}
+        showFundingHistory={true}
         positionsCount={filteredPositions.length}
         ordersCount={filteredOrders.length}
         isFieldHidden={isFieldHidden}
