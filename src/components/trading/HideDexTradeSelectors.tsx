@@ -24,11 +24,14 @@ export interface HideDexTradeSelectorsProps {
  onLeverage?: (next:number) => void;
  onLeverageCommit?: (next:number) => void;
  leverageDisabled?: boolean;
+ /** Display exchange-verified max without enabling leverage changes. */
+ readOnlyMaxLeverage?: boolean;
 }
 export default function HideDexTradeSelectors({
  isPerp,orderType,onOrderType,availableOrderTypes,
  marginMode = "CROSS",onMarginMode,disabledMarginModes=[],
  leverage=1,maxLeverage,onLeverage,onLeverageCommit,leverageDisabled=false,
+ readOnlyMaxLeverage=false,
 }: HideDexTradeSelectorsProps) {
  const [popup,setPopup] = useState<"order"|"margin"|"leverage"|null>(null);
  const host = useRef<HTMLDivElement>(null);
@@ -44,6 +47,8 @@ export default function HideDexTradeSelectors({
  const canLeverage = isPerp && !leverageDisabled && !!onLeverage &&
    typeof maxLeverage === "number" && Number.isFinite(maxLeverage) && maxLeverage >= 1;
  const cap = canLeverage ? Math.max(1,Math.floor(maxLeverage!)) : null;
+ const verifiedCap=readOnlyMaxLeverage&&typeof maxLeverage==="number"&&
+   Number.isFinite(maxLeverage)&&maxLeverage>=1?Math.floor(maxLeverage):null;
  return <div ref={host}
    className={`gap-1 md:gap-1.5 text-[10px] md:text-xs items-start ${isPerp
      ? "grid grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,0.8fr)]" : "flex"}`}>
@@ -85,7 +90,7 @@ export default function HideDexTradeSelectors({
        onClick={() => setPopup(x=>x==="leverage"?null:"leverage")}
        aria-label="Leverage" aria-expanded={popup==="leverage"}
        className="w-full min-w-0 justify-between flex items-center gap-1 px-1.5 py-1 bg-brand-overlay-subtle hover:bg-brand-overlay-normal border border-brand-border rounded-lg text-gray-300 font-bold hover:text-brand-text transition-colors disabled:opacity-50">
-       <span className="text-[10px] whitespace-nowrap">{cap ? leverage+"x" : "—x"}</span>
+       <span className="text-[10px] whitespace-nowrap">{cap ? leverage+"x" : verifiedCap ? verifiedCap+"x Max" : "—x"}</span>
        <ChevronDown className="w-3 h-3 text-gray-500 shrink-0"/>
      </button>
      {popup==="leverage" && cap && <div className="absolute right-0 mt-1 w-44 bg-brand-bg border border-brand-border rounded-lg shadow-xl z-50 p-2.5 space-y-2">
