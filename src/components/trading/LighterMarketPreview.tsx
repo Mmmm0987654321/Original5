@@ -255,10 +255,10 @@ export default function LighterMarketPreview({
   // Keep transaction/status feedback out of the Trade layout and dismiss
   // automatically; the modal retains registration/recovery instructions.
   useEffect(() => {
-    if (!tradingNotice || authSheetOpen) return;
+    if (!tradingNotice || authSheetOpen || uncertainPosition) return;
     const id=window.setTimeout(()=>setTradingNotice(""),8000);
     return ()=>window.clearTimeout(id);
-  },[tradingNotice,authSheetOpen]);
+  },[tradingNotice,authSheetOpen,uncertainPosition]);
 
   const beginLighterAuthorization = async () => {
     if (!walletAddress || tradingBusy) return;
@@ -413,7 +413,9 @@ export default function LighterMarketPreview({
     // Re-read the REAL signer account before closing. Never send an obsolete
     // full-close size from a stale card or a second close for a flat position.
     const [latestAccount]=await getLighterPublicAccounts([accountIndex]);
-    const latest=latestAccount?.positions.find(p=>p.symbol===symbol);
+    if(!latestAccount)
+      throw new Error("Lighter account verification unavailable. No close was sent.");
+    const latest=latestAccount.positions.find(p=>p.symbol===symbol);
     if(!latest){
       setNoticeKind("success");
       setTradingNotice("This position is already closed on Lighter. Updating the screen.");
@@ -690,12 +692,35 @@ export default function LighterMarketPreview({
         return true;
       }catch(error){
         const text=error instanceof Error?error.message:String(error);
+        if(/didn['’]t use volume quota/i.test(text) && tradingIdentity){
+          // The note may accompany a transaction that reached Lighter.
+          // ONE read-only account reconciliation, no signed retry.
+          await new Promise<void>(resolve=>window.setTimeout(resolve,1200));
+          try {
+            const [freshAccount]=await getLighterPublicAccounts([tradingIdentity.accountIndex]);
+            const setting=freshAccount?.marginSettings.find(x=>x.marketId===request.marketId);
+            if(setting?.marginMode===request.mode){
+              const fraction=setting.initialMarginFraction;
+              const leverage=(fraction<=100?100:10000)/fraction;
+              if(Number.isFinite(leverage)&&Math.abs(leverage-request.leverage)<=0.01){
+                acknowledgedMarginRef.current=request.key;
+                setPublicAccounts(current=>current?.map(a=>
+                  a.index===freshAccount!.index?freshAccount!:a)??[freshAccount!]);
+                setMarginStatus("");
+                setTradingNotice("");
+                return true; // verified exchange setting; NOT inferred from message
+              }
+            }
+          }catch{/* Read-only check unavailable; do not claim success. */}
+        }
         if(isRealLighterRateLimit(error))
           marginRetryUntilRef.current=Date.now()+60000;
         if(latestMarginRequestRef.current===request.key){
           const message=readableMarginError(error);
           setMarginStatus(message);
+          setNoticeKind(/didn['’]t use volume quota/i.test(text)?"pending":"error");
           setTradingNotice(message);
+          refreshAfterLighterWrite();
         }
         return false;
       }finally{setMarginBusy(false);}
