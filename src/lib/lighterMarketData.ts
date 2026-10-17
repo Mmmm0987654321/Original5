@@ -220,6 +220,10 @@ export type LighterPublicAccount = {
   index: number;
   availableBalance: number | null;
   collateral: number | null;
+  /** Exchange-reported account-wide cross-margin risk inputs, not position margin. */
+  crossAssetValue: number | null;
+  crossInitialMarginRequirement: number | null;
+  crossMaintenanceMarginRequirement: number | null;
   positions: LighterPublicPosition[];
   marginSettings: LighterPublicMarginSetting[];
   assets: LighterPublicAsset[] | null;
@@ -282,6 +286,9 @@ export async function getLighterPublicAccounts(
       index,
       availableBalance: finite(account.available_balance),
       collateral: finite(account.collateral),
+      crossAssetValue: finite(account.cross_asset_value),
+      crossInitialMarginRequirement: finite(account.cross_initial_margin_requirement),
+      crossMaintenanceMarginRequirement: finite(account.cross_maintenance_margin_requirement),
       positions, marginSettings, assets,
     };
   }));

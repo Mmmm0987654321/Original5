@@ -64,6 +64,7 @@ import {
   subscribeLighterBook,
   type LighterMarket, type LighterMarketFeed, type LighterPublicAccount,
 } from "../../lib/lighterMarketData";
+import {verifiedLighterLeverage,lighterInitialRequirement,lighterCrossAccountMarginRatio} from "../../lib/lighterMarginDisplay";
 
 type Section = "dashboard" | "markets" | "trade" | "funds" | "account" | "orders";
 type Kind = "perp" | "spot";
@@ -669,13 +670,8 @@ export default function LighterMarketPreview({
     const setting=account?.marginSettings.find(m=>m.marketId===marketId);
     const market=markets.find(m=>m.kind==="perp"&&m.id===marketId);
     if(!setting||!market?.maxLeverage)return null;
-    const fraction=setting.initialMarginFraction;
-    const rawLeverage=(fraction<=100?100:10000)/fraction;
-    const candidate=Math.round(rawLeverage);
-    if(!Number.isFinite(rawLeverage)||candidate<1||
-      candidate>market.maxLeverage||Math.abs(rawLeverage-candidate)>0.01)
-      return null;
-    return {leverage:candidate,mode:setting.marginMode};
+    const leverage=verifiedLighterLeverage(setting.initialMarginFraction,market.maxLeverage);
+    return leverage===null?null:{leverage,mode:setting.marginMode};
   };
 
   const marginKey=(marketId:number,leverage:number,mode:"cross"|"isolated")=>
@@ -1084,6 +1080,14 @@ export default function LighterMarketPreview({
   const sizeInCoin = Number.isFinite(inputAmount) && inputAmount > 0 && inputPrice !== null && inputPrice > 0
     ? sizeUnit === "USD" ? inputAmount / inputPrice : inputAmount : 0;
   const orderValueUsd = sizeInCoin && inputPrice ? sizeInCoin * inputPrice : null;
+  // The selected leverage is a preview, never a claim that Lighter accepted
+  // a new margin setting. The order submit path independently verifies it.
+  const activeMargin = kind==="perp"&&selected?verifiedMarketMargin(selected.id):null;
+  const previewMargin = kind==="perp"&&selected?.maxLeverage&&chosenLeverage>=1&&
+    chosenLeverage<=selected.maxLeverage?
+      lighterInitialRequirement(orderValueUsd,chosenLeverage):null;
+  const previewMarginConfirmed = activeMargin?.leverage===chosenLeverage &&
+    activeMargin.mode===marginMode;
   const hasReduciblePosition = Boolean(selected && tradingIdentity && publicAccounts?.some(a =>
     a.index === tradingIdentity.accountIndex && a.positions.some(p =>
       p.symbol === selected.symbol && (side === "sell" ? p.signedSize > 0 : p.signedSize < 0))));
@@ -1204,10 +1208,7 @@ export default function LighterMarketPreview({
     if(!p)return null;
     const market=markets.find(m=>m.kind==="perp"&&m.symbol===p.symbol);
     const setting=account?.marginSettings.find(m=>m.marketId===market?.id);
-    const rawLeverage=setting&&setting.initialMarginFraction>0?
-      10000/setting.initialMarginFraction:null;
-    const leverage=rawLeverage&&Number.isFinite(rawLeverage)&&rawLeverage>=1&&
-      rawLeverage<=(market?.maxLeverage??0)?rawLeverage:0;
+    const leverage=verifiedLighterLeverage(setting?.initialMarginFraction,market?.maxLeverage)??0;
     return {
       id:singleCloseTarget.accountIndex+":"+p.symbol,
       symbol:p.symbol,type:p.signedSize>0?"LONG":"SHORT",
@@ -1270,6 +1271,20 @@ export default function LighterMarketPreview({
               .map(({a,p,i}) => {
                 const key = a.index + ":" + p.symbol + ":" + i;
                 const isExpanded = expandedPositions[key] ?? false;
+                const positionMarket=markets.find(m=>m.kind==="perp"&&m.symbol===p.symbol);
+                const positionSetting=a.marginSettings.find(x=>x.marketId===positionMarket?.id);
+                const verifiedPositionLev=verifiedLighterLeverage(
+                  positionSetting?.initialMarginFraction,positionMarket?.maxLeverage);
+                const positionReferencePrice=positionMarket?.markPrice&&positionMarket.markPrice>0?
+                  positionMarket.markPrice:positionMarket?.lastTradePrice&&positionMarket.lastTradePrice>0?
+                    positionMarket.lastTradePrice:p.entryPrice;
+                const marginRequirement=lighterInitialRequirement(
+                  positionReferencePrice&&positionReferencePrice>0?
+                    Math.abs(p.signedSize)*positionReferencePrice:null,verifiedPositionLev);
+                const verifiedAllocatedMargin=p.allocatedMargin!==null&&p.allocatedMargin>0?
+                  p.allocatedMargin:null;
+                const accountCrossMarginRatio=positionSetting?.marginMode==="cross"?
+                  lighterCrossAccountMarginRatio(a):null;
                 return <HideDexPositionCard key={key}>
                   <HideDexPositionHeader
                     shareAction={<button type="button"
@@ -1281,18 +1296,9 @@ export default function LighterMarketPreview({
                     side={p.signedSize>=0?"LONG":"SHORT"}
                     isExpanded={isExpanded}
                     onToggle={()=>setExpandedPositions(v=>({...v,[key]:!(v[key]??false)}))}
-                    marginLabel={(() => {
-                      const market=markets.find(m=>m.symbol===p.symbol&&m.kind==="perp");
-                      const setting=a.marginSettings.find(x=>x.marketId===market?.id);
-                      return setting?.marginMode==="isolated"?"Isolated":setting?.marginMode==="cross"?"Cross":null;
-                    })()}
-                    leverageLabel={(() => {
-                      const market=markets.find(m=>m.symbol===p.symbol&&m.kind==="perp");
-                      const fraction=a.marginSettings.find(x=>x.marketId===market?.id)?.initialMarginFraction;
-                      if(!market?.maxLeverage||!fraction||fraction<=0||fraction>10000)return null;
-                      const lev=10000/fraction;
-                      return Number.isInteger(lev)&&lev>=1&&lev<=market.maxLeverage?lev+"x":null;
-                    })()}
+                    marginLabel={positionSetting?.marginMode==="isolated"?"Isolated":
+                      positionSetting?.marginMode==="cross"?"Cross":null}
+                    leverageLabel={verifiedPositionLev!==null?verifiedPositionLev+"x":null}
                     pnl={p.unrealizedPnl}
                     roi={p.unrealizedPnl!==null&&p.allocatedMargin!==null&&p.allocatedMargin>0
                       ?100*p.unrealizedPnl/p.allocatedMargin:null}
@@ -1303,17 +1309,22 @@ export default function LighterMarketPreview({
                       {label:"Position Size",value:formatPrice(Math.abs(p.signedSize),6)+" "+p.symbol,
                         hint:p.entryPrice>0 ? "($"+formatPrice(Math.abs(p.signedSize)*p.entryPrice,1)+")" : undefined},
                       {label:"Entry Price",value:p.entryPrice>0?"$"+formatPrice(p.entryPrice):"—"},
-                      {label:"Margin Ratio",value:"—",tone:"muted"},
+                      {label:accountCrossMarginRatio!==null?
+                          "Account Margin Ratio":"Margin Ratio",
+                        value:accountCrossMarginRatio!==null?
+                          formatPrice(accountCrossMarginRatio,2)+"%":"—",
+                        tone:accountCrossMarginRatio!==null?"normal":"muted"},
                       {label:"Liquidation Price",
                         value:p.liquidationPrice!==null&&p.liquidationPrice>0 ?
                           "$"+formatPrice(p.liquidationPrice,4):"—",
                         tone:p.liquidationPrice!==null&&p.liquidationPrice>0?"loss":"muted"},
                     ]}
                     right={[
-                      {label:"Margin",
-                        value:p.allocatedMargin!==null&&Number.isFinite(p.allocatedMargin)&&p.allocatedMargin>=0 ?
-                          "$"+formatPrice(p.allocatedMargin,4):"—",
-                        tone:p.allocatedMargin!==null&&Number.isFinite(p.allocatedMargin)?"normal":"muted"},
+                      {label:verifiedAllocatedMargin!==null?"Margin":"Initial Margin (est.)",
+                        value:verifiedAllocatedMargin!==null?
+                          "$"+formatPrice(verifiedAllocatedMargin,4):
+                          marginRequirement!==null?"≈$"+formatPrice(marginRequirement,4):"—",
+                        tone:verifiedAllocatedMargin!==null||marginRequirement!==null?"normal":"muted"},
                       {label:(()=>{
                         const m=markets.find(x=>x.kind==="perp"&&x.symbol===p.symbol);
                         return m?.markPrice&&m.markPrice>0?"Mark Price":"Last Price";
@@ -1662,7 +1673,8 @@ export default function LighterMarketPreview({
           summary={{
             isPerp:kind==="perp",liquidation:"—",
             orderValue:orderValueUsd!==null?"$"+formatPrice(orderValueUsd,2):"—",
-            margin:"—",
+            margin:previewMargin!==null?
+              "≈$"+formatPrice(previewMargin,4)+(previewMarginConfirmed?" est.":" draft est."):"—",
           }}
           place={{
             type:"button",onClick:submitTrade,side:side==="buy"?"BUY":"SELL",
@@ -1906,13 +1918,13 @@ export default function LighterMarketPreview({
       if(!p)return null;
       const market=markets.find(m=>m.kind==="perp"&&m.symbol===p.symbol);
       const setting=account?.marginSettings.find(x=>x.marketId===market?.id);
-      const lev=setting&&setting.initialMarginFraction>0?10000/setting.initialMarginFraction:null;
+      const lev=verifiedLighterLeverage(setting?.initialMarginFraction,market?.maxLeverage);
       return <ShareCardPopup isOpen onClose={()=>setShareTarget(null)}
         walletAddress={walletAddress} verifiedOnly positionData={{
           symbol:p.symbol,type:p.signedSize>0?"LONG":"SHORT",
           size:Math.abs(p.signedSize),entryPrice:p.entryPrice,
           markPrice:market?.markPrice??null,margin:p.allocatedMargin,
-          leverage:lev&&Number.isInteger(lev)&&lev>0&&lev<=(market?.maxLeverage??0)?lev:null,
+          leverage:lev,
           unrealizedPnl:p.unrealizedPnl,unrealizedPnlPercent:null,
         }}/>;
     })()}
@@ -1924,10 +1936,7 @@ export default function LighterMarketPreview({
       // Use verified per-account margin settings for the original modal.
       // Unavailable values remain unknown and never become synthetic PnL.
       const setting=account.marginSettings.find(x=>x.marketId===market.id);
-      const verifiedLev=setting&&setting.initialMarginFraction>0?
-        10000/setting.initialMarginFraction:null;
-      const leverage=verifiedLev&&Number.isFinite(verifiedLev)&&verifiedLev>=1&&
-        verifiedLev<= (market.maxLeverage??0)?verifiedLev:0;
+      const leverage=verifiedLighterLeverage(setting?.initialMarginFraction,market.maxLeverage)??0;
       const modalPosition:Position={
         id:account!.index+":"+position.symbol,symbol:position.symbol,
         type:position.signedSize>0?"LONG":"SHORT",size:Math.abs(position.signedSize),
@@ -1989,10 +1998,23 @@ export default function LighterMarketPreview({
         ?.find(a=>a.index===singleCloseTarget.accountIndex)?.positions
         .find(p=>p.symbol===singleCloseTarget.symbol&&
           p.signedSize===singleCloseTarget.signedSize)?.unrealizedPnl??null}
-      verifiedMargin={publicAccounts
-        ?.find(a=>a.index===singleCloseTarget.accountIndex)?.positions
-        .find(p=>p.symbol===singleCloseTarget.symbol&&
-          p.signedSize===singleCloseTarget.signedSize)?.allocatedMargin??null}
+      verifiedMargin={(()=>{
+        const p=publicAccounts?.find(a=>a.index===singleCloseTarget.accountIndex)
+          ?.positions.find(p=>p.symbol===singleCloseTarget.symbol&&
+            p.signedSize===singleCloseTarget.signedSize);
+        return p&&p.allocatedMargin!==null&&p.allocatedMargin>0?
+          p.allocatedMargin:null;
+      })()}
+      estimatedMarginRequirement={(()=>{
+        const a=publicAccounts?.find(a=>a.index===singleCloseTarget.accountIndex);
+        const p=a?.positions.find(p=>p.symbol===singleCloseTarget.symbol&&
+          p.signedSize===singleCloseTarget.signedSize);
+        const market=markets.find(m=>m.kind==="perp"&&m.symbol===singleCloseTarget.symbol);
+        const setting=a?.marginSettings.find(x=>x.marketId===market?.id);
+        const leverage=verifiedLighterLeverage(setting?.initialMarginFraction,market?.maxLeverage);
+        const price=market?.markPrice&&market.markPrice>0?market.markPrice:market?.lastTradePrice;
+        return lighterInitialRequirement(p&&price?Math.abs(p.signedSize)*price:null,leverage);
+      })()}
       onClose={()=>setSingleCloseTarget(null)}
       onConfirmClose={async(_position,closePercent)=>{
         const target=singleCloseTarget;

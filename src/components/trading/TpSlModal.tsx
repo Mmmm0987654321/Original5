@@ -73,11 +73,14 @@ export default function TpSlModal({
     return "#FFFFFF";
   };
 
-  // Reset inputs blank when modal is opened / position changes (matching PRIMARY)
+  // The parent refreshes account/market data with new position objects.
+  // Only reset an editor when switching to a genuinely different position,
+  // never when Lighter quotes or account snapshots update.
   useEffect(() => {
     setTpInput("");
     setSlInput("");
-  }, [position]);
+    setSaveError("");
+  }, [position.id, position.symbol, position.type]);
 
   // Existing real position triggers derived from openOrders matching sourceCoin (PRIMARY PARITY)
   const existingPosTriggers = useMemo(() => {

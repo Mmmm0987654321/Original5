@@ -15,6 +15,8 @@ interface ClosePositionModalProps {
   lighterMode?: boolean;
   verifiedUnrealizedPnl?: number | null;
   verifiedMargin?: number | null;
+  /** Estimated initial-margin requirement released on cross partial close. Not a cash refund. */
+  estimatedMarginRequirement?: number | null;
   verifiedMarkPrice?: boolean;
   /** Exchange-specific errors remain visible through the common top toast. */
   onError?: (message:string)=>void;
@@ -27,6 +29,7 @@ export default function ClosePositionModal({
   lighterMode=false,
   verifiedUnrealizedPnl=null,
   verifiedMargin=null,
+  estimatedMarginRequirement=null,
   verifiedMarkPrice=false,
   onError,
 }: ClosePositionModalProps) {
@@ -43,7 +46,12 @@ export default function ClosePositionModal({
   const closedMargin = position.margin * closeFraction;
   const estReceive = Math.max(0, closedMargin + estimatedPnl);
   const hasPnl = !lighterMode || verifiedUnrealizedPnl !== null;
-  const hasMargin = !lighterMode || verifiedMargin !== null;
+  // In CROSS mode Lighter returns allocated_margin: 0. This is not a $0
+  // payout; initial margin remains shared collateral, not a wallet refund.
+  const hasMargin = !lighterMode || (verifiedMargin !== null && verifiedMargin > 0);
+  const showReleasedInitialMargin = lighterMode && !hasMargin &&
+    estimatedMarginRequirement !== null &&
+    Number.isFinite(estimatedMarginRequirement) && estimatedMarginRequirement >= 0;
   const hasRoi = (!lighterMode || (hasMargin && hasPnl)) &&
     Number.isFinite(position.unrealizedPnlPercent) && position.leverage > 0;
 
@@ -273,15 +281,20 @@ export default function ClosePositionModal({
           </div>
 
           <div className="flex items-center justify-between pt-2 border-t border-brand-divider/30">
-            <span className="text-brand-sub">Est. Proceeds (before fees)</span>
+            <span className="text-brand-sub">{showReleasedInitialMargin?
+              "Est. Initial Margin Released":"Est. Proceeds (before fees)"}</span>
             <span className="font-bold text-brand-profit text-sm">
-              {hasMargin && hasPnl ? "$"+estReceive.toFixed(2)+" USDC" : "—"}
+              {showReleasedInitialMargin ?
+                "≈$"+(estimatedMarginRequirement! * closeFraction).toFixed(2)+" USDC" :
+                hasMargin && hasPnl ? "$"+estReceive.toFixed(2)+" USDC" : "—"}
             </span>
           </div>
 
         </div>
 
-        <p className="text-[11px] text-brand-muted leading-snug">Estimates use current reference price and verified data when available; final fill price, fees and proceeds can differ.</p>
+        <p className="text-[11px] text-brand-muted leading-snug">{showReleasedInitialMargin
+          ? "Estimated margin requirement released is not a cash payout. Cross collateral stays pooled; available balance, PnL and fees reconcile after the real fill."
+          : "Estimates use current reference price and verified data when available; final fill price, fees and proceeds can differ."}</p>
 
         {/* Error Notification */}
         {errorMsg && (
