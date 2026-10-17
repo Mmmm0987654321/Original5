@@ -40,6 +40,7 @@ import HideDexOpenOrders, {type HideDexOpenOrderRow} from "./HideDexOpenOrders";
 import HideDexBalancesView, {type HideDexBalanceItem} from "./HideDexBalancesView";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
 import HideDexUnifiedMarketHeader from "./HideDexUnifiedMarketHeader";
+import HideDexUnifiedTradeCanvas from "./HideDexUnifiedTradeCanvas";
 import HideDexOrderSummary from "./HideDexOrderSummary";
 import HideDexPositionActions from "./HideDexPositionActions";
 import HideDexDisconnectedOverlay from "./HideDexDisconnectedOverlay";
@@ -1590,7 +1591,8 @@ export default function LighterMarketPreview({
         }}
         showChartToolbar={viewMode==="chart"}
       />
-      <HideDexTopMarketPane>
+      <HideDexUnifiedTradeCanvas
+        marketView={<>
         {viewMode === "chart" ? selected ? <TVChart key={"lighter-chart-" + selected.id}
           symbol={selected.symbol} marketCoin="" lighterMarketId={selected.id}
           isSpot={kind === "spot"} currentPrice={marketPrice}
@@ -1608,9 +1610,8 @@ export default function LighterMarketPreview({
             onSelectPrice={price=>setLimitPrice(String(price))}
           /> : <p className="p-5 text-xs text-brand-muted">Choose a Lighter market.</p>
         )}
-      </HideDexTopMarketPane>
-      <HideDexTradeGrid>
-        <HideDexOrderForm>
+</>}
+        orderForm={<>
           {!walletAddress && <HideDexDisconnectedOverlay onConnect={onConnectWallet}/>}
           <div className="flex flex-1 flex-col gap-2 md:gap-3">
           <HideDexTradeSelectors
@@ -1709,7 +1710,8 @@ export default function LighterMarketPreview({
             {tradingBusy ? "Processing…" : "PLACE " + (side === "buy" ? (kind === "perp" ? "LONG" : "BUY") : (kind === "perp" ? "SHORT" : "SELL"))}
           </HideDexPlaceOrderButton>
           </div>
-        </HideDexOrderForm>
+</>}
+        orderBook={<>
         <HideDexOrderBookPanel
           asks={makeLighterBookRows(feed.asks,"ask").reverse()}
           bids={makeLighterBookRows(feed.bids,"bid")}
@@ -1729,8 +1731,9 @@ export default function LighterMarketPreview({
           onGroup={v => setBookGroup(Number(v))}
           shrinkOnTpSl={attachTpSl && !reduceOnly}
         />
-      </HideDexTradeGrid>
-      {lighterAccountTabs}
+</>}
+        account={lighterAccountTabs}
+      />
     </>}
 
     {section === "funds" && (() => {

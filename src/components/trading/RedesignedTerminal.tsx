@@ -74,6 +74,7 @@ import HideDexTradingToast from "./HideDexTradingToast";
 import HideDexPlaceOrderButton from "./HideDexPlaceOrderButton";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
 import HideDexUnifiedMarketHeader from "./HideDexUnifiedMarketHeader";
+import HideDexUnifiedTradeCanvas from "./HideDexUnifiedTradeCanvas";
 import HideDexOrderSummary from "./HideDexOrderSummary";
 import HideDexDisconnectedOverlay from "./HideDexDisconnectedOverlay";
 import HideDexOrderBookPanel from "./HideDexOrderBookPanel";
@@ -4494,7 +4495,8 @@ export default function RedesignedTerminal({
       )}
 
       {/* 2.5 FEATURED VIEW PANEL AT TOP (Matching laptop/desktop/tablet layout, hidden on mobile) */}
-      <HideDexTopMarketPane>
+      <HideDexUnifiedTradeCanvas
+        marketView={<>
         {topViewMode === "chart" && (
           <TVChart
             symbol={symbol}
@@ -4533,13 +4535,8 @@ export default function RedesignedTerminal({
             liveTrades={liveTrades}
           />
         )}
-      </HideDexTopMarketPane>
-
-      {/* 3. TWO-COLUMN SPLIT PANEL LAYOUT (Order Form Left | Order Book Right - Side by Side even on Mobile!) */}
-      <HideDexTradeGrid>
-        
-        {/* LEFT COLUMN: COMPACT ORDER PLACEMENT PANEL (7 of 12 cols) */}
-        <HideDexOrderForm>
+</>}
+        orderForm={<>
           
           {/* Locked Overlay: Wallet Not Connected */}
           {!walletAddress && <HideDexDisconnectedOverlay title={t("not_connected")} onConnect={onConnectWallet}/>}
@@ -4951,7 +4948,8 @@ export default function RedesignedTerminal({
                 : `Place ${orderSide === "BUY" ? (isPerp ? "Long" : "Buy") : (isPerp ? "Short" : "Sell")}`}
             </HideDexPlaceOrderButton>
           </form>
-        </HideDexOrderForm>
+</>}
+        orderBook={<>
 
         <HideDexOrderBookPanel
           asks={asks}
@@ -4972,10 +4970,8 @@ export default function RedesignedTerminal({
           flashingPrices={activeFlashingPrices}
           shrinkOnTpSl={isTpSlEnabled}
         />
-      </HideDexTradeGrid>
-
-      {/* 4. BOTTOM TABS: POSITIONS, OPEN ORDERS, BALANCES, TRADE HISTORY (Unified Component) */}
-      <TradingDashboardTabs
+</>}
+        account={<>      <TradingDashboardTabs
         symbol={symbol}
         currentToken={currentToken}
         tokens={tokens}
@@ -4998,7 +4994,8 @@ export default function RedesignedTerminal({
         setupComplete={setupComplete}
         onSetupRequired={onSetupRequired}
       />
-
+</>}
+      />
       {/* SHARE POSITION CARD MODAL */}
       {selectedSharePosition && (
         <ShareCardPopup
