@@ -13,7 +13,8 @@ import {
   registerLighterTradingKey, reconnectLighterTradingKey, getActiveLighterSigner,
   clearLighterTradingKey, submitLighterOrder, withdrawLighterUsdc,
   getLighterSignedOpenOrders, getLighterSignedTradeHistory, cancelLighterSignedOrder,
-  verifyLighterTradingKey, updateLighterPerpMargin, setLighterPositionTriggers, type LighterTradingIdentity,
+  verifyLighterTradingKey, updateLighterPerpMargin, setLighterPositionTriggers,
+  lighterPositionTriggerKind, matchesLighterPositionTrigger, type LighterTradingIdentity,
 } from "../../lib/lighterTrading";
 import { depositLighterUsdcOnEthereum, depositLighterUsdcFromArbitrum, type LighterWalletProvider } from "../../lib/lighterFunding";
 import TVChart from "./TVChart";
@@ -548,7 +549,7 @@ export default function LighterMarketPreview({
         await cancelLighterSignedOrder({walletAddress,market,orderIndex});
         acceptedCount++;
       }
-      setTradingNotice("Lighter accepted "+acceptedCount+" cancellations. Refresh the open orders list to verify.");
+      setTradingNotice(acceptedCount+" Lighter cancellation requests processed. Open Orders will update automatically from the exchange.");
     }catch(e){
       throw new Error((acceptedCount?acceptedCount+" cancellations already accepted. ":"")+
         (e instanceof Error?e.message:"Cancel All failed."));
@@ -581,10 +582,20 @@ export default function LighterMarketPreview({
     try {
       const tx = await cancelLighterSignedOrder({walletAddress,market:m,orderIndex});
       setNoticeKind("success");
-      setTradingNotice("Lighter accepted cancellation "+tx+". Checking active orders.");
+      setTradingNotice(tx==="VERIFIED_NO_LONGER_OPEN"?
+        "This Lighter order is no longer active. The exchange may have cancelled or filled it.":
+        "Lighter accepted the cancellation request. Checking live Open Orders.");
+      setOpenOrdersError("");
+    } catch(e) {
+      const message=e instanceof Error?e.message:String(e);
+      setOpenOrdersError(/didn['’]t use volume quota|ratelimit/i.test(message)?
+        "Lighter order status is uncertain. Checking Open Orders automatically; do not resend yet.":message);
+    } finally {
+      // Even if the signed API responds with a quota note, never require a
+      // manual page refresh and never replay the user's signed cancellation.
       refreshAfterLighterWrite();
-    } catch(e) {setOpenOrdersError(e instanceof Error ? e.message:"Cancel rejected.");}
-    finally {setTradingBusy(false);}
+      setTradingBusy(false);
+    }
   };
 
   useEffect(() => {
@@ -596,7 +607,14 @@ export default function LighterMarketPreview({
     getLighterSignedOpenOrders(walletAddress).then(rows => {
       if(!cancelled) {setLiveOrders(rows);setOpenOrdersError("");}
     }).catch(e => {
-      if(!cancelled) {setLiveOrders(null);setOpenOrdersError(e instanceof Error ? e.message:"Lighter open orders unavailable.");}
+      if(!cancelled) {
+        // Retain the last verified snapshot, but mark it STALE and disable
+        // new cancellations until a fresh authenticated read succeeds.
+        const message=e instanceof Error?e.message:String(e);
+        setOpenOrdersError(/didn['’]t use volume quota|ratelimit/i.test(message)?
+          "Lighter Open Orders temporarily rate-limited. Last verified list may be stale; automatic refresh is scheduled.":
+          "Lighter Open Orders temporarily unavailable. Last verified list may be stale: "+message);
+      }
     });
     return () => {cancelled = true;};
   },[walletAddress,tradingIdentity,accountTab,accountReload]);
@@ -871,7 +889,7 @@ export default function LighterMarketPreview({
   useEffect(() => {
     if (!walletAddress) return;
     // Controlled live read-only refresh; no frequent writes or reloads.
-    const interval = window.setInterval(() => setAccountReload(n => n + 1), 12_000);
+    const interval = window.setInterval(() => setAccountReload(n => n + 1), 20_000);
     return () => window.clearInterval(interval);
   }, [walletAddress]);
 
@@ -1088,11 +1106,6 @@ export default function LighterMarketPreview({
       lighterInitialRequirement(orderValueUsd,chosenLeverage):null;
   const previewMarginConfirmed = activeMargin?.leverage===chosenLeverage &&
     activeMargin.mode===marginMode;
-  // This is the exchange-reported liquidation for an EXISTING position,
-  // not a speculative liquidation estimate for an unsubmitted order.
-  const currentPositionLiq = kind==="perp" && selected
-    ? signedAccount?.positions.find(p=>p.symbol===selected.symbol)?.liquidationPrice ?? null
-    : null;
   const hasReduciblePosition = Boolean(selected && tradingIdentity && publicAccounts?.some(a =>
     a.index === tradingIdentity.accountIndex && a.positions.some(p =>
       p.symbol === selected.symbol && (side === "sell" ? p.signedSize > 0 : p.signedSize < 0))));
@@ -1255,7 +1268,7 @@ export default function LighterMarketPreview({
         closeDisabled={tradingBusy||knownPositionCount===0}
       />}
       {accountTab==="OPEN_ORDERS" && liveOrders!==null && liveOrders.length>0 &&
-        <HideDexCancelAllOrdersBar disabled={tradingBusy||!tradingIdentity}
+        <HideDexCancelAllOrdersBar disabled={tradingBusy||!tradingIdentity||!!openOrdersError}
           onCancelAll={()=>setCancelAllOrdersOpen(true)}/>}
 </>}
     >
@@ -1329,7 +1342,7 @@ export default function LighterMarketPreview({
                         value:verifiedAllocatedMargin!==null?
                           "$"+formatPrice(verifiedAllocatedMargin,4):
                           marginRequirement!==null?"≈$"+formatPrice(marginRequirement,4):"—",
-                        tone:verifiedAllocatedMargin!==null||marginRequirement!==null?"normal":"muted"},
+                        tone:verifiedAllocatedMargin!==null||marginRequirement!==null?"profit":"muted"},
                       {label:(()=>{
                         const m=markets.find(x=>x.kind==="perp"&&x.symbol===p.symbol);
                         return m?.markPrice&&m.markPrice>0?"Mark Price":"Last Price";
@@ -1341,10 +1354,15 @@ export default function LighterMarketPreview({
                       {label:"TP / SL Target",value:(()=>{
                         const market=markets.find(m=>m.kind==="perp"&&m.symbol===p.symbol);
                         const orders=tradingIdentity?.accountIndex===a.index&&market?
-                          liveOrders?.filter(o=>Number(o.market_index??o.market_id)===market.id&&o.reduce_only===true)??[]:[];
-                        const tp=orders.some(o=>Number(o.type)===4);
-                        const sl=orders.some(o=>Number(o.type)===2);
-                        return !tradingIdentity||liveOrders===null?"—":tp||sl?(tp?"TP set":"")+(tp&&sl?" · ":"")+(sl?"SL set":""):"Not set";
+                          liveOrders?.filter(o=>matchesLighterPositionTrigger(
+                            o,market.id,p.signedSize>0))??[]:[];
+                        const tp=orders.find(o=>lighterPositionTriggerKind(o)==="tp");
+                        const sl=orders.find(o=>lighterPositionTriggerKind(o)==="sl");
+                        const targetLabel=(label:string,order:typeof tp)=>
+                          order?label+" $"+formatPrice(Number(order.trigger_price),4):"";
+                        return !tradingIdentity||liveOrders===null||openOrdersError?"—":
+                          tp||sl?[targetLabel("TP",tp),targetLabel("SL",sl)].filter(Boolean).join(" · "):
+                          "Not set";
                       })(),tone:"muted"},
                     ]}
                     actions={<HideDexPositionActions
@@ -1388,7 +1406,8 @@ export default function LighterMarketPreview({
                 filledLabel:filledPercent,remainingLabel:String(order.remaining_base_amount??"—"),
                 status:typeof order.status==="string"&&order.status.trim()?order.status:"Open",
                 timestamp:"—",
-                canCancel:!!market && Number.isSafeInteger(index)&&index>=0 && !tradingBusy,
+                canCancel:!!market && Number.isSafeInteger(index)&&index>=0 &&
+                  !tradingBusy && !openOrdersError,
               } satisfies HideDexOpenOrderRow;
             })}
             unavailableMessage={!tradingIdentity ? "Enable Lighter trading to load authenticated open orders."
@@ -1677,10 +1696,10 @@ export default function LighterMarketPreview({
           }}
           summary={{
             isPerp:kind==="perp",
-            liquidationLabel:currentPositionLiq!==null && currentPositionLiq>0?
-              "Open Position Liq.":"Liq. Price",
-            liquidation:currentPositionLiq!==null && currentPositionLiq>0?
-              "$"+formatPrice(currentPositionLiq,4):"—",
+            // Cross liquidation depends on complete account equity, other
+            // positions and the *new* fill. Existing-position liq is not it.
+            liquidationLabel:"New Order Liq. (est.)",
+            liquidation:"—",
             orderValue:orderValueUsd!==null?"$"+formatPrice(orderValueUsd,2):"—",
             margin:previewMargin!==null?
               "≈$"+formatPrice(previewMargin,4)+(previewMarginConfirmed?" est.":" draft est."):"—",
@@ -1961,18 +1980,18 @@ export default function LighterMarketPreview({
         openOrders={tradingIdentity?.accountIndex===account.index && liveOrders?
           liveOrders.flatMap(o=>{
             const orderMarketId=Number(o.market_index??o.market_id);
-            const kind=Number(o.type);
+            const kind=lighterPositionTriggerKind(o);
             const triggerPx=Number(o.trigger_price);
             const oid=Number(o.order_index);
-            if(orderMarketId!==market.id||o.reduce_only!==true||
-               (kind!==4&&kind!==2)||!Number.isFinite(triggerPx)||triggerPx<=0)
-              return [];
+            if(orderMarketId!==market.id||!kind||
+               !matchesLighterPositionTrigger(o,market.id,position.signedSize>0)||
+               !Number.isFinite(triggerPx)||triggerPx<=0)return [];
             return [{
               id:market.id+":"+oid,symbol:position.symbol,
-              sourceCoin:position.symbol,type:kind===4?"TAKE_PROFIT":"STOP_MARKET",
+              sourceCoin:position.symbol,type:kind==="tp"?"TAKE_PROFIT":"STOP_MARKET",
               side:position.signedSize>0?"SELL":"BUY",price:triggerPx,
-              size:0,status:"OPEN",timestamp:"—",reduceOnly:true,
-              tpsl:kind===4?"tp":"sl",triggerPrice:triggerPx,
+              size:0,status:"OPEN",timestamp:"—",reduceOnly:o.reduce_only===true,
+              tpsl:kind,triggerPrice:triggerPx,
               ...(Number.isSafeInteger(oid)&&oid>=0?{oid}:{}),
             } as import("../../types").OpenOrder];
           }):[]}
