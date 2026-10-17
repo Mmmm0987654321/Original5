@@ -1,5 +1,5 @@
 import React from "react";
-import {Network,Wallet,Coins,ArrowRight} from "lucide-react";
+import {Network,Wallet,Coins,Info,ArrowRight,ArrowDownRight,ArrowUpRight,Loader2} from "lucide-react";
 export type FundingNetworkOption={value:string;label:string};
 export function HideDexFundingNetworkAsset({
  network,chainId,options,value,onNetworkChange,disabled=false
@@ -49,11 +49,11 @@ export function HideDexFundingDestination({address}:{address:string}){
  </div>;
 }
 export function HideDexFundingAmount({
- id,amount,onAmount,balanceLabel,balance,minLabel,disabled=false,placeholder="0.00"
+ id,amount,onAmount,balanceLabel,balance,minLabel,disabled=false,placeholder="0.00",autoFocus=false
 }:{
  id:string;amount:string;onAmount:(s:string)=>void;
  balanceLabel?:string;balance?:React.ReactNode;minLabel?:string;
- disabled?:boolean;placeholder?:string;
+ disabled?:boolean;placeholder?:string;autoFocus?:boolean;
 }){
  return <div className="space-y-1.5">
    <div className="flex items-center justify-between gap-2 text-[11px] font-semibold text-brand-sub">
@@ -61,7 +61,7 @@ export function HideDexFundingAmount({
      {balanceLabel && <span className="font-mono text-right truncate">{balanceLabel}: <strong className="text-brand-text">{balance??"—"}</strong></span>}
    </div>
    <div className="rounded-xl border border-brand-border bg-brand-bg px-3.5 py-2.5 flex items-center justify-between focus-within:border-accent transition-colors">
-     <input id={id} type="text" inputMode="decimal" autoComplete="off" disabled={disabled}
+     <input id={id} type="number" step="any" inputMode="decimal" autoComplete="off" required autoFocus={autoFocus} disabled={disabled}
        value={amount} onChange={e=>onAmount(e.target.value)} placeholder={placeholder}
        className="w-full min-w-0 bg-transparent text-xl sm:text-2xl font-bold font-mono text-brand-text placeholder:text-brand-muted/40 focus:outline-none disabled:opacity-50"/>
      <span className="text-sm font-bold font-mono text-brand-sub pl-2 shrink-0 select-none">USDC</span>
@@ -81,14 +81,41 @@ export function HideDexFundingPresets({available,onPercent,disabled=false}:{
    </button>)}
  </div>;
 }
+/** Exact Original4 funding primary action visuals, separate transaction handlers. */
 export function HideDexFundingSubmit({deposit,busy=false,disabled=false,onClick,submit=false,label}:{
  deposit:boolean;busy?:boolean;disabled?:boolean;onClick?:()=>void;submit?:boolean;label?:string;
 }){
  return <button type={submit?"submit":"button"} onClick={onClick} disabled={busy||disabled}
-   className="w-full py-3.5 px-4 rounded-xl bg-accent hover:opacity-90 active:scale-[0.99] text-brand-bg font-bold text-sm tracking-wide transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
-   {busy?"Submitting…":(label??(deposit?"Deposit Collateral":"Withdraw Assets"))}
-   {!busy && <ArrowRight className="w-4 h-4"/>}
+   className="w-full py-3.5 px-4 rounded-xl bg-accent hover:opacity-90 active:scale-[0.99] text-brand-bg font-bold text-sm tracking-wide transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none">
+   {busy ? <><Loader2 className="w-4 h-4 animate-spin"/><span>Submitting...</span></>
+     : <>{deposit?<ArrowDownRight className="w-4 h-4"/>:<ArrowUpRight className="w-4 h-4"/>}
+       <span>{label??(deposit?"Deposit Collateral":"Withdraw Assets")}</span>
+       <ArrowRight className="w-4 h-4"/></>}
  </button>;
+}
+/** Original4 two-row network fee and estimated receive card.
+ * Unknown Lighter fees/estimates remain unavailable, never invented.
+ */
+export function HideDexFundingFeeCard(p:{
+ deposit:boolean;fee?:string|null;receive?:string|null;
+}){
+ return <div className="rounded-xl border border-brand-border/60 bg-brand-overlay-subtle p-3 space-y-2 font-mono text-xs">
+   <div className="flex items-center justify-between text-brand-sub">
+     <div className="flex items-center gap-1.5">
+       <Coins className="w-3.5 h-3.5 text-brand-muted"/>
+       <span>{p.deposit?"Deposit Fee":"Network Fee"}</span>
+       <Info className="w-3 h-3 text-brand-muted/70"/>
+     </div>
+     <span className="text-brand-text font-bold">{p.fee??"—"}</span>
+   </div>
+   <div className="flex items-center justify-between text-brand-text border-t border-brand-border/40 pt-2">
+     <div className="flex items-center gap-1.5">
+       {p.deposit?<ArrowDownRight className="w-3.5 h-3.5 text-accent"/>:<ArrowUpRight className="w-3.5 h-3.5 text-accent"/>}
+       <span>Est. Receive</span><Info className="w-3 h-3 text-brand-muted/70"/>
+     </div>
+     <span className="text-accent font-bold text-sm">{p.receive??"—"}</span>
+   </div>
+ </div>;
 }
 export function HideDexFundingFeeNotice({children}:{children:React.ReactNode}){
  return <div className="rounded-xl border border-brand-border/60 bg-brand-overlay-subtle p-3 font-mono text-xs text-brand-sub flex gap-2 items-start">

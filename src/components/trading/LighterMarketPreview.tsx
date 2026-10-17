@@ -5,7 +5,7 @@ import HideDexFundsOverview from "../dashboard/HideDexFundsOverview";
 import HideDexAssetAllocation from "../dashboard/HideDexAssetAllocation";
 import HideDexFundsPerformance, {type HideDexPerformancePeriod, type HideDexPerformanceMarket} from "../dashboard/HideDexFundsPerformance";
 import HideDexFundsModalHeader from "../dashboard/HideDexFundsModalHeader";
-import {HideDexFundingNetworkAsset,HideDexFundingDestination,HideDexFundingAmount,HideDexFundingPresets,HideDexFundingSubmit,HideDexFundingFeeNotice} from "../dashboard/HideDexFundingFields";
+import {HideDexFundingNetworkAsset,HideDexFundingDestination,HideDexFundingAmount,HideDexFundingPresets,HideDexFundingSubmit,HideDexFundingFeeCard} from "../dashboard/HideDexFundingFields";
 import { DailyFillVolumeBars } from "../dashboard/AnalyticsPanel";
 import {
   registerLighterTradingKey, reconnectLighterTradingKey, getActiveLighterSigner,
@@ -1158,7 +1158,7 @@ export default function LighterMarketPreview({
                 ? "Requires Arbitrum native USDC and ETH gas. The official CCTP bridge may credit Lighter after 15–20 minutes."
                 : "Requires Ethereum-mainnet USDC and ETH gas. An exact-amount USDC approval may be required."}
             </p>
-            <HideDexFundingFeeNotice>Bridge timing and fees depend on the selected network; the wallet confirms the real transaction.</HideDexFundingFeeNotice>
+            <HideDexFundingFeeCard deposit fee={null} receive={null}/>
             <HideDexFundingSubmit deposit busy={fundingBusy}
               disabled={!walletAddress||!depositAmount.trim()}
               label="Deposit Collateral"
@@ -1192,9 +1192,7 @@ export default function LighterMarketPreview({
               balanceLabel="Available Balance"
               balance={displayTradingAccount?.availableBalance==null?"—":formatPrice(displayTradingAccount.availableBalance,4)+" USDC"}/>
             <p className="text-[10px] text-brand-muted">Destination: {walletAddress || "Connect wallet"}. Network fees, account minimums and final timing are determined by Lighter.</p>
-            <HideDexFundingFeeNotice>
-              Lighter verifies withdrawal fees and final settlement. No fee or minimum is guessed.
-            </HideDexFundingFeeNotice>
+            <HideDexFundingFeeCard deposit={false} fee={null} receive={null}/>
             <HideDexFundingSubmit deposit={false} busy={fundingBusy}
               disabled={!tradingIdentity||!withdrawAmount.trim()} onClick={submitWithdrawal}
               label="Withdraw Assets"/>

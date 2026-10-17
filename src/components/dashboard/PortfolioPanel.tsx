@@ -8,7 +8,7 @@ import HideDexFundsOverview from "./HideDexFundsOverview";
 import HideDexAssetAllocation from "./HideDexAssetAllocation";
 import HideDexFundsPerformance from "./HideDexFundsPerformance";
 import HideDexFundsModalHeader from "./HideDexFundsModalHeader";
-import {HideDexFundingNetworkAsset,HideDexFundingDestination,HideDexFundingAmount,HideDexFundingPresets,HideDexFundingSubmit,HideDexFundingFeeNotice} from "./HideDexFundingFields";
+import {HideDexFundingNetworkAsset,HideDexFundingDestination,HideDexFundingAmount,HideDexFundingPresets,HideDexFundingSubmit,HideDexFundingFeeCard} from "./HideDexFundingFields";
 import { 
   Wallet, 
   Eye, 
@@ -1355,7 +1355,7 @@ export default function PortfolioPanel({
                           onAmount={v=>{setAmount(v);setTxErrorMessage("");}}
                           balanceLabel="Wallet Balance"
                           balance={walletConnected?displayWalletUsdc.toFixed(2)+" USDC":"—"}
-                          minLabel={`Minimum deposit is ${MIN_DEPOSIT_USDC} USDC.`} placeholder="Min 6 USDC"/>
+                          minLabel={`Minimum deposit is ${MIN_DEPOSIT_USDC} USDC.`} placeholder="Min 6 USDC" autoFocus/>
 
                         <HideDexFundingPresets available={walletConnected?displayWalletUsdc:null}
                           onPercent={pct=>{
@@ -1363,28 +1363,9 @@ export default function PortfolioPanel({
                             setTxErrorMessage("");
                           }}/>
 
-                        {/* 5. Deposit Fee Card */}
-                        <div className="rounded-xl border border-brand-border/60 bg-brand-overlay-subtle p-3 space-y-2 font-mono text-xs">
-                          <div className="flex items-center justify-between text-brand-sub">
-                            <div className="flex items-center gap-1.5">
-                              <Coins className="w-3.5 h-3.5 text-brand-muted" />
-                              <span>Deposit Fee</span>
-                              <Info className="w-3 h-3 text-brand-muted/70" />
-                            </div>
-                            <span className="text-brand-text font-bold">0.00 USDC</span>
-                          </div>
-                          <div className="flex items-center justify-between text-brand-text border-t border-brand-border/40 pt-2">
-                            <div className="flex items-center gap-1.5">
-                              <ArrowDownRight className="w-3.5 h-3.5 text-accent" />
-                              <span>Est. Receive</span>
-                              <Info className="w-3 h-3 text-brand-muted/70" />
-                            </div>
-                            <span className="text-accent font-bold text-sm">
-                              {estimatedDepositReceive.toFixed(2)} USDC
-                            </span>
-                          </div>
-                        </div>
-
+                        <HideDexFundingFeeCard deposit fee="0.00 USDC"
+                          receive={estimatedDepositReceive.toFixed(2)+" USDC"}/>
+                        
                         <HideDexFundingSubmit deposit submit busy={isDepositing}
                           disabled={!amount||!Number.isFinite(parseFloat(amount))||parseFloat(amount)<MIN_DEPOSIT_USDC}/>
                       </form>
@@ -1408,27 +1389,9 @@ export default function PortfolioPanel({
                             setTxErrorMessage("");
                           }}/>
 
-                        {/* 6. Network Fee & Est Receive */}
-                        <div className="rounded-xl border border-brand-border/60 bg-brand-overlay-subtle p-3 space-y-2 font-mono text-xs">
-                          <div className="flex items-center justify-between text-brand-sub">
-                            <div className="flex items-center gap-1.5">
-                              <Coins className="w-3.5 h-3.5 text-brand-muted" />
-                              <span>Network Fee</span>
-                              <Info className="w-3 h-3 text-brand-muted/70" />
-                            </div>
-                            <span className="text-brand-text font-bold">{WITHDRAWAL_FEE_USDC.toFixed(2)} USDC</span>
-                          </div>
-                          <div className="flex items-center justify-between text-brand-text border-t border-brand-border/40 pt-2">
-                            <div className="flex items-center gap-1.5">
-                              <ArrowUpRight className="w-3.5 h-3.5 text-accent" />
-                              <span>Est. Receive</span>
-                              <Info className="w-3 h-3 text-brand-muted/70" />
-                            </div>
-                            <span className="text-accent font-bold text-sm">
-                              {estimatedWithdrawalReceive.toFixed(2)} USDC
-                            </span>
-                          </div>
-                        </div>
+                        <HideDexFundingFeeCard deposit={false}
+                          fee={WITHDRAWAL_FEE_USDC.toFixed(2)+" USDC"}
+                          receive={estimatedWithdrawalReceive.toFixed(2)+" USDC"}/>
 
                         <HideDexFundingSubmit deposit={false} submit busy={isWithdrawing}
                           disabled={!tradingStateReady||!amount||!Number.isFinite(Number(amount))||
