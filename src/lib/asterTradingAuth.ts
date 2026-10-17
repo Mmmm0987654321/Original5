@@ -8,12 +8,12 @@ import {BrowserProvider,Wallet,getAddress,verifyTypedData} from "ethers";
 import {prepareAsterTradingAgentAuthorization,isAsterInitialDepositRequired} from "./asterAgentAuthorization";
 import {rememberAsterAgent,readRememberedAsterAgent,type SavedAsterAgent} from "./asterDeviceKey";
 import {ASTER_FUTURES_MAINNET} from "./asterMarketData";
-export type AsterWalletProvider={request:(args:{method:string;params?:unknown[]|object})=>Promise<unknown>};
+export type AsterWalletProvider={request:(args:{method:string;params?:any[]})=>Promise<any>};
 export type AsterIdentity={user:string;agent:string;expiresAtMs:number};
 export type AsterAccountBalance={asset:string;balance:string;availableBalance:string|null};
 let session:SavedAsterAgent|null=null;
 let busy=false,lastNonce=0;
-const RECORD_TYPE={Message:[{name:"msg",type:"string"}]} as const;
+const RECORD_TYPE={Message:[{name:"msg",type:"string"}]};
 const TRADE_DOMAIN={name:"AsterSignTransaction",version:"1",chainId:1666,
  verifyingContract:"0x0000000000000000000000000000000000000000"} as const;
 function nonce():string{
@@ -69,6 +69,21 @@ export async function registerAsterTradingAgent(args:{
   if(saved?.approved)throw new Error("Existing Aster agent found. Reconnect it rather than registering another.");
   if(saved&&!saved.approved)throw new Error("Previous Aster authorization status is uncertain. Do not register another agent automatically; review agents in Aster.");
   const native=await args.getWalletProvider();
+  // Agent registration requires owner EIP-712 domain chainId 56. Ask the
+  // wallet to switch to BNB Smart Chain; never infer the connected chain.
+  const connectedChain=await native.request({method:"eth_chainId"});
+  if(typeof connectedChain!=="string"||!/^0x[0-9a-f]+$/i.test(connectedChain))
+    throw new Error("Connected wallet network could not be verified");
+  if(Number.parseInt(connectedChain,16)!==56){
+    try{
+      await native.request({method:"wallet_switchEthereumChain",params:[{chainId:"0x38"}]});
+    }catch{
+      throw new Error("Switch your wallet to BNB Smart Chain (chain 56) to authorize Aster. No agent was created.");
+    }
+    const verified=await native.request({method:"eth_chainId"});
+    if(typeof verified!=="string"||Number.parseInt(verified,16)!==56)
+      throw new Error("Wallet did not confirm BNB Smart Chain. No agent was created.");
+  }
   const browser=new BrowserProvider(native as any);
   const ownerSigner=await browser.getSigner();
   if(getAddress(await ownerSigner.getAddress())!==user)
