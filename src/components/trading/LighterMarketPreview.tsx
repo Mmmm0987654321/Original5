@@ -1048,7 +1048,7 @@ export default function LighterMarketPreview({
           group={String(bookGroup)}
           groupOptions={["1","10","100"]}
           onGroup={v => setBookGroup(Number(v))}
-          shrinkOnTpSl={false}
+          shrinkOnTpSl={attachTpSl && !reduceOnly}
         />
       </HideDexTradeGrid>
       {lighterAccountTabs}
