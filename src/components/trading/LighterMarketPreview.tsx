@@ -767,12 +767,15 @@ export default function LighterMarketPreview({
         name:"Spot · Lighter Account #"+account.index,
         total:asset.balance,locked:asset.lockedBalance,
         available:asset.lockedBalance===null?null:Math.max(0,asset.balance-asset.lockedBalance),
-        valueUsd:null,allocationPercent:null,color:"#2775ca",
+        // USDC is USD-denominated. Non-USDC spot balances have no
+        // verified USD valuation here and must remain unknown.
+        valueUsd:asset.symbol.toUpperCase()==="USDC"?asset.balance:null,
+        allocationPercent:null,color:"#2775ca",
       } satisfies HideDexBalanceItem)) ?? [];
       return [
         {id:account.index+":perp",symbol:"USDC",name:"Perp Collateral · Account #"+account.index,
           total:account.collateral,available:account.availableBalance,locked:null,
-          valueUsd:null,allocationPercent:null,color:"#2775ca"} satisfies HideDexBalanceItem,
+          valueUsd:account.collateral,allocationPercent:null,color:"#2775ca"} satisfies HideDexBalanceItem,
         ...assets
       ];
     });
