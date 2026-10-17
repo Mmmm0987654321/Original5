@@ -22,6 +22,7 @@ import MarketsPanel from "../dashboard/MarketsPanel";
 import GeneralDashboard from "../dashboard/GeneralDashboard";
 import TradingAccountTabBar, { type TradingTabId } from "./TradingAccountTabBar";
 import HideDexPositionActionBar, {type HideDexPositionSort} from "./HideDexPositionActionBar";
+import HideDexCancelAllOrdersBar from "./HideDexCancelAllOrdersBar";
 import HideDexPositionHeader from "./HideDexPositionHeader";
 import HideDexPositionDetails from "./HideDexPositionDetails";
 import HideDexTradeHistory, {type HideDexHistoryRow} from "./HideDexTradeHistory";
@@ -958,16 +959,9 @@ export default function LighterMarketPreview({
         onCloseAll={()=>{if(!tradingIdentity){setAuthSheetOpen(true);return;}setCloseAllPositionsOpen(true);}}
         closeDisabled={tradingBusy||knownPositionCount===0}
       />}
-      {accountTab==="OPEN_ORDERS" && liveOrders!==null && liveOrders.length>0 && (
-        <div className="flex items-center justify-end px-2.5 py-1.5 bg-brand-bg/50 border-b border-brand-border text-[9px] md:text-[10px] text-gray-500 font-bold uppercase tracking-wider relative">
-          <button type="button"
-            disabled={tradingBusy || !tradingIdentity}
-            onClick={()=>setCancelAllOrdersOpen(true)}
-            className="text-rose-400 hover:text-rose-300 transition-colors cursor-pointer disabled:opacity-40">
-            Cancel All
-          </button>
-        </div>
-      )}
+      {accountTab==="OPEN_ORDERS" && liveOrders!==null && liveOrders.length>0 &&
+        <HideDexCancelAllOrdersBar disabled={tradingBusy||!tradingIdentity}
+          onCancelAll={()=>setCancelAllOrdersOpen(true)}/>}
       <div className="p-2 md:p-3 min-h-[110px] overflow-y-auto overflow-x-hidden">
         {accountTab === "BALANCES" && <HideDexBalancesView
           items={publicAccounts?.some(a=>a.assets===null)?null:lighterBalanceRows}

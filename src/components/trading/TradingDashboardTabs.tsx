@@ -1,5 +1,6 @@
 import TradingAccountTabBar from "./TradingAccountTabBar";
 import HideDexPositionActionBar from "./HideDexPositionActionBar";
+import HideDexCancelAllOrdersBar from "./HideDexCancelAllOrdersBar";
 import HideDexPositionHeader from "./HideDexPositionHeader";
 import HideDexPositionDetails from "./HideDexPositionDetails";
 import HideDexTradeHistory from "./HideDexTradeHistory";
@@ -482,18 +483,8 @@ export default function TradingDashboardTabs({
       />}
 
       {/* Sub-Header Row: Open Orders - Cancel All */}
-      {activeBottomTab === "OPEN_ORDERS" && filteredOrders.length > 0 && (
-        <div className="flex items-center justify-end px-2.5 py-1.5 bg-brand-bg/50 border-b border-brand-border text-[9px] md:text-[10px] text-gray-500 font-bold uppercase tracking-wider relative">
-          <button 
-            onClick={() => {
-              setShowCancelAllModal(true);
-            }}
-            className="text-rose-400 hover:text-rose-300 transition-colors cursor-pointer"
-          >
-            Cancel All
-          </button>
-        </div>
-      )}
+      {activeBottomTab === "OPEN_ORDERS" && filteredOrders.length > 0 &&
+        <HideDexCancelAllOrdersBar onCancelAll={()=>setShowCancelAllModal(true)}/>}
 
       {/* Dynamic Inner Tab View Table */}
       <div className="p-2 md:p-3 min-h-[110px] overflow-y-auto overflow-x-hidden relative">
