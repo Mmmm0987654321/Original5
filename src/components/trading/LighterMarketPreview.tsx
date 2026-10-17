@@ -27,6 +27,7 @@ import HideDexPositionDetails from "./HideDexPositionDetails";
 import HideDexTradeHistory, {type HideDexHistoryRow} from "./HideDexTradeHistory";
 import {rememberLighterSigner,readRememberedLighterSigner,forgetRememberedLighterSigner} from "../../lib/lighterDeviceKey";
 import CloseAllConfirmationModal from "./CloseAllConfirmationModal";
+import HideDexTradingToast from "./HideDexTradingToast";
 import HideDexOpenOrders, {type HideDexOpenOrderRow} from "./HideDexOpenOrders";
 import HideDexBalancesView, {type HideDexBalanceItem} from "./HideDexBalancesView";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
@@ -141,6 +142,9 @@ export default function LighterMarketPreview({
     () => getActiveLighterSigner(walletAddress));
   const [tradingBusy, setTradingBusy] = useState(false);
   const [tradingNotice, setTradingNotice] = useState("");
+  const [singleCloseTarget,setSingleCloseTarget]=useState<{
+    accountIndex:number;symbol:string;signedSize:number;
+  }|null>(null);
   const [recoveryKey, setRecoveryKey] = useState("");
   const [showExistingKey, setShowExistingKey] = useState(false);
   const [existingKey, setExistingKey] = useState("");
@@ -305,12 +309,8 @@ export default function LighterMarketPreview({
         chosenLeverage+"x. Your selected leverage is only a draft.");
       return;
     }
-    const orderSide = side === "buy" ? (kind === "perp" ? "LONG" : "BUY") : (kind === "perp" ? "SHORT" : "SELL");
-    if (!window.confirm("LIVE LIGHTER MAINNET " + orderSide + " " + selected.symbol +
-      "\nSize: " + sizeInCoin + "\nType: " + orderType +
-      "\nApprox. value: $" + formatPrice(orderValueUsd, 2) +
-      (attachTpSl ? "\nTP: " + (takeProfit || "none") + "\nSL: " + (stopLoss || "none") : "") +
-      "\nProceed with a REAL signed order?")) return;
+    // Place LONG/SHORT is already an explicit user action, exactly like
+    // Hyperliquid's original terminal. Do not open Android's native dialog.
     setTradingBusy(true); setTradingNotice("Signing and submitting real Lighter mainnet order…");
     try {
       const tx = await submitLighterOrder({
@@ -331,9 +331,8 @@ export default function LighterMarketPreview({
     if (!walletAddress || !tradingIdentity || fundingBusy) return;
     const n = Number(withdrawAmount);
     if (!Number.isFinite(n) || n <= 0) { setFundingStatus("Enter a valid USDC amount."); return; }
-    if (!window.confirm("REAL LIGHTER MAINNET WITHDRAWAL\n" + withdrawAmount +
-      " USDC to the ORIGINAL wallet: " + walletAddress +
-      "\nNo arbitrary destination. Proceed?")) return;
+    // The shared Funds withdrawal sheet shows amount and verified destination;
+    // its Withdraw Assets button is the explicit approval, not a second popup.
     setFundingBusy(true); setFundingStatus("Verifying Lighter owner and available USDC…");
     try {
       const tx = await withdrawLighterUsdc({ walletAddress, amount: withdrawAmount });
@@ -345,26 +344,18 @@ export default function LighterMarketPreview({
   };
 
   const closeLighterPosition = async (accountIndex: number, symbol: string, signedSize: number) => {
-    if (!walletAddress || tradingBusy) return;
-    if (!tradingIdentity) {
-      // Original HideDex behavior: request signing through the bottom sheet
-      // only after the user explicitly selects Close. Never auto-close.
-      setTradingNotice("");
-      setAuthSheetOpen(true);
-      return;
-    }
-    if (accountIndex !== tradingIdentity.accountIndex) {
-      setTradingNotice("Select the registered signer for this Lighter subaccount before closing.");
-      return;
-    }
+    // The shared modal calls this only after the user's final approval.
+    // If wallet or signer changes while it is open, fail visibly, never close it.
+    if (!walletAddress || tradingBusy || !tradingIdentity)
+      throw new Error("Reconnect the authorized Lighter wallet to close this position.");
+    if (accountIndex !== tradingIdentity.accountIndex)
+      throw new Error("Select the verified signer for this Lighter subaccount.");
     const m = markets.find(row => row.kind === "perp" && row.symbol === symbol);
-    if (!m || !Number.isFinite(signedSize) || !signedSize || !(m.lastTradePrice && m.lastTradePrice > 0)) {
-      setTradingNotice("Cannot verify a live Lighter market and size for this close.");
-      return;
-    }
+    if (!m || !Number.isFinite(signedSize) || signedSize === 0 ||
+        !(m.lastTradePrice && m.lastTradePrice > 0))
+      throw new Error("Cannot verify a live Lighter market and size for this close.");
+    // Called only from the shared HideDex single-position confirmation modal.
     const coinSize = Math.abs(signedSize);
-    if (!window.confirm("REAL LIGHTER MAINNET CLOSE POSITION\n" + m.symbol +
-      "\nEntire size: " + coinSize + "\nReduce-only market order, max 2% slippage bound. Proceed?")) return;
     setTradingBusy(true); setTradingNotice("Checking actual position and sending reduce-only close…");
     try {
       const tx = await submitLighterOrder({
@@ -373,8 +364,10 @@ export default function LighterMarketPreview({
       });
       setTradingNotice("Lighter accepted close order: " + tx + ". Await position refresh.");
       setAccountReload(v => v + 1);
-    } catch (e) { setTradingNotice(e instanceof Error ? e.message : "Lighter close rejected."); }
-    finally { setTradingBusy(false); }
+    } catch (e) {
+      setTradingNotice(e instanceof Error ? e.message : "Lighter close rejected.");
+      throw e; // Preserve the shared confirmation with error for retry.
+    } finally { setTradingBusy(false); }
   };
 
   /** Original4 confirmation surface calls this only on explicit user approval. */
@@ -453,11 +446,25 @@ export default function LighterMarketPreview({
     }
   };
 
+  const requestLighterPositionClose = (accountIndex:number,symbol:string,signedSize:number) => {
+    if(!walletAddress||tradingBusy)return;
+    if(!tradingIdentity){setTradingNotice("");setAuthSheetOpen(true);return;}
+    if(tradingIdentity.accountIndex!==accountIndex){
+      setTradingNotice("Select the Lighter signer for this account first.");return;
+    }
+    const market=markets.find(row=>row.kind==="perp"&&row.symbol===symbol);
+    if(!market||!(market.lastTradePrice&&market.lastTradePrice>0)||
+      !Number.isFinite(signedSize)||signedSize===0){
+      setTradingNotice("Verified position and market are required to close.");return;
+    }
+    setSingleCloseTarget({accountIndex,symbol,signedSize});
+  };
+
   const cancelLighterOrder = async (marketId: number, orderIndex: number) => {
     const m = markets.find(row => row.id === marketId);
     if (!m || !Number.isSafeInteger(orderIndex) || orderIndex < 0 ||
         !walletAddress || !tradingIdentity || tradingBusy) return;
-    if (!window.confirm("CANCEL LIVE LIGHTER ORDER #" + orderIndex + " on " + m.symbol + "?")) return;
+    // The row's explicit Cancel button uses the original HideDex action.
     setTradingBusy(true); setOpenOrdersError("");
     try {
       const tx = await cancelLighterSignedOrder({walletAddress,market:m,orderIndex});
@@ -967,7 +974,7 @@ export default function LighterMarketPreview({
                     pnl={p.unrealizedPnl}
                     roi={null}
                     shareAction={!isExpanded && <button type="button"
-                      onClick={event=>{event.preventDefault();event.stopPropagation();closeLighterPosition(a.index,p.symbol,p.signedSize);}}
+                      onClick={event=>{event.preventDefault();event.stopPropagation();requestLighterPositionClose(a.index,p.symbol,p.signedSize);}}
                       disabled={tradingBusy}
                       title={!tradingIdentity?"Tap to enable trading for this position":tradingIdentity.accountIndex!==a.index?"Select signer for this account":"Close real Lighter position"}
                       className="px-2 py-1 rounded border border-brand-loss/40 bg-brand-loss/10 text-brand-loss text-[9px] font-extrabold uppercase disabled:opacity-40">
@@ -996,7 +1003,7 @@ export default function LighterMarketPreview({
                         className="w-full h-8 px-1 rounded-lg border bg-brand-overlay-subtle border-brand-primary/30 text-brand-primary text-[8px] sm:text-[10px] font-extrabold uppercase tracking-widest disabled:opacity-40">
                         TP/SL
                       </button>
-                      <button type="button" onClick={()=>closeLighterPosition(a.index,p.symbol,p.signedSize)}
+                      <button type="button" onClick={()=>requestLighterPositionClose(a.index,p.symbol,p.signedSize)}
                         disabled={tradingBusy}
                         className="w-full h-8 px-1 rounded-lg border bg-brand-loss/10 hover:bg-brand-loss/20 border-brand-loss/30 text-brand-loss text-[8px] sm:text-[10px] font-extrabold uppercase tracking-widest disabled:opacity-40">
                         Close
@@ -1066,14 +1073,14 @@ export default function LighterMarketPreview({
   );
 
   return <div className="w-full min-w-0 text-brand-text pb-1" data-exchange="lighter">
-    {tradingNotice && !authSheetOpen && (
-      <div role="status" aria-live="polite"
-        className="fixed bottom-[94px] right-3 left-3 sm:left-auto sm:max-w-sm z-[150] flex items-start justify-between gap-2 rounded-xl bg-brand-surface border border-brand-border p-3 shadow-2xl text-xs text-brand-text break-words">
-        <span className="line-clamp-3">{tradingNotice}</span>
-        <button type="button" aria-label="Dismiss notice" onClick={()=>setTradingNotice("")}
-          className="shrink-0 rounded border border-brand-border px-2 py-1">×</button>
-      </div>
-    )}
+    {tradingNotice && !authSheetOpen && <HideDexTradingToast
+      type={tradingBusy||fundingBusy||marginBusy?"pending":
+        /(?:fail|reject|error|invalid|unavailable|rate limit|cannot|unable|not verified|not confirmed|requires|did not)/i.test(tradingNotice)
+          ?"error":"success"}
+      title="Lighter"
+      message={tradingNotice}
+      onClose={()=>setTradingNotice("")}
+    />}
     {authSheetOpen && (
       <div role="presentation" className="fixed inset-0 z-[160] flex items-end justify-center bg-black/75 backdrop-blur-[2px]"
         onMouseDown={e => { if (e.target === e.currentTarget && !tradingBusy && !recoveryKey) setAuthSheetOpen(false); }}>
@@ -1596,6 +1603,14 @@ export default function LighterMarketPreview({
       </div>
     )}
 
+    {singleCloseTarget&&<CloseAllConfirmationModal action="close_position"
+      symbol={singleCloseTarget.symbol}
+      onClose={()=>setSingleCloseTarget(null)}
+      onConfirm={async()=>{
+        const target=singleCloseTarget;
+        if(!target)throw new Error("Position selection expired.");
+        await closeLighterPosition(target.accountIndex,target.symbol,target.signedSize);
+      }}/>}
     {closeAllPositionsOpen&&<CloseAllConfirmationModal action="close_positions"
       onClose={()=>setCloseAllPositionsOpen(false)}
       onConfirm={closeAllLighterPositions}/>}

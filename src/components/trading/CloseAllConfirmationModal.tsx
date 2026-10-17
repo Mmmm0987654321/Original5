@@ -3,7 +3,7 @@ import { motion } from "motion/react";
 import { X, ListChecks, ClipboardCheck, Loader2 } from "lucide-react";
 
 interface CloseAllConfirmationModalProps {
-  action?: "close_positions" | "cancel_orders" | "close_spot" | "close_all_spot";
+  action?: "close_positions" | "close_position" | "cancel_orders" | "close_spot" | "close_all_spot";
   symbol?: string;
   onClose: () => void;
   onConfirm: () => Promise<void> | void;
@@ -16,6 +16,16 @@ export default function CloseAllConfirmationModal({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const labels = {
+    close_position: {
+      title: `Close ${symbol || "Selected"} Position`,
+      description: "Close the verified Lighter perpetual position at market price.",
+      notes: [
+        "Only the position in the active Lighter signer account will be closed.",
+        "The market order is reduce-only; execution price may vary (up to 2% slippage bound).",
+        "Unrelated positions and open orders are not changed."
+      ],
+      confirm: "Close Position"
+    },
     close_positions: {
       title: "Close All Positions",
       description: "Close all open perpetual positions at market price. Execution prices can vary.",
