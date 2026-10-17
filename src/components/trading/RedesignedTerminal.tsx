@@ -75,6 +75,7 @@ import HideDexPlaceOrderButton from "./HideDexPlaceOrderButton";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
 import HideDexUnifiedMarketHeader from "./HideDexUnifiedMarketHeader";
 import HideDexUnifiedTradeCanvas from "./HideDexUnifiedTradeCanvas";
+import HideDexUnifiedOrderForm from "./HideDexUnifiedOrderForm";
 import HideDexOrderSummary from "./HideDexOrderSummary";
 import HideDexDisconnectedOverlay from "./HideDexDisconnectedOverlay";
 import HideDexOrderBookPanel from "./HideDexOrderBookPanel";
@@ -4536,58 +4537,42 @@ export default function RedesignedTerminal({
           />
         )}
 </>}
-        orderForm={<>
-          
-          {/* Locked Overlay: Wallet Not Connected */}
-          {!walletAddress && <HideDexDisconnectedOverlay title={t("not_connected")} onConnect={onConnectWallet}/>}
-
-          <form onSubmit={handleSubmitOrder} className="flex flex-1 flex-col gap-2 md:gap-3">
-            
-            {/* The exact same original HideDex selectors are used by both venues. */}
-            <HideDexTradeSelectors
-              isPerp={isPerp}
-              orderType={orderType as TradeOrderType}
-              onOrderType={next => setOrderType(next)}
-              marginMode={marginMode}
-              onMarginMode={next => {
-                setMarginMode(next);
-                saveMarginTypeForWeb(marginOwner, perpOrderCoin,
-                  next === "CROSS" ? "cross" : "isolated", effectiveSupportsCross);
-              }}
-              disabledMarginModes={[
-                ...(!effectiveSupportsCross ? ["CROSS" as const] : []),
-                ...(lockedMarginMode ? (["CROSS","ISOLATED"] as const).filter(m => m !== lockedMarginMode) : []),
-              ]}
-              leverage={leverage}
-              maxLeverage={maxLeverage}
-              leverageDisabled={isLeverageLocked}
-              onLeverage={next => {setLeverage(next); localStorage.setItem(`leverage_${symbol}`, String(next));}}
-            />
-
-            <HideDexSideAndAvailability
-              isPerp={isPerp}
-              side={orderSide}
-              onSide={setOrderSide}
-              available={isFieldHidden("balance")
-                ? `•••• ${availToTradeUnit}`
-                : isPerp && !showOrderAvailableAmount ? "--"
-                : !isPerp && !spotBalancesHydrated ? "--"
-                : `${availToTradeVal.toLocaleString(undefined, {minimumFractionDigits:2,maximumFractionDigits:availToTradeUnit==="USDC"?2:4})} ${availToTradeUnit}`}
-            />
-                        {/* Conditional input panels based on selected orderType */}
-            {(orderType === "LIMIT" || orderType === "MARKET") && (
-              <HideDexBasicOrderInputs
-                type={orderType}
-                price={priceInput}
-                onPrice={v => {setPriceInput(v);setSelectedPercentage(0);}}
-                midPrice={realCurrentPrice}
-                size={sizeInput}
-                onSize={v => {setSizeInput(v);setSelectedPercentage(0);}}
-                sizeUnit={sizeUnit}
-                onToggleUnit={handleToggleSizeUnit}
-              />
-            )}
-
+        orderForm={<HideDexUnifiedOrderForm
+          connected={!!walletAddress}
+          onConnect={onConnectWallet}
+          connectTitle={t("not_connected")}
+          onSubmit={handleSubmitOrder}
+          selectors={{
+            isPerp,orderType:orderType as TradeOrderType,onOrderType:next=>setOrderType(next),
+            marginMode,
+            onMarginMode:next=>{
+              setMarginMode(next);
+              saveMarginTypeForWeb(marginOwner,perpOrderCoin,
+                next==="CROSS"?"cross":"isolated",effectiveSupportsCross);
+            },
+            disabledMarginModes:[
+              ...(!effectiveSupportsCross?["CROSS" as const]:[]),
+              ...(lockedMarginMode?(["CROSS","ISOLATED"] as const).filter(m=>m!==lockedMarginMode):[]),
+            ],
+            leverage,maxLeverage,leverageDisabled:isLeverageLocked,
+            onLeverage:next=>{setLeverage(next);localStorage.setItem(`leverage_${symbol}`,String(next));},
+          }}
+          side={{
+            isPerp,side:orderSide,onSide:setOrderSide,
+            available:isFieldHidden("balance")?`•••• ${availToTradeUnit}`
+              :isPerp&&!showOrderAvailableAmount?"--"
+              :!isPerp&&!spotBalancesHydrated?"--"
+              :`${availToTradeVal.toLocaleString(undefined,{minimumFractionDigits:2,
+                maximumFractionDigits:availToTradeUnit==="USDC"?2:4})} ${availToTradeUnit}`,
+          }}
+          basic={orderType==="LIMIT"||orderType==="MARKET"?{
+            type:orderType,price:priceInput,
+            onPrice:v=>{setPriceInput(v);setSelectedPercentage(0);},
+            midPrice:realCurrentPrice,size:sizeInput,
+            onSize:v=>{setSizeInput(v);setSelectedPercentage(0);},
+            sizeUnit,onToggleUnit:handleToggleSizeUnit,
+          }:null}
+          advancedFields={<>
             {(orderType === "STOP_LIMIT" || orderType === "TAKE_LIMIT") && (
               <div className="space-y-1.5">
                 {/* Trigger Price */}
@@ -4733,160 +4718,93 @@ export default function RedesignedTerminal({
               </div>
             )}
 
-            {/* Dynamic Equivalent Size Helper */}
-            {sizeEquivalentText && (
-              <div className="text-right px-1 text-[8px] sm:text-[9px] font-mono text-gray-500 select-none">
-                {sizeEquivalentText}
-              </div>
-            )}
 
-            <HideDexTradePercentPresets
-              disabled={!canCalculatePercentageSize}
-              selected={selectedPercentage}
-              onSelect={handlePercentagePreset}
-            />
-
-            {/* Options block (Reduce Only, Take Profit, Stop Loss, TIF) */}
-            {isAttachedTpSlParentOrder && (
-              <div className="space-y-2 pt-2 px-0.5 border-t border-brand-border/35">
-                <div className="flex items-start justify-between gap-2">
-                  {/* Reduce Only checkbox */}
-                  {roAvailable ? (
-                    <div className="flex flex-col gap-1 min-w-0">
-                      <HideDexTradeOptionToggle kind="reduce" checked={reduceOnly}
-                        onChange={setReduceOnly}/>
-
-                      {roTooLarge && (
-                        <span className="text-[9px] text-pnl-loss font-mono font-bold">
-                          Reduce Only Too Large
-                        </span>
-                      )}
-                    </div>
-                  ) : (
-                    <div />
-                  )}
-
-                  {/* TIF (Fixed GTC) */}
-                  {orderType === "LIMIT" && (
-                    <div className="text-[9px] font-bold text-brand-muted uppercase tracking-wider select-none">
-                      TIF GTC
-                    </div>
-                  )}
-                </div>
-
-                {/* Premium Take Profit / Stop Loss Section */}
-                <div className="border-t border-brand-border/35 pt-2 space-y-2">
-                  <HideDexTradeOptionToggle kind="tpsl"
-                    checked={isTpSlEnabled} onChange={setIsTpSlEnabled}/>
-
-                  {isTpSlEnabled && (
-                    <div className="grid grid-cols-2 gap-1.5 md:gap-2 animate-in fade-in slide-in-from-top-1 duration-150">
-                      {/* Take Profit Target Price */}
-                      <div className="relative">
-                        <HideDexTradeTriggerPrice kind="tp"
-
-                          value={tpPriceInput}
-                          onChange={(e) => {
-                            setTpPriceInput(e.target.value);
-                            const tpVal = parseFloat(e.target.value);
-                            if (!isNaN(tpVal) && basePrice > 0) {
-                              if (tpUnit === "%") {
-                                const pct = orderSide === "BUY"
-                                  ? ((tpVal - basePrice) / basePrice) * 100
-                                  : ((basePrice - tpVal) / basePrice) * 100;
-                                setTpGainInput(pct.toFixed(2));
-                              } else {
-                                const diff = orderSide === "BUY"
-                                  ? tpVal - basePrice
-                                  : basePrice - tpVal;
-                                setTpGainInput(diff.toFixed(2));
-                              }
-                            } else {
-                              setTpGainInput("");
-                            }
-                          }}
-
-                        />
-                      </div>
-
-                      {/* Original4 Gain Percentage/Dollar Input with Dropdown */}
-                      <HideDexTradeOutcomeInput kind="tp" value={tpGainInput} unit={tpUnit}
-                        open={showTpUnitDropdown} onToggle={()=>setShowTpUnitDropdown(v=>!v)}
-                        onUnit={unit=>{handleTpUnitChange(unit);setShowTpUnitDropdown(false);}}
-                        onChange={value=>{
-                          setTpGainInput(value);
-                          const gainVal=parseFloat(value);
-                          if(!isNaN(gainVal)&&basePrice>0) {
-                            const targetPrice=tpUnit==="%"
-                              ? (orderSide==="BUY"?basePrice*(1+gainVal/100):basePrice*(1-gainVal/100))
-                              : (orderSide==="BUY"?basePrice+gainVal:basePrice-gainVal);
-                            setTpPriceInput(targetPrice.toFixed(2));
-                          } else setTpPriceInput("");
-                        }}/>
-                      
-                      {/* Stop Loss Target Price */}
-                      <div className="relative">
-                        <HideDexTradeTriggerPrice kind="sl"
-
-                          value={slPriceInput}
-                          onChange={(e) => {
-                            setSlPriceInput(e.target.value);
-                            const slVal = parseFloat(e.target.value);
-                            if (!isNaN(slVal) && basePrice > 0) {
-                              if (slUnit === "%") {
-                                const pct = orderSide === "BUY"
-                                  ? ((basePrice - slVal) / basePrice) * 100
-                                  : ((slVal - basePrice) / basePrice) * 100;
-                                setSlLossInput(pct.toFixed(2));
-                              } else {
-                                const diff = orderSide === "BUY"
-                                  ? basePrice - slVal
-                                  : slVal - basePrice;
-                                setSlLossInput(diff.toFixed(2));
-                              }
-                            } else {
-                              setSlLossInput("");
-                            }
-                          }}
-
-                        />
-                      </div>
-
-                      {/* Original4 Loss Percentage/Dollar Input with Dropdown */}
-                      <HideDexTradeOutcomeInput kind="sl" value={slLossInput} unit={slUnit}
-                        open={showSlUnitDropdown} onToggle={()=>setShowSlUnitDropdown(v=>!v)}
-                        onUnit={unit=>{handleSlUnitChange(unit);setShowSlUnitDropdown(false);}}
-                        onChange={value=>{
-                          setSlLossInput(value);
-                          const lossVal=parseFloat(value);
-                          if(!isNaN(lossVal)&&basePrice>0) {
-                            const targetPrice=slUnit==="%"
-                              ? (orderSide==="BUY"?basePrice*(1-lossVal/100):basePrice*(1+lossVal/100))
-                              : (orderSide==="BUY"?basePrice-lossVal:basePrice+lossVal);
-                            setSlPriceInput(targetPrice.toFixed(2));
-                          } else setSlPriceInput("");
-                        }}/>
-
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Calculations and limits stats list */}
-            <HideDexOrderSummary
-              isPerp={isPerp}
-              liquidation={liquidationPrice?"$"+liquidationPrice.toLocaleString(undefined,{minimumFractionDigits:1}):"N/A"}
-              orderValue={typeof orderValue==="number"&&Number.isFinite(orderValue)&&orderValue>0
-                ?"$"+orderValue.toLocaleString(undefined,{minimumFractionDigits:1}):"--"}
-              margin={marginRequired>0?"$"+marginRequired.toLocaleString(undefined,{minimumFractionDigits:1}):"N/A"}
-            />
-
-            {/* Action Placement Button */}
-            <HideDexPlaceOrderButton
-              type="submit"
-              onClick={showOrderButtonTap}
-              disabled={(() => {
+          </>}
+          equivalentText={sizeEquivalentText}
+          presets={{
+            disabled:!canCalculatePercentageSize,
+            selected:selectedPercentage,onSelect:handlePercentagePreset,
+          }}
+          options={{
+            visible:isAttachedTpSlParentOrder,
+            reduce:roAvailable?{checked:reduceOnly,onChange:setReduceOnly}:undefined,
+            reduceTooLarge:roTooLarge,
+            tifGtc:orderType==="LIMIT",
+            tpsl:{checked:isTpSlEnabled,onChange:setIsTpSlEnabled},
+            tp:{
+              price:{kind:"tp",value:tpPriceInput,
+                onChange:e=>{
+                  setTpPriceInput(e.target.value);
+                  const tpVal=parseFloat(e.target.value);
+                  if(!isNaN(tpVal)&&basePrice>0){
+                    if(tpUnit==="%"){
+                      const pct=orderSide==="BUY"?
+                        ((tpVal-basePrice)/basePrice)*100:
+                        ((basePrice-tpVal)/basePrice)*100;
+                      setTpGainInput(pct.toFixed(2));
+                    }else{
+                      const diff=orderSide==="BUY"?tpVal-basePrice:basePrice-tpVal;
+                      setTpGainInput(diff.toFixed(2));
+                    }
+                  }else setTpGainInput("");
+                }},
+              outcome:{kind:"tp",value:tpGainInput,unit:tpUnit,
+                open:showTpUnitDropdown,onToggle:()=>setShowTpUnitDropdown(v=>!v),
+                onUnit:unit=>{handleTpUnitChange(unit);setShowTpUnitDropdown(false);},
+                onChange:value=>{
+                  setTpGainInput(value);
+                  const gainVal=parseFloat(value);
+                  if(!isNaN(gainVal)&&basePrice>0){
+                    const targetPrice=tpUnit==="%"
+                      ?(orderSide==="BUY"?basePrice*(1+gainVal/100):basePrice*(1-gainVal/100))
+                      :(orderSide==="BUY"?basePrice+gainVal:basePrice-gainVal);
+                    setTpPriceInput(targetPrice.toFixed(2));
+                  }else setTpPriceInput("");
+                }},
+            },
+            sl:{
+              price:{kind:"sl",value:slPriceInput,
+                onChange:e=>{
+                  setSlPriceInput(e.target.value);
+                  const slVal=parseFloat(e.target.value);
+                  if(!isNaN(slVal)&&basePrice>0){
+                    if(slUnit==="%"){
+                      const pct=orderSide==="BUY"?
+                        ((basePrice-slVal)/basePrice)*100:
+                        ((slVal-basePrice)/basePrice)*100;
+                      setSlLossInput(pct.toFixed(2));
+                    }else{
+                      const diff=orderSide==="BUY"?basePrice-slVal:slVal-basePrice;
+                      setSlLossInput(diff.toFixed(2));
+                    }
+                  }else setSlLossInput("");
+                }},
+              outcome:{kind:"sl",value:slLossInput,unit:slUnit,
+                open:showSlUnitDropdown,onToggle:()=>setShowSlUnitDropdown(v=>!v),
+                onUnit:unit=>{handleSlUnitChange(unit);setShowSlUnitDropdown(false);},
+                onChange:value=>{
+                  setSlLossInput(value);
+                  const lossVal=parseFloat(value);
+                  if(!isNaN(lossVal)&&basePrice>0){
+                    const targetPrice=slUnit==="%"
+                      ?(orderSide==="BUY"?basePrice*(1-lossVal/100):basePrice*(1+lossVal/100))
+                      :(orderSide==="BUY"?basePrice-lossVal:basePrice+lossVal);
+                    setSlPriceInput(targetPrice.toFixed(2));
+                  }else setSlPriceInput("");
+                }},
+            },
+          }}
+          summary={{
+            isPerp,liquidation:liquidationPrice?
+              "$"+liquidationPrice.toLocaleString(undefined,{minimumFractionDigits:1}):"N/A",
+            orderValue:typeof orderValue==="number"&&Number.isFinite(orderValue)&&orderValue>0?
+              "$"+orderValue.toLocaleString(undefined,{minimumFractionDigits:1}):"--",
+            margin:marginRequired>0?
+              "$"+marginRequired.toLocaleString(undefined,{minimumFractionDigits:1}):"N/A",
+          }}
+          place={{
+            type:"submit",onClick:showOrderButtonTap,
+            disabled:((() => {
                 if (isPlacingOrder) return true;
                 if (isPerp) {
                   if (sizeUsd <= 0) return true;
@@ -4920,12 +4838,9 @@ export default function RedesignedTerminal({
                   }
                   return false;
                 }
-              })()}
-              side={orderSide}
-              busy={isPlacingOrder}
-              tapped={orderButtonTapped}
-            >
-              {isPlacingOrder
+              })()),
+            side:orderSide,busy:isPlacingOrder,tapped:orderButtonTapped,
+            label:(isPlacingOrder
                 ? `Place ${orderSide === "BUY" ? (isPerp ? "Long" : "Buy") : (isPerp ? "Short" : "Sell")}`
                 : isPerp && reduceOnly && currentRoDisabled
                 ? roTooLarge
@@ -4945,10 +4860,9 @@ export default function RedesignedTerminal({
                 ? "Not enough spot balance to sell"
                 : !isPerp && (orderValue !== null && orderValue > 0 && orderValue < 10)
                 ? "Min Order $10"
-                : `Place ${orderSide === "BUY" ? (isPerp ? "Long" : "Buy") : (isPerp ? "Short" : "Sell")}`}
-            </HideDexPlaceOrderButton>
-          </form>
-</>}
+                : `Place ${orderSide === "BUY" ? (isPerp ? "Long" : "Buy") : (isPerp ? "Short" : "Sell")}`),
+          }}
+        />}
         orderBook={<>
 
         <HideDexOrderBookPanel

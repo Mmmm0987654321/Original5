@@ -41,6 +41,7 @@ import HideDexBalancesView, {type HideDexBalanceItem} from "./HideDexBalancesVie
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
 import HideDexUnifiedMarketHeader from "./HideDexUnifiedMarketHeader";
 import HideDexUnifiedTradeCanvas from "./HideDexUnifiedTradeCanvas";
+import HideDexUnifiedOrderForm from "./HideDexUnifiedOrderForm";
 import HideDexOrderSummary from "./HideDexOrderSummary";
 import HideDexPositionActions from "./HideDexPositionActions";
 import HideDexDisconnectedOverlay from "./HideDexDisconnectedOverlay";
@@ -1611,106 +1612,96 @@ export default function LighterMarketPreview({
           /> : <p className="p-5 text-xs text-brand-muted">Choose a Lighter market.</p>
         )}
 </>}
-        orderForm={<>
-          {!walletAddress && <HideDexDisconnectedOverlay onConnect={onConnectWallet}/>}
-          <div className="flex flex-1 flex-col gap-2 md:gap-3">
-          <HideDexTradeSelectors
-            isPerp={kind === "perp"}
-            orderType={orderType.toUpperCase() as TradeOrderType}
-            availableOrderTypes={["MARKET","LIMIT"]}
-            onOrderType={next => {if(next === "MARKET" || next === "LIMIT") setOrderType(next.toLowerCase() as "market"|"limit");}}
-            marginMode={marginMode.toUpperCase() as "CROSS"|"ISOLATED"}
-            onMarginMode={next => {
+        orderForm={<HideDexUnifiedOrderForm
+          connected={!!walletAddress}
+          onConnect={onConnectWallet}
+          onSubmit={event=>event.preventDefault()}
+          selectors={{
+            isPerp:kind==="perp",
+            orderType:orderType.toUpperCase() as TradeOrderType,
+            availableOrderTypes:["MARKET","LIMIT"],
+            onOrderType:next=>{if(next==="MARKET"||next==="LIMIT")setOrderType(next.toLowerCase() as "market"|"limit");},
+            marginMode:marginMode.toUpperCase() as "CROSS"|"ISOLATED",
+            onMarginMode:next=>{
               const mode=next.toLowerCase() as "cross"|"isolated";
-              setMarginMode(mode);
-              queueMarginUpdate(chosenLeverage,mode);
-            }}
-            leverage={chosenLeverage}
-            maxLeverage={selected?.maxLeverage ?? null}
-            onLeverage={next => setChosenLeverage(next)}
-            onLeverageCommit={next=>queueMarginUpdate(next,marginMode)}
-            leverageDisabled={!selected?.maxLeverage}
-          />
-          <HideDexSideAndAvailability
-            isPerp={kind==="perp"}
-            side={side==="buy"?"BUY":"SELL"}
-            onSide={next=>{setSide(next==="BUY"?"buy":"sell");setReduceOnly(false);}}
-            available={availableForMarket !== null
-              ? formatPrice(availableForMarket,5)+" USDC" : "—"}
-          />
-                    <HideDexBasicOrderInputs
-            type={orderType==="market"?"MARKET":"LIMIT"}
-            price={limitPrice}
-            onPrice={setLimitPrice}
-            midPrice={marketPrice}
-            size={amount}
-            onSize={setAmount}
-            sizeUnit={sizeUnit==="USD"?"USDC":selected?.symbol.split("/")[0] ?? "COIN"}
-            onToggleUnit={()=>{
-              if(inputPrice && inputPrice>0 && inputAmount>0)
+              setMarginMode(mode);queueMarginUpdate(chosenLeverage,mode);
+            },
+            leverage:chosenLeverage,
+            maxLeverage:selected?.maxLeverage??null,
+            onLeverage:next=>setChosenLeverage(next),
+            onLeverageCommit:next=>queueMarginUpdate(next,marginMode),
+            leverageDisabled:!selected?.maxLeverage,
+          }}
+          side={{
+            isPerp:kind==="perp",
+            side:side==="buy"?"BUY":"SELL",
+            onSide:next=>{setSide(next==="BUY"?"buy":"sell");setReduceOnly(false);},
+            available:availableForMarket!==null?formatPrice(availableForMarket,5)+" USDC":"—",
+          }}
+          basic={{
+            type:orderType==="market"?"MARKET":"LIMIT",
+            price:limitPrice,onPrice:setLimitPrice,midPrice:marketPrice,
+            size:amount,onSize:setAmount,
+            sizeUnit:sizeUnit==="USD"?"USDC":selected?.symbol.split("/")[0]??"COIN",
+            onToggleUnit:()=>{
+              if(inputPrice&&inputPrice>0&&inputAmount>0)
                 setAmount(String(Number((sizeUnit==="USD"?inputAmount/inputPrice:inputAmount*inputPrice).toFixed(6))));
               else setAmount("");
               setSizeUnit(v=>v==="USD"?"COIN":"USD");
-            }}
-          />
-          <HideDexTradePercentPresets
-            disabled={!marketPrice || availableForMarket === null}
-            onSelect={percent => {
+            },
+          }}
+          presets={{
+            disabled:!marketPrice||availableForMarket===null,
+            onSelect:percent=>{
               const available=availableForMarket??0;
               const price=orderType==="limit"?Number(limitPrice):marketPrice;
-              // Like the Original4 perp percentage presets, margin × chosen
-              // leverage gives a *draft* notional. Spot never uses leverage.
-              // Real execution still requires Lighter to accept the margin update.
               const notional=available*percent/100*(kind==="perp"?chosenLeverage:1);
               if(price&&price>0&&notional>0)setAmount(String(Number((sizeUnit==="USD"
-                ? notional:notional/price).toFixed(sizeUnit==="USD"?6:10))));
-            }}
-          />
-          {kind === "perp" && <>
-            <div className="border-t border-brand-border/35 pt-2 px-0.5">
-              <HideDexTradeOptionToggle kind="reduce" checked={reduceOnly}
-                disabled={!tradingIdentity || tradingBusy || !hasReduciblePosition}
-                title={!hasReduciblePosition?"Reduce Only requires a verified opposite-side position":undefined}
-                onChange={setReduceOnly}/>
-            </div>
-            <div className="border-t border-brand-border/35 pt-2">
-              <HideDexTradeOptionToggle kind="tpsl" checked={attachTpSl}
-                disabled={tradingBusy || reduceOnly}
-                onChange={setAttachTpSl}/>
-            </div>
-            {attachTpSl && !reduceOnly && <div className="grid grid-cols-2 gap-1.5 md:gap-2 animate-in fade-in slide-in-from-top-1 duration-150">
-              <div className="relative"><HideDexTradeTriggerPrice kind="tp" value={takeProfit}
-                onChange={e=>{setTakeProfit(e.target.value);setTpGainInput(fromLighterPrice(e.target.value,"tp",tpUnit));}}
-                disabled={tradingBusy}/></div>
-              <HideDexTradeOutcomeInput kind="tp" value={tpGainInput} unit={tpUnit}
-                open={showTpUnitDropdown} onToggle={()=>setShowTpUnitDropdown(v=>!v)}
-                onUnit={next=>{setTpUnit(next);setTpGainInput(fromLighterPrice(takeProfit,"tp",next));setShowTpUnitDropdown(false);}}
-                onChange={value=>{setTpGainInput(value);setTakeProfit(toLighterPrice(value,"tp",tpUnit));}}
-                disabled={tradingBusy}/>
-              <div className="relative"><HideDexTradeTriggerPrice kind="sl" value={stopLoss}
-                onChange={e=>{setStopLoss(e.target.value);setSlLossInput(fromLighterPrice(e.target.value,"sl",slUnit));}}
-                disabled={tradingBusy}/></div>
-              <HideDexTradeOutcomeInput kind="sl" value={slLossInput} unit={slUnit}
-                open={showSlUnitDropdown} onToggle={()=>setShowSlUnitDropdown(v=>!v)}
-                onUnit={next=>{setSlUnit(next);setSlLossInput(fromLighterPrice(stopLoss,"sl",next));setShowSlUnitDropdown(false);}}
-                onChange={value=>{setSlLossInput(value);setStopLoss(toLighterPrice(value,"sl",slUnit));}}
-                disabled={tradingBusy}/>
-            </div>}
-          </>}
-          <HideDexOrderSummary
-            isPerp={kind==="perp"}
-            liquidation="—"
-            orderValue={orderValueUsd!==null?"$"+formatPrice(orderValueUsd,2):"—"}
-            margin="—"
-          />
-          <HideDexPlaceOrderButton type="button" onClick={submitTrade}
-            side={side==="buy"?"BUY":"SELL"}
-            busy={tradingBusy}
-            disabled={tradingBusy || !walletAddress || !selected || feed.status !== "live" || !(sizeInCoin > 0)}>
-            {tradingBusy ? "Processing…" : "PLACE " + (side === "buy" ? (kind === "perp" ? "LONG" : "BUY") : (kind === "perp" ? "SHORT" : "SELL"))}
-          </HideDexPlaceOrderButton>
-          </div>
-</>}
+                ?notional:notional/price).toFixed(sizeUnit==="USD"?6:10))));
+            },
+          }}
+          options={{
+            visible:kind==="perp",
+            reduce:{
+              checked:reduceOnly,
+              disabled:!tradingIdentity||tradingBusy||!hasReduciblePosition,
+              title:!hasReduciblePosition?"Reduce Only requires a verified opposite-side position":undefined,
+              onChange:setReduceOnly,
+            },
+            tpsl:{checked:attachTpSl,disabled:tradingBusy||reduceOnly,onChange:setAttachTpSl},
+            tp:!reduceOnly?{
+              price:{kind:"tp",value:takeProfit,
+                onChange:e=>{setTakeProfit(e.target.value);setTpGainInput(fromLighterPrice(e.target.value,"tp",tpUnit));},
+                disabled:tradingBusy},
+              outcome:{kind:"tp",value:tpGainInput,unit:tpUnit,open:showTpUnitDropdown,
+                onToggle:()=>setShowTpUnitDropdown(v=>!v),
+                onUnit:next=>{setTpUnit(next);setTpGainInput(fromLighterPrice(takeProfit,"tp",next));setShowTpUnitDropdown(false);},
+                onChange:value=>{setTpGainInput(value);setTakeProfit(toLighterPrice(value,"tp",tpUnit));},
+                disabled:tradingBusy},
+            }:undefined,
+            sl:!reduceOnly?{
+              price:{kind:"sl",value:stopLoss,
+                onChange:e=>{setStopLoss(e.target.value);setSlLossInput(fromLighterPrice(e.target.value,"sl",slUnit));},
+                disabled:tradingBusy},
+              outcome:{kind:"sl",value:slLossInput,unit:slUnit,open:showSlUnitDropdown,
+                onToggle:()=>setShowSlUnitDropdown(v=>!v),
+                onUnit:next=>{setSlUnit(next);setSlLossInput(fromLighterPrice(stopLoss,"sl",next));setShowSlUnitDropdown(false);},
+                onChange:value=>{setSlLossInput(value);setStopLoss(toLighterPrice(value,"sl",slUnit));},
+                disabled:tradingBusy},
+            }:undefined,
+          }}
+          summary={{
+            isPerp:kind==="perp",liquidation:"—",
+            orderValue:orderValueUsd!==null?"$"+formatPrice(orderValueUsd,2):"—",
+            margin:"—",
+          }}
+          place={{
+            type:"button",onClick:submitTrade,side:side==="buy"?"BUY":"SELL",
+            busy:tradingBusy,
+            disabled:tradingBusy||!walletAddress||!selected||feed.status!=="live"||!(sizeInCoin>0),
+            label:tradingBusy?"Processing…":"PLACE "+(side==="buy"?(kind==="perp"?"LONG":"BUY"):(kind==="perp"?"SHORT":"SELL")),
+          }}
+        />}
         orderBook={<>
         <HideDexOrderBookPanel
           asks={makeLighterBookRows(feed.asks,"ask").reverse()}
