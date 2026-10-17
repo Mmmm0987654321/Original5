@@ -86,7 +86,6 @@ export default function LighterMarketPreview({
   const [orderType, setOrderType] = useState<"market" | "limit">("market");
   const [orderTypeOpen, setOrderTypeOpen] = useState(false);
   const [authSheetOpen, setAuthSheetOpen] = useState(false);
-  const [marginSheetOpen, setMarginSheetOpen] = useState(false);
   const [isMarketInfoOpen, setIsMarketInfoOpen] = useState(false);
   const [performancePeriod, setPerformancePeriod] = useState<HideDexPerformancePeriod>("day");
   const [performanceMarket, setPerformanceMarket] = useState<HideDexPerformanceMarket>("all");
@@ -307,7 +306,7 @@ export default function LighterMarketPreview({
   const submitMarginSettings = async () => {
     if (!walletAddress || !selected || kind !== "perp" || marginBusy) return;
     if (!tradingIdentity) {
-      setMarginSheetOpen(false); setAuthSheetOpen(true); return;
+      setAuthSheetOpen(true); return;
     }
     if (!selected.maxLeverage || chosenLeverage > selected.maxLeverage || chosenLeverage < 1) {
       setMarginStatus("Lighter did not verify this leverage. No update sent."); return;
@@ -758,44 +757,6 @@ export default function LighterMarketPreview({
         </section>
       </div>
     )}
-    {marginSheetOpen && (
-      <div role="presentation" className="fixed inset-0 z-[150] flex items-end sm:items-center justify-center bg-black/70 p-0 sm:p-4"
-        onMouseDown={e => { if(e.target === e.currentTarget && !marginBusy) setMarginSheetOpen(false); }}>
-        <section role="dialog" aria-modal="true" aria-label="Lighter margin and leverage settings"
-          className="w-full max-w-sm rounded-t-2xl sm:rounded-2xl border border-brand-border bg-brand-bg p-4 space-y-4 max-h-[80dvh] overflow-y-auto">
-          <div className="flex justify-between items-center"><h2 className="text-base font-bold">Margin & Leverage</h2>
-            <button type="button" disabled={marginBusy} aria-label="Close margin settings" onClick={() => setMarginSheetOpen(false)}><X className="w-5 h-5"/></button>
-          </div>
-          <p className="text-xs text-brand-muted">{selected?.symbol ?? "No market"} ·
-            Verified maximum: {selected?.maxLeverage ? selected.maxLeverage + "x" : "Unavailable"}
-          </p>
-          <div className="grid grid-cols-2 gap-2">
-            {(["cross","isolated"] as const).map(mode => <button type="button" key={mode} disabled={marginBusy}
-              onClick={() => setMarginMode(mode)} className={"rounded-xl border p-2.5 text-sm font-bold " +
-                (marginMode === mode ? "border-accent text-accent bg-brand-overlay-normal" : "border-brand-border text-brand-text")}>
-              {mode === "cross" ? "Cross" : "Isolated"}
-            </button>)}
-          </div>
-          <p className="text-xs font-bold">Leverage: {chosenLeverage}x</p>
-          <div className="grid grid-cols-4 gap-2">
-            {[1,2,3,5,10,15,20,25,40,50,75,100].filter(x => selected?.maxLeverage && x <= selected.maxLeverage)
-              .map(x => <button type="button" key={x} disabled={marginBusy}
-                onClick={() => setChosenLeverage(x)}
-                className={"rounded-lg border p-2 text-xs font-bold " +
-                  (chosenLeverage === x ? "border-accent text-accent" : "border-brand-border")}>{x}x</button>)}
-          </div>
-          <p className="text-[11px] text-brand-muted">Changing leverage/margin sends a real signed transaction on Lighter. Selecting a value does not change the account until it is accepted and executed.</p>
-          <button type="button" disabled={marginBusy || !tradingIdentity || !selected?.maxLeverage || chosenLeverage > selected.maxLeverage}
-            onClick={submitMarginSettings} className="w-full p-3 bg-accent text-brand-bg rounded-xl font-bold text-sm disabled:opacity-40">
-            {marginBusy ? "Submitting…" : "Confirm Lighter margin update"}
-          </button>
-          {!tradingIdentity && <button type="button" className="text-xs underline text-accent" onClick={() => {setMarginSheetOpen(false);setAuthSheetOpen(true);}}>
-            Enable trading first
-          </button>}
-          {marginStatus && <p role="status" className="text-xs text-amber-500 break-all">{marginStatus}</p>}
-        </section>
-      </div>
-    )}
     {marketSelectorOpen && (
       <MarketSelector
         tokens={lighterTokens}
@@ -934,10 +895,13 @@ export default function LighterMarketPreview({
             availableOrderTypes={["MARKET","LIMIT"]}
             onOrderType={next => {if(next === "MARKET" || next === "LIMIT") setOrderType(next.toLowerCase() as "market"|"limit");}}
             marginMode={marginMode.toUpperCase() as "CROSS"|"ISOLATED"}
-            onMarginMode={next => {setMarginMode(next.toLowerCase() as "cross"|"isolated");setMarginSheetOpen(true);}}
+            onMarginMode={next => {setMarginMode(next.toLowerCase() as "cross"|"isolated");setMarginStatus("");}}
             leverage={chosenLeverage}
             maxLeverage={selected?.maxLeverage ?? null}
-            onLeverage={next => {setChosenLeverage(next);setMarginSheetOpen(true);}}
+            onLeverage={next => {setChosenLeverage(next);setMarginStatus("");}}
+            onApplySettings={submitMarginSettings}
+            settingsBusy={marginBusy}
+            settingsMessage={marginStatus}
             leverageDisabled={!selected?.maxLeverage}
           />
           <HideDexSideAndAvailability
