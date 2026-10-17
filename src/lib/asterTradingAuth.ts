@@ -98,6 +98,7 @@ async function verifiedWalletChainId(wallet:AsterWalletProvider,tries=1):Promise
  */
 export async function registerAsterTradingAgent(args:{
  walletAddress:string;getWalletProvider:()=>Promise<AsterWalletProvider>;
+ onSwitchToBsc:()=>Promise<void>;
 }):Promise<AsterIdentity>{
  if(busy)throw new Error("Wait for the current Aster authorization");
  busy=true;
@@ -107,20 +108,34 @@ export async function registerAsterTradingAgent(args:{
   const saved=await readRememberedAsterAgent(user);
   if(saved?.approved)throw new Error("Existing Aster agent found. Reconnect it rather than registering another.");
   if(saved&&!saved.approved)throw new Error("Previous Aster authorization status is uncertain. Do not register another agent automatically; review agents in Aster.");
-  const native=await args.getWalletProvider();
-  // Agent registration requires owner EIP-712 domain chainId 56. Ask the
-  // wallet to switch to BNB Smart Chain; never infer the connected chain.
-  const connectedChain=await verifiedWalletChainId(native);
+  let native=await args.getWalletProvider();
+  // Network is switched via Reown (which must have BSC registered in
+  // appKitConfig). Direct EIP-1193 switching alone is not reliable with
+  // WalletConnect because its active chain is managed by Reown.
+  let connectedChain=await verifiedWalletChainId(native);
   if(connectedChain!==56){
-    // An unrecognized/missing response is NOT assumed to be BSC.
-    // Only the wallet can authorize an actual switch to chain 56.
     try{
-      await native.request({method:"wallet_switchEthereumChain",params:[{chainId:"0x38"}]});
-    }catch{
-      throw new Error("Wallet network is not confirmed as BNB Smart Chain (56). Approve switching to BNB Smart Chain in your wallet, then retry. No agent was registered.");
+      await args.onSwitchToBsc();
+    }catch(error){
+      // Respect an explicit wallet rejection. Never prompt again automatically.
+      const reason=error instanceof Error?error.message:String(error);
+      const code=parseRecord(error)?.code;
+      if(code===4001||/rejected|denied|cancelled|canceled/i.test(reason))
+        throw new Error("BNB Smart Chain network switch was declined. No Aster signature was requested.");
+      throw new Error("Unable to switch to BNB Smart Chain through your connected wallet. Select BNB Smart Chain (56) in the wallet and retry.");
     }
-    if(await verifiedWalletChainId(native,3)!==56)
-      throw new Error("BNB Smart Chain (56) could not be verified after switching. Reopen your wallet and choose BNB Smart Chain; no authorization request was sent.");
+    // Reown may replace the EIP-1193 provider after an approved switch.
+    // Refetch it, do not validate the stale pre-switch provider instance.
+    for(let i=0;i<6;i++){
+      await new Promise<void>(resolve=>setTimeout(resolve,350));
+      try{
+        native=await args.getWalletProvider();
+        connectedChain=await verifiedWalletChainId(native);
+        if(connectedChain===56)break;
+      }catch{/* WalletConnect provider may reconnect after switching. */}
+    }
+    if(connectedChain!==56)
+      throw new Error("BNB Smart Chain switch was requested but chain 56 could not be confirmed. Check the selected network in your wallet and retry; no agent was registered.");
   }
   const browser=new BrowserProvider(native as any);
   const ownerSigner=await browser.getSigner();
@@ -193,4 +208,54 @@ export async function getAsterFuturesBalances(wallet:string,signal?:AbortSignal)
   const available=typeof row.availableBalance==="string"?row.availableBalance:null;
   return {asset:row.asset,balance:row.balance,availableBalance:available};
  });
+}
+
+/** Account-specific Aster Futures risk tiers. Source:
+ * GET /fapi/v3/leverageBrackets (USER_DATA). No public token-wise max exists.
+ * This is a READ ONLY signature and cannot change margin or leverage.
+ */
+export type AsterVerifiedLeverage={
+ symbol:string;maxLeverage:number;
+ brackets:Array<{initialLeverage:number;notionalFloor:number;notionalCap:number}>;
+};
+export async function getAsterVerifiedLeverageBrackets(
+ wallet:string,symbol:string,signal?:AbortSignal
+):Promise<AsterVerifiedLeverage>{
+ if(!/^[A-Z0-9_]{2,50}$/.test(symbol))throw new Error("Invalid Aster market");
+ const signed=active(wallet);
+ const query=new URLSearchParams({
+  symbol,user:signed.user,signer:signed.agent,nonce:nonce(),
+ });
+ const signature=await new Wallet(signed.privateKey).signTypedData(
+  TRADE_DOMAIN,RECORD_TYPE,{msg:query.toString()}
+ );
+ query.set("signature",signature);
+ const res=await fetch(ASTER_FUTURES_MAINNET+"/fapi/v3/leverageBrackets?"+query.toString(),{
+  method:"GET",headers:{Accept:"application/json"},signal,cache:"no-store"
+ });
+ const response:unknown=await res.json();
+ if(isAsterInitialDepositRequired(response))
+  throw new Error("Aster requires a main-wallet deposit before authenticated leverage limits can be read.");
+ const err=apiError(response);
+ if(!res.ok||err)throw new Error(err??"Aster leverage brackets unavailable (HTTP "+res.status+")");
+ const result=Array.isArray(response)?
+  response.find(x=>parseRecord(x)?.symbol===symbol):response;
+ const row=parseRecord(result);
+ if(!row||row.symbol!==symbol||!Array.isArray(row.brackets))
+  throw new Error("Unverified Aster leverage bracket response");
+ const brackets=row.brackets.map((value:unknown)=>{
+  const b=parseRecord(value);
+  const lev=Number(b?.initialLeverage),floor=Number(b?.notionalFloor),cap=Number(b?.notionalCap);
+  if(!Number.isSafeInteger(lev)||lev<1||lev>1000||
+     !Number.isFinite(floor)||floor<0||!Number.isFinite(cap)||cap<=floor)
+    throw new Error("Invalid Aster leverage risk tier");
+  return {initialLeverage:lev,notionalFloor:floor,notionalCap:cap};
+ });
+ if(!brackets.length)throw new Error("Missing Aster leverage risk tiers");
+ // Minimum-notional bracket determines max initial leverage; higher notionals
+ // may have lower maximums and must be checked against trade size later.
+ const minimumTier=[...brackets].sort((a,b)=>a.notionalFloor-b.notionalFloor)[0];
+ if(minimumTier.notionalFloor!==0)
+  throw new Error("Aster leverage bracket does not cover zero notional");
+ return {symbol,maxLeverage:minimumTier.initialLeverage,brackets};
 }
