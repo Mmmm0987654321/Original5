@@ -1130,6 +1130,39 @@ export default function App() {
 
 
 
+  // One original Watchlist UI; market favorites remain exchange- and wallet-scoped.
+  const lighterFavoritesKey="favorites:lighter:"+favoritesOwner;
+  const readLighterFavorites=(key:string):string[]=>{
+    try{const x=JSON.parse(localStorage.getItem(key)||"[]");return Array.isArray(x)?x.filter((v):v is string=>typeof v==="string"):[];}
+    catch{return [];}
+  };
+  const [lighterWatchlist,setLighterWatchlist]=useState<string[]>(()=>readLighterFavorites(lighterFavoritesKey));
+  const [lighterSidebarTokens,setLighterSidebarTokens]=useState<TokenMetadata[]>([]);
+  const [lighterMarketRequest,setLighterMarketRequest]=useState<{symbol:string;nonce:number}|null>(null);
+  const lighterOwnerRef=useRef(lighterFavoritesKey);
+  const skipLighterPersist=useRef(false);
+  useEffect(()=>{
+    if(lighterOwnerRef.current===lighterFavoritesKey)return;
+    lighterOwnerRef.current=lighterFavoritesKey;
+    skipLighterPersist.current=true;
+    setLighterWatchlist(readLighterFavorites(lighterFavoritesKey));
+  },[lighterFavoritesKey]);
+  useEffect(()=>{
+    if(lighterOwnerRef.current!==lighterFavoritesKey)return;
+    if(skipLighterPersist.current){skipLighterPersist.current=false;return;}
+    try{localStorage.setItem(lighterFavoritesKey,JSON.stringify(lighterWatchlist));}catch{}
+  },[lighterFavoritesKey,lighterWatchlist]);
+  const toggleLighterFavorite=useCallback((symbol:string)=>{
+    const id=String(symbol||"").toUpperCase();if(!id)return;
+    setLighterWatchlist(prev=>prev.includes(id)?prev.filter(s=>s!==id):[...prev,id]);
+  },[]);
+  const onLighterCatalog=useCallback((rows:TokenMetadata[])=>{
+    setLighterSidebarTokens(prev=>{
+      if(prev.length===rows.length&&prev.every((x,i)=>x.symbol===rows[i].symbol&&x.price===rows[i].price))return prev;
+      return rows;
+    });
+  },[]);
+
   // Settings State
   const [slippageTolerance, setSlippageTolerance] = useState<number>(() => {
     if (typeof window === "undefined") return 0.5;
@@ -3837,10 +3870,14 @@ export default function App() {
             onDisconnectWallet={handleDisconnectWallet}
             isMobileOpen={mobileSidebarOpen}
             onCloseMobile={() => setMobileSidebarOpen(false)}
-            watchlist={selectedExchange === "lighter" ? [] : watchlist}
-            onToggleWatchlist={selectedExchange === "lighter" ? () => {} : handleToggleWatchlist}
-            onSelectToken={(symbol) => { if (selectedExchange === "hyperliquid") setSelectedSymbol(symbol); }}
-            tokens={selectedExchange === "lighter" ? [] : tokens}
+            watchlist={selectedExchange === "lighter" ? lighterWatchlist : watchlist}
+            onToggleWatchlist={selectedExchange === "lighter" ? toggleLighterFavorite : handleToggleWatchlist}
+            onSelectToken={(symbol) => {
+              if(selectedExchange==="hyperliquid")setSelectedSymbol(symbol);
+              else if(lighterSidebarTokens.some(t=>t.symbol===symbol))
+                setLighterMarketRequest(prev=>({symbol,nonce:(prev?.nonce??0)+1}));
+            }}
+            tokens={selectedExchange === "lighter" ? lighterSidebarTokens : tokens}
           />
         )}
 
@@ -4146,6 +4183,10 @@ export default function App() {
             activeTab === ActiveTab.Orders || activeTab === ActiveTab.TradeHistory
           ) && (
             <LighterMarketPreview
+              onMarketCatalog={onLighterCatalog}
+              watchlist={lighterWatchlist}
+              onToggleFavorite={toggleLighterFavorite}
+              sidebarMarketRequest={lighterMarketRequest}
               walletAddress={walletConnected ? walletAddress : ""}
               getWalletProvider={getTradingSetupProvider}
               section={

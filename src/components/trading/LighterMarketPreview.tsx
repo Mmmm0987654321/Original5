@@ -47,6 +47,10 @@ type Props = {
   section: Section;
   initialKind?: Kind;
   onSelectSection: (section: Section, marketKind?: Kind) => void;
+  onMarketCatalog?:(tokens:TokenMetadata[])=>void;
+  watchlist?:readonly string[];
+  onToggleFavorite?:(symbol:string)=>void;
+  sidebarMarketRequest?:{symbol:string;nonce:number}|null;
 };
 
 const emptyBook: LighterMarketFeed = {
@@ -66,6 +70,7 @@ function labelKind(kind: Kind) { return kind === "perp" ? "Perpetual" : "Spot"; 
  */
 export default function LighterMarketPreview({
   walletAddress, getWalletProvider, section, initialKind = "perp", onSelectSection,
+  onMarketCatalog,watchlist=[],onToggleFavorite,sidebarMarketRequest,
 }: Props) {
   const [markets, setMarkets] = useState<LighterMarket[]>([]);
   const [selectedMarketId, setSelectedMarketId] = useState<number | null>(null);
@@ -478,6 +483,7 @@ export default function LighterMarketPreview({
   const lighterSelectedSymbol = selected
     ? selected.kind === "spot" ? selected.symbol + "-SPOT" : selected.symbol
     : "";
+  useEffect(()=>{onMarketCatalog?.(lighterTokens);},[lighterTokens,onMarketCatalog]);
 
 
   const chooseMarket = (m: LighterMarket, navigate: boolean) => {
@@ -495,6 +501,12 @@ export default function LighterMarketPreview({
     setOrderTypeOpen(false);
     if (navigate) onSelectSection("trade", m.kind);
   };
+  useEffect(()=>{
+    if(!sidebarMarketRequest||!markets.length)return;
+    const market=markets.find(m=>(m.kind==="spot"?m.symbol+"-SPOT":m.symbol)===sidebarMarketRequest.symbol);
+    if(market)chooseMarket(market,true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[sidebarMarketRequest?.nonce,markets]);
   const switchKind = (next: Kind) => {
     if (next === kind) return;
     const current = selected;
@@ -730,6 +742,8 @@ export default function LighterMarketPreview({
     )}
     {marketSelectorOpen && (
       <MarketSelector
+        favorites={[...watchlist]}
+        onToggleFavorite={onToggleFavorite}
         tokens={lighterTokens}
         selectedSymbol={lighterSelectedSymbol}
         onClose={() => setMarketSelectorOpen(false)}
