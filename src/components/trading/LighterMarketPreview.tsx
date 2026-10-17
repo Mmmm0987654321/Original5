@@ -1052,17 +1052,29 @@ export default function LighterMarketPreview({
         ? publicAccounts.reduce((total, a) => total + (a.availableBalance ?? 0), 0) : null;
       const showBalance = (value: number | null) =>
         <TrustShieldValue fieldKey="portfolio" value={hideBalance ? "••••••" : value === null ? "—" : formatPrice(value, 2) + " USDC"} hideEyeIcon />;
+      // Account collateral and wallet Spot USDC are distinct Lighter balances.
+      // Available Spot must exclude genuine locked funds, never include them.
       const spotAssets = publicAccounts?.flatMap(a => a.assets ?? []) ?? [];
-      const spotAvailable = publicAccounts !== null && publicAccounts.length > 0 && publicAccounts.every(a => a.assets !== null)
-        ? spotAssets.filter(a => a.symbol === "USDC").reduce((sum, a) => sum + a.balance, 0)
-        : null;
+      const spotReady = publicAccounts !== null && publicAccounts.length > 0 &&
+        publicAccounts.every(a => a.assets !== null);
+      const usdcAssets = spotAssets.filter(a => a.symbol.toUpperCase() === "USDC");
+      const spotTotalUsdc = spotReady
+        ? usdcAssets.reduce((sum,a)=>sum+a.balance,0) : null;
+      const spotAvailable = spotReady && usdcAssets.every(a=>a.lockedBalance!==null)
+        ? usdcAssets.reduce((sum,a)=>sum+Math.max(0,a.balance-(a.lockedBalance??0)),0) : null;
+      // Non-USDC Spot assets cannot be valued at arbitrary $1. Show unknown
+      // combined total unless every non-USDC holding is actually zero.
+      const unvaluedSpotAssets = spotAssets.some(a=>a.symbol.toUpperCase()!=="USDC" && a.balance>0);
+      const combinedUsdc = verifiedCollateral!==null && spotTotalUsdc!==null && !unvaluedSpotAssets
+        ? verifiedCollateral+spotTotalUsdc : null;
+      const combinedPct = combinedUsdc!==null && combinedUsdc>0;
       const unrealizedPnl = publicAccounts !== null && publicAccounts.length > 0 && publicAccounts.every(a => a.positions.every(p => p.unrealizedPnl !== null))
         ? publicAccounts.flatMap(a => a.positions).reduce((sum, p) => sum + (p.unrealizedPnl ?? 0), 0) : null;
       return <div id="funds-portfolio-container" className="space-y-3 sm:space-y-4 text-brand-text font-sans bg-brand-bg px-3 pt-2 pb-2 sm:p-4 sm:pb-8 rounded-3xl max-w-4xl mx-auto w-full">
         <HideDexFundsOverview
           totalLabel="TOTAL FUNDS"
-          totalValue={showBalance(verifiedCollateral)}
-          approximateValue={hideBalance ? "≈ ••••••" : verifiedCollateral === null ? "—" : "≈ " + formatPrice(verifiedCollateral,2) + " USD"}
+          totalValue={showBalance(combinedUsdc)}
+          approximateValue={hideBalance ? "≈ ••••••" : combinedUsdc === null ? "—" : "≈ " + formatPrice(combinedUsdc,2) + " USD (USDC-only)"}
           accountLabel="Lighter Account"
           accountModeLabel="Lighter"
           walletAddress={walletAddress}
@@ -1093,12 +1105,17 @@ export default function LighterMarketPreview({
           ]}
         />
         <HideDexAssetAllocation
-          totalLabel="KNOWN"
-          totalValue={hideBalance ? "••••" : "—"}
-          chartValues={[]}
+          totalLabel="TOTAL"
+          totalValue={hideBalance ? "••••" : combinedUsdc===null ? "—" : formatPrice(combinedUsdc,2)}
+          chartValues={hideBalance || !combinedPct ? [] : [
+            {value:verifiedCollateral??0,color:"#18c29c"},
+            {value:spotTotalUsdc??0,color:"#717b8b"},
+          ]}
           rows={[
-            {label:"Perp Collateral",color:"#18c29c",amount:showBalance(verifiedCollateral),percentage:null},
-            {label:"Spot USDC",color:"#717b8b",amount:showBalance(spotAvailable),percentage:null},
+            {label:"Perp Collateral",color:"#18c29c",amount:showBalance(verifiedCollateral),
+              percentage:hideBalance||!combinedPct?null:100*(verifiedCollateral??0)/combinedUsdc!},
+            {label:"Spot USDC",color:"#717b8b",amount:showBalance(spotTotalUsdc),
+              percentage:hideBalance||!combinedPct?null:100*(spotTotalUsdc??0)/combinedUsdc!},
           ]}
         />
         <HideDexFundsPerformance
