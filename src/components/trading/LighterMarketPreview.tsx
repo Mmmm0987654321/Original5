@@ -17,6 +17,7 @@ import { depositLighterUsdcOnEthereum, depositLighterUsdcFromArbitrum, type Ligh
 import TVChart from "./TVChart";
 import TopOrderBookView from "./TopOrderBookView";
 import MarketsPanel from "../dashboard/MarketsPanel";
+import GeneralDashboard from "../dashboard/GeneralDashboard";
 import TradingAccountTabBar, { type TradingTabId } from "./TradingAccountTabBar";
 import HideDexPositionHeader from "./HideDexPositionHeader";
 import HideDexPositionDetails from "./HideDexPositionDetails";
@@ -32,7 +33,7 @@ import HideDexMobileMarketHeader from "./HideDexMobileMarketHeader";
 import HideDexDesktopMarketBar from "./HideDexDesktopMarketBar";
 import HideDexMarketInfoDropdown from "./HideDexMarketInfoDropdown";
 import { HideDexSideAndAvailability, HideDexBasicOrderInputs } from "./HideDexTradeEntry";
-import type { TokenMetadata } from "../../types";
+import { ActiveTab, type TokenMetadata } from "../../types";
 import MarketSelector, { renderAssetLogo } from "./MarketSelector";
 import {
   getLighterAccountIndexes, getLighterMarkets, getLighterPublicAccounts,
@@ -40,7 +41,7 @@ import {
   type LighterMarket, type LighterMarketFeed, type LighterPublicAccount,
 } from "../../lib/lighterMarketData";
 
-type Section = "markets" | "trade" | "funds" | "account" | "orders";
+type Section = "dashboard" | "markets" | "trade" | "funds" | "account" | "orders";
 type Kind = "perp" | "spot";
 type Props = {
   walletAddress: string;
@@ -773,6 +774,32 @@ export default function LighterMarketPreview({
         No verified active Lighter Spot markets were returned. Hyperliquid markets are never substituted.
       </p>
     )}
+    {section === "dashboard" && (() => {
+      const accounts=publicAccounts;
+      const verifiedCollateral=accounts!==null && accounts.length>0 &&
+        accounts.every(a=>a.collateral!==null)
+          ? accounts.reduce((sum,a)=>sum+(a.collateral??0),0) : null;
+      const positionsCount=accounts!==null ? accounts.reduce((sum,a)=>sum+a.positions.length,0) : null;
+      return <GeneralDashboard
+        tokens={lighterTokens}
+        balanceUSDC={verifiedCollateral??0}
+        balanceKnown={verifiedCollateral!==null}
+        balanceLabel="Perp Collateral"
+        nodeConnected={feed.status==="live"}
+        positionsCount={positionsCount}
+        walletAddress={walletAddress}
+        setActiveTab={next => {
+          if(next===ActiveTab.Markets)onSelectSection("markets");
+          else if(next===ActiveTab.Spot)onSelectSection("trade","spot");
+          else if(next===ActiveTab.Perp)onSelectSection("trade","perp");
+        }}
+        onSelectToken={(symbol,marketKind)=>{
+          const match=lighterTokens.find(t=>t.symbol===symbol);
+          const market=markets.find(m=>m.symbol===match?.sourceCoin && m.kind===marketKind);
+          if(market)chooseMarket(market,true);
+        }}
+      />;
+    })()}
     {section === "markets" && (
       <MarketsPanel
         tokens={lighterTokens}

@@ -22,7 +22,11 @@ interface GeneralDashboardProps {
   tokens: TokenMetadata[];
   balanceUSDC: number;
   walletAddress: string;
-  positionsCount: number;
+  positionsCount: number | null;
+  /** Only supplied by an exchange adapter when the original wallet metric is not verified. */
+  balanceKnown?:boolean;
+  balanceLabel?:string;
+  nodeConnected?:boolean;
   onSelectToken: (symbol: string, mode: "spot" | "perp") => void;
   setActiveTab: (tab: ActiveTab) => void;
 }
@@ -32,6 +36,7 @@ export default function GeneralDashboard({
   balanceUSDC,
   walletAddress,
   positionsCount,
+  balanceKnown=true,balanceLabel="Wallet Balance",nodeConnected=true,
   onSelectToken,
   setActiveTab,
 }: GeneralDashboardProps) {
@@ -65,7 +70,7 @@ export default function GeneralDashboard({
         <div className="flex items-center gap-3 bg-brand-overlay-subtle border border-brand-border px-4 py-2 rounded-2xl text-xs font-mono">
           <Network className="w-3.5 h-3.5 text-emerald-400" />
           <span className="text-gray-400">Node Sync:</span>
-          <span className="text-emerald-400 font-bold">Connected</span>
+          <span className={nodeConnected ? "text-emerald-400 font-bold" : "text-brand-muted font-bold"}>{nodeConnected ? "Connected" : "Checking"}</span>
         </div>
       </div>
 
@@ -82,11 +87,11 @@ export default function GeneralDashboard({
 
             <div className="space-y-4">
               <div>
-                <span className="text-[10px] text-gray-500 uppercase tracking-wider block">Wallet Balance</span>
+                <span className="text-[10px] text-gray-500 uppercase tracking-wider block">{balanceLabel}</span>
                 <span className="text-2xl font-bold text-brand-text font-mono">
                   <TrustShieldValue
                     fieldKey="portfolio"
-                    value={`$${balanceUSDC.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                    value={balanceKnown ? `$${balanceUSDC.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "—"}
                   />{" "}
                   <span className="text-xs text-gray-400">USDC</span>
                 </span>
@@ -95,7 +100,7 @@ export default function GeneralDashboard({
               <div className="grid grid-cols-2 gap-3 pt-2 border-t border-brand-border text-xs">
                 <div>
                   <span className="text-gray-500 text-[10px] uppercase block">Active Positions</span>
-                  <span className="font-mono text-brand-text font-bold">{positionsCount}</span>
+                  <span className="font-mono text-brand-text font-bold">{positionsCount??"—"}</span>
                 </div>
                 <div>
                   <span className="text-gray-500 text-[10px] uppercase block">Gateway Address</span>

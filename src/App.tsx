@@ -4191,7 +4191,8 @@ export default function App() {
               getWalletProvider={getTradingSetupProvider}
               initialOrdersTab={activeTab===ActiveTab.TradeHistory?"TRADE_HISTORY":"OPEN_ORDERS"}
               section={
-                activeTab === ActiveTab.Markets || activeTab === ActiveTab.Dashboard ? "markets" :
+                activeTab === ActiveTab.Dashboard ? "dashboard" :
+                activeTab === ActiveTab.Markets ? "markets" :
                 activeTab === ActiveTab.Portfolio ? "funds" :
                 activeTab === ActiveTab.Profile ? "account" :
                 activeTab === ActiveTab.Orders || activeTab === ActiveTab.TradeHistory ? "orders" :
@@ -4199,6 +4200,7 @@ export default function App() {
               }
               initialKind={activeTab === ActiveTab.Spot ? "spot" : "perp"}
               onSelectSection={(section, marketKind) => setActiveTab(
+                section === "dashboard" ? ActiveTab.Dashboard :
                 section === "markets" ? ActiveTab.Markets :
                 section === "funds" ? ActiveTab.Portfolio :
                 section === "account" ? ActiveTab.Profile :
