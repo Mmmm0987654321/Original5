@@ -166,13 +166,13 @@ export function HideDexFundingSubmit({deposit,busy=false,disabled=false,onClick,
  * Unknown Lighter fees/estimates remain unavailable, never invented.
  */
 export function HideDexFundingFeeCard(p:{
- deposit:boolean;fee?:string|null;receive?:string|null;receiveLabel?:string;
+ deposit:boolean;fee?:string|null;receive?:string|null;receiveLabel?:string;feeLabel?:string;
 }){
  return <div className="rounded-xl border border-brand-border/60 bg-brand-overlay-subtle p-3 space-y-2 font-mono text-xs">
    <div className="flex items-center justify-between text-brand-sub">
      <div className="flex items-center gap-1.5">
        <Coins className="w-3.5 h-3.5 text-brand-muted"/>
-       <span>{p.deposit?"Deposit Fee":"Network Fee"}</span>
+       <span>{p.feeLabel??(p.deposit?"Deposit Fee":"Network Fee")}</span>
        <Info className="w-3 h-3 text-brand-muted/70"/>
      </div>
      <span className="text-brand-text font-bold">{p.fee??"—"}</span>
