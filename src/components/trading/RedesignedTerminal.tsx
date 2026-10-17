@@ -75,6 +75,7 @@ import HideDexPlaceOrderButton from "./HideDexPlaceOrderButton";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
 import HideDexUnifiedMarketHeader from "./HideDexUnifiedMarketHeader";
 import HideDexUnifiedTradeCanvas from "./HideDexUnifiedTradeCanvas";
+import HideDexUnifiedMarketView from "./HideDexUnifiedMarketView";
 import HideDexUnifiedOrderForm from "./HideDexUnifiedOrderForm";
 import HideDexOrderSummary from "./HideDexOrderSummary";
 import HideDexDisconnectedOverlay from "./HideDexDisconnectedOverlay";
@@ -4497,46 +4498,22 @@ export default function RedesignedTerminal({
 
       {/* 2.5 FEATURED VIEW PANEL AT TOP (Matching laptop/desktop/tablet layout, hidden on mobile) */}
       <HideDexUnifiedTradeCanvas
-        marketView={<>
-        {topViewMode === "chart" && (
-          <TVChart
-            symbol={symbol}
-            marketCoin={chartCandleCoin}
-            isSpot={!isPerp}
-            currentPrice={realCurrentPrice}
-            high24h={currentToken.high24h}
-            low24h={currentToken.low24h}
-            volume24h={effectiveVolume24h}
-            fundingRate={effectiveFundingRate}
-            openInterest={effectiveOpenInterest}
-            change24h={effectiveChange24h}
-            priceLines={chartPriceLines}
-            tradeHistory={tradeHistory}
-            toolbarHostId="market-chart-toolbar-host"
-          />
-        )}
-
-        {topViewMode === "orderbook" && (
-          <TopOrderBookView
-            symbol={symbol}
-            currentToken={{
-              ...currentToken,
-              price: realCurrentPrice,
-            }}
-            asks={asks}
-            bids={bids}
-            onSelectPrice={(p) => setPriceInput(p.toString())}
-          />
-        )}
-
-        {topViewMode === "trades" && (
-          <TopTradesView
-            symbol={symbol}
-            currentToken={currentToken}
-            liveTrades={liveTrades}
-          />
-        )}
-</>}
+        marketView={<HideDexUnifiedMarketView
+          view={topViewMode}
+          chart={<TVChart symbol={symbol} marketCoin={chartCandleCoin}
+            isSpot={!isPerp} currentPrice={realCurrentPrice}
+            high24h={currentToken.high24h} low24h={currentToken.low24h}
+            volume24h={effectiveVolume24h} fundingRate={effectiveFundingRate}
+            openInterest={effectiveOpenInterest} change24h={effectiveChange24h}
+            priceLines={chartPriceLines} tradeHistory={tradeHistory}
+            toolbarHostId="market-chart-toolbar-host"/>}
+          orderBook={<TopOrderBookView symbol={symbol}
+            currentToken={{...currentToken,price:realCurrentPrice}}
+            asks={asks} bids={bids}
+            onSelectPrice={p=>setPriceInput(p.toString())}/>}
+          trades={<TopTradesView symbol={symbol}
+            currentToken={currentToken} liveTrades={liveTrades}/>}
+        />}
         orderForm={<HideDexUnifiedOrderForm
           connected={!!walletAddress}
           onConnect={onConnectWallet}

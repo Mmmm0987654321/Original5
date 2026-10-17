@@ -42,6 +42,7 @@ import HideDexBalancesView, {type HideDexBalanceItem} from "./HideDexBalancesVie
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
 import HideDexUnifiedMarketHeader from "./HideDexUnifiedMarketHeader";
 import HideDexUnifiedTradeCanvas from "./HideDexUnifiedTradeCanvas";
+import HideDexUnifiedMarketView from "./HideDexUnifiedMarketView";
 import HideDexUnifiedOrderForm from "./HideDexUnifiedOrderForm";
 import HideDexOrderSummary from "./HideDexOrderSummary";
 import HideDexPositionActions from "./HideDexPositionActions";
@@ -1595,25 +1596,24 @@ export default function LighterMarketPreview({
         showChartToolbar={viewMode==="chart"}
       />
       <HideDexUnifiedTradeCanvas
-        marketView={<>
-        {viewMode === "chart" ? selected ? <TVChart key={"lighter-chart-" + selected.id}
-          symbol={selected.symbol} marketCoin="" lighterMarketId={selected.id}
-          isSpot={kind === "spot"} currentPrice={marketPrice}
-          high24h={selected.high24h} low24h={selected.low24h}
-          volume24h={selected.volume24hUsd} change24h={selected.change24h}
-          tradeHistory={[]} toolbarHostId="market-chart-toolbar-host"
-        /> : <p className="p-5 text-xs text-brand-muted">Choose a Lighter market.</p> : (
-          selected && lighterTokens.find(t=>t.symbol===lighterSelectedSymbol) ?
-          <TopOrderBookView
-            symbol={selected.symbol.split("/")[0]}
-            currentToken={{...lighterTokens.find(t=>t.symbol===lighterSelectedSymbol)!,price:marketPrice}}
-            asks={makeLighterBookRows(feed.asks,"ask").reverse()}
-            bids={makeLighterBookRows(feed.bids,"bid")}
-            priceDecimals={Math.min(8,selected.priceDecimals)}
-            onSelectPrice={price=>setLimitPrice(String(price))}
-          /> : <p className="p-5 text-xs text-brand-muted">Choose a Lighter market.</p>
-        )}
-</>}
+        marketView={<HideDexUnifiedMarketView
+          view={viewMode}
+          chart={selected?<TVChart key={"lighter-chart-"+selected.id}
+            symbol={selected.symbol} marketCoin="" lighterMarketId={selected.id}
+            isSpot={kind==="spot"} currentPrice={marketPrice}
+            high24h={selected.high24h} low24h={selected.low24h}
+            volume24h={selected.volume24hUsd} change24h={selected.change24h}
+            tradeHistory={[]} toolbarHostId="market-chart-toolbar-host"/>:
+            <p className="p-5 text-xs text-brand-muted">Choose a Lighter market.</p>}
+          orderBook={selected&&lighterTokens.find(t=>t.symbol===lighterSelectedSymbol)?
+            <TopOrderBookView symbol={selected.symbol.split("/")[0]}
+              currentToken={{...lighterTokens.find(t=>t.symbol===lighterSelectedSymbol)!,price:marketPrice}}
+              asks={makeLighterBookRows(feed.asks,"ask").reverse()}
+              bids={makeLighterBookRows(feed.bids,"bid")}
+              priceDecimals={Math.min(8,selected.priceDecimals)}
+              onSelectPrice={price=>setLimitPrice(String(price))}/>:
+            <p className="p-5 text-xs text-brand-muted">Choose a Lighter market.</p>}
+        />}
         orderForm={<HideDexUnifiedOrderForm
           connected={!!walletAddress}
           onConnect={onConnectWallet}
