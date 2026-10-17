@@ -22,6 +22,7 @@ import MarketsPanel from "../dashboard/MarketsPanel";
 import GeneralDashboard from "../dashboard/GeneralDashboard";
 import TradingAccountTabBar, { type TradingTabId } from "./TradingAccountTabBar";
 import HideDexUnifiedAccountPanel from "./HideDexUnifiedAccountPanel";
+import HideDexTradingAuthorizationSheet from "./HideDexTradingAuthorizationSheet";
 import HideDexPositionActionBar, {type HideDexPositionSort} from "./HideDexPositionActionBar";
 import HideDexCancelAllOrdersBar from "./HideDexCancelAllOrdersBar";
 import HideDexPositionHeader from "./HideDexPositionHeader";
@@ -192,10 +193,6 @@ export default function LighterMarketPreview({
     accountIndex:number;symbol:string;signedSize:number;
   }|null>(null);
   const [recoveryKey, setRecoveryKey] = useState("");
-  const [showExistingKey, setShowExistingKey] = useState(false);
-  const [existingKey, setExistingKey] = useState("");
-  const [existingAccountIndex, setExistingAccountIndex] = useState("");
-  const [existingApiKeyIndex, setExistingApiKeyIndex] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [reduceOnly, setReduceOnly] = useState(false);
   const [attachTpSl, setAttachTpSl] = useState(false);
@@ -307,31 +304,6 @@ export default function LighterMarketPreview({
       setAccountReload(v => v + 1);
     } catch (e) {
       setTradingNotice(e instanceof Error ? e.message : "Lighter authorization failed.");
-    } finally { setTradingBusy(false); }
-  };
-  const reconnectExistingLighterKey = async () => {
-    if (!walletAddress || tradingBusy) return;
-    setTradingBusy(true); setTradingNotice("");
-    try {
-      const identity = await reconnectLighterTradingKey({
-        walletAddress, accountIndex: Number(existingAccountIndex),
-        apiKeyIndex: Number(existingApiKeyIndex), apiPrivateKey: existingKey.trim(),
-      });
-      setTradingIdentity(identity);
-      try {
-        await rememberLighterSigner(walletAddress,{
-          accountIndex:identity.accountIndex,apiKeyIndex:identity.apiKeyIndex,
-          apiPrivateKey:existingKey.trim(),
-        });
-      } catch { /* Signing stays in volatile memory when storage is unavailable. */ }
-      setExistingKey(""); setShowExistingKey(false);
-      setAuthSheetOpen(false);
-      try { localStorage.setItem("hidedex:lighter:key-ref:"+walletAddress.toLowerCase(),JSON.stringify({
-        accountIndex:identity.accountIndex,apiKeyIndex:identity.apiKeyIndex,
-      })); } catch { /* Continue without storing a public reference. */ }
-      setTradingNotice("Existing Lighter API key verified for this connected wallet.");
-    } catch (e) {
-      setTradingNotice(e instanceof Error ? e.message : "Trading key verification failed.");
     } finally { setTradingBusy(false); }
   };
   const submitTrade = async () => {
@@ -807,58 +779,24 @@ export default function LighterMarketPreview({
     finally{if(marginFlightRef.current===task)marginFlightRef.current=null;}
   };
 
-  const authorizationPanel = (
-    <div className="space-y-2 text-xs sm:text-sm">
-      {tradingIdentity ? <div className="flex justify-between gap-2 items-center border border-brand-border rounded-lg p-2">
-        <span className="text-emerald-500 font-bold">Lighter signing key · Account #{tradingIdentity.accountIndex} · Slot {tradingIdentity.apiKeyIndex}</span>
-        <button type="button" onClick={async () => {
-          await forgetRememberedLighterSigner(walletAddress).catch(()=>{});
-          try{localStorage.removeItem("hidedex:lighter:key-ref:"+walletAddress.toLowerCase());}catch{}
-          clearLighterTradingKey(); setTradingIdentity(null); setRecoveryKey(""); setLiveOrders(null); setLiveFills(null);
-          setTradingNotice("Session key disconnected. Your registered key remains on Lighter.");
-        }} className="underline text-brand-muted">Disconnect</button>
-      </div> : <>
-        <p className="text-brand-muted leading-relaxed">One wallet signature authorizes a personal key for Lighter mainnet orders and verified-wallet withdrawals. Review the request carefully. This browser saves the key encrypted locally on this device.</p>
-        <div className="grid grid-cols-[1fr_1.9fr] gap-2 pt-2">
-          <button type="button" disabled={tradingBusy} onClick={() => setAuthSheetOpen(false)}
-            className="rounded-xl border border-brand-border bg-brand-surface px-2 py-3 font-bold text-brand-muted disabled:opacity-40">Cancel</button>
-          <button type="button" disabled={!walletAddress || tradingBusy} onClick={beginLighterAuthorization}
-            className="rounded-xl bg-white text-black px-2 py-3 font-black tracking-wide text-[11px] sm:text-xs disabled:opacity-40">
-            {tradingBusy ? "SIGNING…" : "SIGN TO ENABLE TRADING →"}
-          </button>
-        </div>
-        <button type="button" className="underline text-brand-muted" onClick={() => setShowExistingKey(v => !v)}>
-          {showExistingKey ? "Hide" : "Reconnect an existing Lighter API key"}
-        </button>
-        {showExistingKey && <div className="space-y-2 rounded-lg border border-brand-border p-2">
-          <div className="grid grid-cols-2 gap-1">
-            <input type="number" value={existingAccountIndex} onChange={e => setExistingAccountIndex(e.target.value)}
-              placeholder="Account index" aria-label="Lighter account index" className="min-w-0 bg-brand-bg border border-brand-border p-2 rounded"/>
-            <input type="number" value={existingApiKeyIndex} onChange={e => setExistingApiKeyIndex(e.target.value)}
-              placeholder="API key slot (4+)" aria-label="Lighter API key index" className="min-w-0 bg-brand-bg border border-brand-border p-2 rounded"/>
-          </div>
-          <input type="password" autoComplete="off" value={existingKey} onChange={e => setExistingKey(e.target.value)}
-            placeholder="Existing API private key (only entered here)" aria-label="Existing Lighter API private key"
-            className="w-full bg-brand-bg border border-brand-border p-2 rounded"/>
-          <button type="button" disabled={tradingBusy || !existingKey.trim()} onClick={reconnectExistingLighterKey}
-            className="rounded bg-brand-overlay-normal p-2 font-bold disabled:opacity-40">Verify & reconnect</button>
-        </div>}
-      </>}
-      {recoveryKey && <div className="rounded-xl border border-amber-500/40 p-3 space-y-3">
-        <p className="text-amber-500 font-bold">Save this API key securely now: it will disappear on reload. It permits trades and secure withdrawals.</p>
-        <input type="password" readOnly value={recoveryKey} aria-label="One-time Lighter trading key backup"
-          className="w-full p-2 rounded border border-brand-border bg-brand-bg"/>
-        <button type="button" onClick={async () => {
-          try {
-            await navigator.clipboard.writeText(recoveryKey);
-            setTradingNotice("API key copied. Store it in a secure password manager, not in chats.");
-          } catch { setTradingNotice("Clipboard unavailable. Save the key securely before leaving."); }
-        }} className="underline text-accent">Copy recovery key</button>
-        <button type="button" onClick={() => setRecoveryKey("")} className="ml-3 underline text-brand-muted">Hide backup</button>
-      </div>}
+  // The API key is generated by the real Lighter onboarding SDK, never
+  // manually pasted in a second trading popup. Preserve one-time recovery.
+  const authorizationPanel = recoveryKey ? (
+    <div className="rounded-xl border border-amber-500/40 p-3 space-y-3">
+      <p className="text-amber-500 text-xs font-bold">
+        Save a separate recovery backup securely. This API key permits trades and withdrawals.
+      </p>
+      <input type="password" readOnly value={recoveryKey}
+        aria-label="One-time Lighter trading key backup"
+        className="w-full p-2 rounded border border-brand-border bg-brand-bg"/>
+      <button type="button" onClick={async()=>{
+        try{
+          await navigator.clipboard.writeText(recoveryKey);
+          setTradingNotice("Recovery key copied. Keep it in a secure password manager.");
+        }catch{setTradingNotice("Clipboard unavailable. Save the key securely before leaving.");}
+      }} className="underline text-accent text-xs">Copy recovery key</button>
     </div>
-  );
-
+  ) : null;
 
   // Market/Funds/Account navigation must not reset the user's selected Lighter spot/perp kind.
   // Explicit Trade routing is the only place where App's chosen mode takes precedence.
@@ -1473,35 +1411,34 @@ export default function LighterMarketPreview({
       message={tradingNotice}
       onClose={()=>setTradingNotice("")}
     />}
-    {authSheetOpen && (
-      <div role="presentation" className="fixed inset-0 z-[160] flex items-end justify-center bg-black/75 backdrop-blur-[2px]"
-        onMouseDown={e => { if (e.target === e.currentTarget && !tradingBusy && !recoveryKey) setAuthSheetOpen(false); }}>
-        <section role="dialog" aria-modal="true" aria-label="Enable Lighter trading"
-          className="w-full max-w-lg rounded-t-[30px] border border-brand-border bg-brand-bg p-5 pb-[max(22px,env(safe-area-inset-bottom))] shadow-2xl space-y-5 max-h-[85dvh] overflow-y-auto">
-          <div className="flex items-center gap-3">
-            <span className="w-11 h-11 shrink-0 flex items-center justify-center rounded-xl border border-brand-border bg-brand-surface"><ShieldCheck className="w-6 h-6"/></span>
-            <h2 className="font-black text-xl flex-1 text-brand-text">Enable Trading</h2>
-            <button type="button" aria-label="Close enable trading" disabled={tradingBusy || Boolean(recoveryKey)}
-              onClick={() => setAuthSheetOpen(false)}
-              className="p-1.5 disabled:opacity-30"><X className="w-5 h-5"/></button>
-          </div>
-          {!tradingIdentity && <p className="text-sm text-brand-muted leading-relaxed">
-            Confirm the one-time wallet authorization to activate Lighter mainnet trading on HideDex.
-            This trading key can authorize orders and withdrawals to your verified wallet.
-            Review the wallet request before confirming.
-          </p>}
-          {authorizationPanel}
-          {tradingNotice && <p role="status" className="text-xs text-amber-500 break-all">{tradingNotice}</p>}
-          {tradingIdentity && !recoveryKey && <button type="button"
-            className="w-full bg-white text-black rounded-xl p-3 text-sm font-extrabold"
-            onClick={() => setAuthSheetOpen(false)}>Continue trading</button>}
-          {recoveryKey && <button type="button" className="w-full bg-white text-black rounded-xl p-3 text-sm font-bold"
-            onClick={() => {setRecoveryKey("");setAuthSheetOpen(false);}}>
-            I have securely saved my key
-          </button>}
-        </section>
-      </div>
-    )}
+    {authSheetOpen && <HideDexTradingAuthorizationSheet
+      title="Enable Trading"
+      onClose={()=>setAuthSheetOpen(false)}
+      closeDisabled={tradingBusy||Boolean(recoveryKey)}
+      primaryDisabled={!walletAddress||tradingBusy}
+      primaryLabel={tradingBusy?"CHECK YOUR WALLET":
+        tradingIdentity?(recoveryKey?"I HAVE SECURELY SAVED MY KEY":"CONTINUE TRADING"):
+        "SIGN TO ENABLE TRADING →"}
+      onPrimary={()=>{
+        if(tradingIdentity){
+          setRecoveryKey("");setAuthSheetOpen(false);
+        }else void beginLighterAuthorization();
+      }}
+      description={!tradingIdentity?<div className="my-2">
+        <p className="text-brand-sub text-sm sm:text-[15px] leading-relaxed">
+          Confirm the one-time wallet authorization to activate trading on HideDex (hidedex.com).
+        </p>
+        <p className="text-brand-sub text-xs sm:text-sm mt-2 leading-relaxed">
+          This Lighter key authorizes trades and verified-wallet withdrawals.
+          Review the wallet request before confirming. The key is saved encrypted on this browser device.
+        </p>
+      </div>:undefined}
+    >
+      {authorizationPanel}
+      {tradingNotice&&<p role="status" className="text-xs text-amber-500 break-all mt-2">
+        {tradingNotice}
+      </p>}
+    </HideDexTradingAuthorizationSheet>}
     {marketSelectorOpen && (
       <MarketSelector
         favorites={[...watchlist]}
