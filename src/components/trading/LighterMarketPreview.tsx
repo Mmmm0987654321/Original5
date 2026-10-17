@@ -564,7 +564,8 @@ export default function LighterMarketPreview({
       map.set(key,(map.get(key)??0)+sz);
     }
     let cumulative=0;
-    const sorted=[...map.entries()].sort((a,b)=>side==="ask"?a[0]-b[0]:b[0]-a[0]).slice(0,6);
+    const limit=(typeof window!=="undefined"&&window.innerWidth<640)?8:14;
+    const sorted=[...map.entries()].sort((a,b)=>side==="ask"?a[0]-b[0]:b[0]-a[0]).slice(0,limit);
     return sorted.map(([price,size])=>({price,size,total:(cumulative+=size)}));
   };
 

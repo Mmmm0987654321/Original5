@@ -1865,7 +1865,8 @@ export default function RedesignedTerminal({
 
   // --- Order Book Centralized Subscription & Real-Time Hydration ---
   // Visual order book shows exactly six authentic price levels per side on both venues.
-  const limit = 6;
+  const isMobile = typeof window !== "undefined" && window.innerWidth < 640;
+  const limit = isMobile ? 8 : 14;
 
   const {
     asks,
@@ -4601,7 +4602,7 @@ export default function RedesignedTerminal({
             </div>
           )}
 
-          <form onSubmit={handleSubmitOrder} className="flex flex-col gap-2 md:gap-3">
+          <form onSubmit={handleSubmitOrder} className="flex flex-1 flex-col gap-2 md:gap-3">
             
             {/* The exact same original HideDex selectors are used by both venues. */}
             <HideDexTradeSelectors
@@ -5047,7 +5048,7 @@ export default function RedesignedTerminal({
             )}
 
             {/* Calculations and limits stats list */}
-            <div className="bg-brand-bg/50 border border-brand-border rounded-lg p-1.5 text-[9px] md:text-[10px] font-mono space-y-0.5">
+            <div className="bg-brand-bg/50 border border-brand-border rounded-lg p-1.5 text-[9px] md:text-[10px] font-mono space-y-0.5 mt-auto">
               {isPerp && (
                 <div className="flex justify-between text-gray-500 font-bold">
                   <span>Liq. Price</span>

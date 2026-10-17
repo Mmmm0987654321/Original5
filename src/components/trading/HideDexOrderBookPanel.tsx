@@ -27,10 +27,14 @@ export interface HideDexOrderBookPanelProps {
 export default function HideDexOrderBookPanel(props:HideDexOrderBookPanelProps) {
  const [showGroup,setShowGroup]=useState(false);
  const rootRef=useRef<HTMLDivElement>(null);
+ // Original4 fetches eight genuine levels on mobile and fourteen on desktop.
+ // Both exchanges share the same presentation and filtering rules.
+ const mobile=typeof window!=="undefined" && window.innerWidth<640;
+ const limit=mobile?8:14;
  const visibleAsks=[...props.asks].filter(row=>Number.isFinite(row.price)&&row.price>0&&Number.isFinite(row.size)&&row.size>=0)
-   .sort((a,b)=>a.price-b.price).slice(0,6).reverse();
+   .sort((a,b)=>a.price-b.price).slice(0,limit).reverse();
  const visibleBids=[...props.bids].filter(row=>Number.isFinite(row.price)&&row.price>0&&Number.isFinite(row.size)&&row.size>=0)
-   .sort((a,b)=>b.price-a.price).slice(0,6);
+   .sort((a,b)=>b.price-a.price).slice(0,limit);
  const maxTotal=Math.max(1,...visibleAsks.map(row=>row.total),...visibleBids.map(row=>row.total));
  const displayRows=(rows:readonly HideDexBookLevel[],side:"BUY"|"SELL")=>
    <div className="space-y-0.5 w-full">
@@ -40,7 +44,7 @@ export default function HideDexOrderBookPanel(props:HideDexOrderBookPanelProps) 
        const isBuy=side==="BUY";
        return <button key={side+"-"+row.price+"-"+idx} type="button"
          onClick={()=>props.onSelectPrice(row.price)}
-         className={`w-full grid grid-cols-2 text-[9px] md:text-[11px] font-mono py-0.5 hover:bg-brand-overlay-subtle/30 rounded transition-all text-left relative overflow-hidden group ${isBuy?"hover:bg-emerald-500/10":"hover:bg-rose-500/10"} ${isFlashing?(isBuy?"bg-emerald-500/30 text-emerald-300 font-extrabold ring-1 ring-emerald-500/50":"bg-rose-500/30 text-rose-300 font-extrabold ring-1 ring-rose-500/50"):""}`}>
+         className={`w-full grid grid-cols-2 text-[9px] md:text-[11px] font-mono py-0.5 rounded transition-all text-left relative overflow-hidden group ${isBuy?"hover:bg-emerald-500/10":"hover:bg-rose-500/10"} ${isFlashing?(isBuy?"bg-emerald-500/30 text-emerald-300 font-extrabold ring-1 ring-emerald-500/50":"bg-rose-500/30 text-rose-300 font-extrabold ring-1 ring-rose-500/50"):""}`}>
          <div aria-hidden="true" className={`absolute right-0 top-0 bottom-0 border-l-2 pointer-events-none rounded-r ${isBuy?"bg-[#18c29c]/25 border-[#18c29c]/40 group-hover:bg-[#18c29c]/35":"bg-[#e2445c]/25 border-[#e2445c]/40 group-hover:bg-[#e2445c]/35"}`}
            style={{width:depthPercent+"%"}}/>
          <span className={`font-bold z-10 pl-0.5 ${isBuy?"text-[#18c29c]":"text-[#ff4d4d]"}`}>{props.formatPrice(row.price)}</span>
@@ -49,8 +53,8 @@ export default function HideDexOrderBookPanel(props:HideDexOrderBookPanelProps) 
      })}
    </div>;
  return <div ref={rootRef} id="terminal-order-book"
-   className="col-span-5 min-w-0 bg-brand-bg border border-brand-border rounded-xl p-1.5 md:p-2.5 flex flex-col justify-between shadow-lg relative self-start h-[350px] md:h-[410px] overflow-hidden">
-   <div className="flex flex-col min-h-0 overflow-hidden flex-grow h-full">
+   className={`col-span-5 min-w-0 bg-brand-bg border border-brand-border rounded-xl p-1.5 md:p-2.5 flex flex-col justify-between shadow-lg relative ${props.shrinkOnTpSl?"self-start h-auto md:self-stretch md:h-full":"h-full"}`}>
+   <div className={`flex flex-col min-h-0 overflow-hidden ${props.shrinkOnTpSl?"h-auto md:flex-grow md:h-full":"flex-grow h-full"}`}>
      <div className="grid grid-cols-2 text-[8px] md:text-[10px] font-sans font-black uppercase tracking-wider text-gray-500 border-b border-brand-border pb-1 md:pb-1.5 mb-1 md:mb-1.5 flex-shrink-0 items-center">
        <span>Price</span>
        <button type="button" onClick={props.onToggleSizeUnit}
