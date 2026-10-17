@@ -1,4 +1,5 @@
 import TradingAccountTabBar from "./TradingAccountTabBar";
+import HideDexUnifiedAccountPanel from "./HideDexUnifiedAccountPanel";
 import HideDexPositionActionBar from "./HideDexPositionActionBar";
 import HideDexCancelAllOrdersBar from "./HideDexCancelAllOrdersBar";
 import HideDexPositionHeader from "./HideDexPositionHeader";
@@ -446,9 +447,8 @@ export default function TradingDashboardTabs({
   }, [walletConnected, fundingHistory]);
 
   return (
-    <div className="bg-brand-bg border border-brand-border rounded-xl overflow-hidden shadow-xl" id="terminal-dashboard-panel-unified">
-      
-      <TradingAccountTabBar
+    <HideDexUnifiedAccountPanel
+      tabs={<>      <TradingAccountTabBar
         activeTab={activeBottomTab}
         onSelect={setActiveBottomTab}
         showFundingHistory={true}
@@ -456,7 +456,8 @@ export default function TradingDashboardTabs({
         ordersCount={filteredOrders.length}
         isFieldHidden={isFieldHidden}
       />
-
+</>}
+      actions={<>
       {/* Sub-Header Row: Balances - Close All Spot */}
       {activeBottomTab === "BALANCES" && typeof onCloseAllSpotPositions === "function" && hasAvailableSpotToClose === true && (
         <div className="flex items-center justify-end px-2.5 py-1.5 bg-brand-bg/50 border-b border-brand-border text-[9px] md:text-[10px] text-gray-500 font-bold uppercase tracking-wider relative">
@@ -489,7 +490,82 @@ export default function TradingDashboardTabs({
         <HideDexCancelAllOrdersBar onCancelAll={()=>setShowCancelAllModal(true)}/>}
 
       {/* Dynamic Inner Tab View Table */}
-      <div className="p-2 md:p-3 min-h-[110px] overflow-y-auto overflow-x-hidden relative">
+</>}
+      modals={<>
+
+      {/* TAKE PROFIT / STOP LOSS MODAL */}
+      {selectedTpSlPosition && (
+        <TpSlModal
+          position={selectedTpSlPosition}
+          openOrders={openOrders}
+          onClose={() => setSelectedTpSlPosition(null)}
+          onSave={handleSaveTpSl}
+          tradingEnabled={setupComplete}
+          onSetupRequired={onSetupRequired}
+          onCancelOrder={onCancelOrder}
+        />
+      )}
+
+      {/* CLOSE POSITION MODAL */}
+      {selectedClosePosition && (
+        <ClosePositionModal
+          position={positions.find(p => p.id === selectedClosePosition.id) || selectedClosePosition}
+          onClose={() => setSelectedClosePosition(null)}
+          onConfirmClose={(pos, closePercent) => {
+            if (onClosePosition) {
+              return onClosePosition(pos, closePercent);
+            }
+          }}
+        />
+      )}
+
+      {/* CLOSE ALL CONFIRMATION MODAL */}
+      {showCloseAllModal && (
+        <CloseAllConfirmationModal
+          action="close_positions"
+          onClose={() => setShowCloseAllModal(false)}
+          onConfirm={handleConfirmCloseAll}
+        />
+      )}
+
+      {/* CANCEL ALL CONFIRMATION MODAL */}
+      {showCancelAllModal && (
+        <CloseAllConfirmationModal
+          action="cancel_orders"
+          onClose={() => setShowCancelAllModal(false)}
+          onConfirm={handleConfirmCancelAll}
+        />
+      )}
+
+      {/* CLOSE SPOT POSITION CONFIRMATION MODAL */}
+      {selectedCloseSpotSymbol && (
+        <CloseAllConfirmationModal
+          action="close_spot"
+          symbol={selectedCloseSpotSymbol}
+          onClose={() => setSelectedCloseSpotSymbol(null)}
+          onConfirm={handleConfirmCloseSpot}
+        />
+      )}
+
+      {/* CLOSE ALL SPOT CONFIRMATION MODAL */}
+      {showCloseAllSpotModal && (
+        <CloseAllConfirmationModal
+          action="close_all_spot"
+          onClose={() => setShowCloseAllSpotModal(false)}
+          onConfirm={handleConfirmCloseAllSpot}
+        />
+      )}
+
+      {/* SHARE POSITION CARD MODAL */}
+      {selectedSharePosition && (
+        <ShareCardPopup
+          isOpen={!!selectedSharePosition}
+          onClose={() => setSelectedSharePosition(null)}
+          positionData={selectedSharePosition}
+          walletAddress={""}
+        />
+      )}</>}
+    >
         {/* TAB 1: BALANCES */}
         {activeBottomTab === "BALANCES" && <HideDexBalancesView
           items={dynamicBalances.items.map(item => {
@@ -730,80 +806,6 @@ export default function TradingDashboardTabs({
           )
         )}
 
-      </div>
-
-      {/* TAKE PROFIT / STOP LOSS MODAL */}
-      {selectedTpSlPosition && (
-        <TpSlModal
-          position={selectedTpSlPosition}
-          openOrders={openOrders}
-          onClose={() => setSelectedTpSlPosition(null)}
-          onSave={handleSaveTpSl}
-          tradingEnabled={setupComplete}
-          onSetupRequired={onSetupRequired}
-          onCancelOrder={onCancelOrder}
-        />
-      )}
-
-      {/* CLOSE POSITION MODAL */}
-      {selectedClosePosition && (
-        <ClosePositionModal
-          position={positions.find(p => p.id === selectedClosePosition.id) || selectedClosePosition}
-          onClose={() => setSelectedClosePosition(null)}
-          onConfirmClose={(pos, closePercent) => {
-            if (onClosePosition) {
-              return onClosePosition(pos, closePercent);
-            }
-          }}
-        />
-      )}
-
-      {/* CLOSE ALL CONFIRMATION MODAL */}
-      {showCloseAllModal && (
-        <CloseAllConfirmationModal
-          action="close_positions"
-          onClose={() => setShowCloseAllModal(false)}
-          onConfirm={handleConfirmCloseAll}
-        />
-      )}
-
-      {/* CANCEL ALL CONFIRMATION MODAL */}
-      {showCancelAllModal && (
-        <CloseAllConfirmationModal
-          action="cancel_orders"
-          onClose={() => setShowCancelAllModal(false)}
-          onConfirm={handleConfirmCancelAll}
-        />
-      )}
-
-      {/* CLOSE SPOT POSITION CONFIRMATION MODAL */}
-      {selectedCloseSpotSymbol && (
-        <CloseAllConfirmationModal
-          action="close_spot"
-          symbol={selectedCloseSpotSymbol}
-          onClose={() => setSelectedCloseSpotSymbol(null)}
-          onConfirm={handleConfirmCloseSpot}
-        />
-      )}
-
-      {/* CLOSE ALL SPOT CONFIRMATION MODAL */}
-      {showCloseAllSpotModal && (
-        <CloseAllConfirmationModal
-          action="close_all_spot"
-          onClose={() => setShowCloseAllSpotModal(false)}
-          onConfirm={handleConfirmCloseAllSpot}
-        />
-      )}
-
-      {/* SHARE POSITION CARD MODAL */}
-      {selectedSharePosition && (
-        <ShareCardPopup
-          isOpen={!!selectedSharePosition}
-          onClose={() => setSelectedSharePosition(null)}
-          positionData={selectedSharePosition}
-          walletAddress={""}
-        />
-      )}
-    </div>
+    </HideDexUnifiedAccountPanel>
   );
 }

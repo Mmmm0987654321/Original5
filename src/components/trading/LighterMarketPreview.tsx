@@ -21,6 +21,7 @@ import TopOrderBookView from "./TopOrderBookView";
 import MarketsPanel from "../dashboard/MarketsPanel";
 import GeneralDashboard from "../dashboard/GeneralDashboard";
 import TradingAccountTabBar, { type TradingTabId } from "./TradingAccountTabBar";
+import HideDexUnifiedAccountPanel from "./HideDexUnifiedAccountPanel";
 import HideDexPositionActionBar, {type HideDexPositionSort} from "./HideDexPositionActionBar";
 import HideDexCancelAllOrdersBar from "./HideDexCancelAllOrdersBar";
 import HideDexPositionHeader from "./HideDexPositionHeader";
@@ -1260,15 +1261,16 @@ export default function LighterMarketPreview({
   },[singleCloseTarget,publicAccounts,markets]);
 
   const lighterAccountTabs = (
-    <div className="bg-brand-bg border border-brand-border rounded-xl overflow-hidden shadow-xl" id="terminal-dashboard-panel-unified">
-      <TradingAccountTabBar
+    <HideDexUnifiedAccountPanel
+      tabs={<>      <TradingAccountTabBar
         activeTab={accountTab}
         onSelect={setAccountTab}
         showFundingHistory={true}
         positionsCount={knownPositionCount}
         ordersCount={liveOrders?.length}
       />
-
+</>}
+      actions={<>
       {accountTab==="POSITIONS" && <HideDexPositionActionBar
         sort={positionSort}
         onSort={setPositionSort}
@@ -1287,7 +1289,8 @@ export default function LighterMarketPreview({
       {accountTab==="OPEN_ORDERS" && liveOrders!==null && liveOrders.length>0 &&
         <HideDexCancelAllOrdersBar disabled={tradingBusy||!tradingIdentity}
           onCancelAll={()=>setCancelAllOrdersOpen(true)}/>}
-      <div className="p-2 md:p-3 min-h-[110px] overflow-y-auto overflow-x-hidden">
+</>}
+    >
         {accountTab === "BALANCES" && <HideDexBalancesView
           items={publicAccounts?.some(a=>a.assets===null)?null:lighterBalanceRows}
           unavailableMessage={accountsLoading?"Loading verified Lighter balances…":
@@ -1428,8 +1431,7 @@ export default function LighterMarketPreview({
               lighterFillRows===null?"Lighter history unavailable.":
               "No recent fills returned for this signer account.")}/>
         </div>}
-      </div>
-    </div>
+    </HideDexUnifiedAccountPanel>
   );
 
   return <div className="w-full min-w-0 text-brand-text pb-1" data-exchange="lighter">
