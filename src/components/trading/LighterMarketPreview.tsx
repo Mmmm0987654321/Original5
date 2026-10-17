@@ -313,8 +313,11 @@ export default function LighterMarketPreview({
       setAuthSheetOpen(true);
       return;
     }
-    // A slider change is only a draft; do not send a leveraged-sized order
-    // when its requested on-chain margin setting was rejected or not applied.
+    if(kind==="perp"&&accountsLoading){
+      setTradingNotice("Checking existing Lighter leverage. Try Place again shortly.");
+      return;
+    }
+    // Check the real per-market setting before attempting any margin write.
     if(kind==="perp"&&(chosenLeverage>1||latestMarginRequestRef.current!==null)){
       const request={key:marginKey(selected.id,chosenLeverage,marginMode),
         marketId:selected.id,leverage:chosenLeverage,mode:marginMode,attempt:0};
@@ -771,7 +774,8 @@ export default function LighterMarketPreview({
   // selection triggers one debounced signed request; retry a single 429 after
   // cooldown, never hide a server rejection or silently place an order.
   useEffect(()=>{
-    if(!marginIntent||kind!=="perp"||!selected||
+    // Read the real account setting before consuming a signed leverage update.
+    if(!marginIntent||kind!=="perp"||!selected||accountsLoading||
        marginIntent.marketId!==selected.id)return;
     const wait=Math.max(650,marginRetryUntilRef.current-Date.now());
     const timer=window.setTimeout(async()=>{
@@ -786,7 +790,7 @@ export default function LighterMarketPreview({
     },wait);
     return ()=>window.clearTimeout(timer);
   },[marginIntent?.key,marginIntent?.attempt,selected?.id,kind,
-     tradingIdentity?.accountIndex,walletAddress,restoringSavedSigner]);
+     tradingIdentity?.accountIndex,walletAddress,restoringSavedSigner,accountsLoading]);
 
   useEffect(()=>{
     latestMarginRequestRef.current=null;
