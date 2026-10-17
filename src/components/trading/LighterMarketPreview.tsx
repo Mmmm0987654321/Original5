@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import {formatUnits} from "ethers";
+import {formatUnits,parseUnits} from "ethers";
 import { Layers, Wallet, TrendingUp, Unlock, Lock, ArrowUpRight, ArrowDownRight, ChevronRight, ChevronDown, X, ShieldCheck, Copy, Check, Eye, EyeOff, BarChart3, Share2 } from "lucide-react";
 import { TrustShieldValue } from "../common/TrustShieldValue";
 import HideDexFundsOverview from "../dashboard/HideDexFundsOverview";
@@ -117,6 +117,12 @@ async function readLighterDepositWalletBalance(
   }catch{return null;}
 }
 
+/** Native USDC has six decimals. Invalid/unavailable input must NEVER pass as 0. */
+function usdcUnits(value:string|null):bigint|null{
+  if(value===null || !/^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?$/.test(value.trim()))return null;
+  try{return parseUnits(value.trim(),6);}catch{return null;}
+}
+
 type Section = "dashboard" | "markets" | "trade" | "funds" | "account" | "orders";
 type Kind = "perp" | "spot";
 type Props = {
@@ -216,6 +222,14 @@ export default function LighterMarketPreview({
   const [depositWalletUsdc,setDepositWalletUsdc]=useState<string|null>(null);
   const [depositWalletBalanceLoading,setDepositWalletBalanceLoading]=useState(false);
   const [depositNetwork, setDepositNetwork] = useState<"arbitrum" | "ethereum">("arbitrum");
+  const requestedDepositUnits=usdcUnits(depositAmount);
+  const walletDepositUnits=usdcUnits(depositWalletUsdc);
+  const minDepositUnits=depositNetwork==="arbitrum"?5_000_000n:1_000_000n;
+  const depositIsAffordable=Boolean(
+    walletAddress&&!depositWalletBalanceLoading &&
+    requestedDepositUnits!==null&&requestedDepositUnits>=minDepositUnits &&
+    walletDepositUnits!==null&&walletDepositUnits>=requestedDepositUnits
+  );
   const [fundingBusy, setFundingBusy] = useState(false);
   const [fundingStatus, setFundingStatus] = useState("");
   const [accountReload, setAccountReload] = useState(0);
@@ -2108,7 +2122,7 @@ export default function LighterMarketPreview({
                 {value:"ethereum",label:"Ethereum Mainnet",chainId:1,
                   description:"Direct USDC deposit · Minimum 1 USDC · ETH gas"},
               ]}
-              pickerStyle="modal" showChainLogo
+              pickerStyle="modal" showChainLogo showUsdcLogo
               value={depositNetwork} disabled={fundingBusy}
               onNetworkChange={v=>{setDepositNetwork(v as "arbitrum"|"ethereum");setFundingStatus("");}}
             />
@@ -2131,16 +2145,31 @@ export default function LighterMarketPreview({
                   :"—"}
             />
             <HideDexFundingSubmit deposit busy={fundingBusy}
-              disabled={!walletAddress||!Number.isFinite(Number(depositAmount))||
-                Number(depositAmount)<(depositNetwork==="arbitrum"?5:1)||
-                !/^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?$/.test(depositAmount.trim())}
+              disabled={!depositIsAffordable}
               label="Deposit Collateral"
               onClick={async () => {
                 if (fundingBusy) return;
+                // Required amount AND wallet funds must be known/valid before
+                // any approval, bridge address lookup, signature or deposit.
+                if(!depositIsAffordable||requestedDepositUnits===null){
+                  setFundingStatus("Deposit blocked: enter at least the selected network minimum and ensure your connected wallet holds enough USDC on that chain.");
+                  return;
+                }
                 setFundingBusy(true);
                 setFundingStatus("");
                 let lastDepositStage="";
                 try {
+                  // Fresh read immediately before signing. Cached balances may
+                  // be stale or may belong to a previously selected network.
+                  const latestBalance=await readLighterDepositWalletBalance(
+                    walletAddress,depositNetwork,getWalletProvider
+                  );
+                  const latestUnits=usdcUnits(latestBalance);
+                  setDepositWalletUsdc(latestBalance);
+                  if(latestUnits===null)
+                    throw new Error("Deposit blocked: selected-network USDC balance could not be verified. No transaction was sent.");
+                  if(latestUnits<minDepositUnits||latestUnits<requestedDepositUnits)
+                    throw new Error("Deposit blocked: insufficient USDC on the selected network. No transaction was sent.");
                   const depositFn = depositNetwork === "arbitrum"
                     ? depositLighterUsdcFromArbitrum : depositLighterUsdcOnEthereum;
                   await depositFn({
@@ -2173,7 +2202,7 @@ export default function LighterMarketPreview({
           </> : <>
             {!tradingIdentity && <button type="button" onClick={() => setAuthSheetOpen(true)}
               className="text-xs font-bold text-accent underline">Enable Lighter trading to withdraw</button>}
-            <HideDexFundingNetworkAsset network="Ethereum Mainnet · Secure Withdrawal" chainId={1} showChainLogo />
+            <HideDexFundingNetworkAsset network="Ethereum Mainnet · Secure Withdrawal" chainId={1} showChainLogo showUsdcLogo />
             <HideDexFundingDestination address={walletAddress}/>
             <HideDexFundingAmount id="lighter-withdraw-amount" amount={withdrawAmount}
               onAmount={setWithdrawAmount} disabled={!tradingIdentity||fundingBusy}
