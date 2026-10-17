@@ -110,6 +110,12 @@ export default function LighterMarketPreview({
   const [orderType, setOrderType] = useState<"market" | "limit">("market");
   const [orderTypeOpen, setOrderTypeOpen] = useState(false);
   const [authSheetOpen, setAuthSheetOpen] = useState(false);
+  // One automatic prompt per wallet per mounted visit; a dismissed sheet
+  // only reopens on an explicit Place action with a valid order size.
+  const promptedWallets=useRef<Set<string>>(new Set());
+  const [signerRestore,setSignerRestore]=useState<{
+    wallet:string;complete:boolean;hasSaved:boolean;
+  }>({wallet:"",complete:false,hasSaved:false});
   const [isMarketInfoOpen, setIsMarketInfoOpen] = useState(false);
   const [performancePeriod, setPerformancePeriod] = useState<HideDexPerformancePeriod>("day");
   const [performanceMarket, setPerformanceMarket] = useState<HideDexPerformanceMarket>("all");
@@ -167,12 +173,20 @@ export default function LighterMarketPreview({
     setTradingIdentity(activeSigner);
     setRecoveryKey("");setLiveOrders(null);setLiveFills(null);
     setTradingNotice("");setAuthSheetOpen(false);
+    const normalizedWallet=walletAddress.toLowerCase();
+    setSignerRestore({wallet:normalizedWallet,complete:false,hasSaved:Boolean(activeSigner)});
     setRestoringSavedSigner(Boolean(walletAddress&&!activeSigner));
-    if(!walletAddress || activeSigner){setRestoringSavedSigner(false);return;}
+    if(!walletAddress || activeSigner){
+      setRestoringSavedSigner(false);
+      setSignerRestore({wallet:normalizedWallet,complete:true,hasSaved:Boolean(activeSigner)});
+      return;
+    }
     // The device keeps only encrypted API-key ciphertext. Verify the decrypted
     // key with Lighter every time; do not open an authorization popup.
     readRememberedLighterSigner(walletAddress).then(async saved=>{
-      if(!saved||stopped)return;
+      if(stopped)return;
+      setSignerRestore({wallet:normalizedWallet,complete:false,hasSaved:Boolean(saved)});
+      if(!saved)return;
       const identity=await reconnectLighterTradingKey({
         walletAddress,accountIndex:saved.accountIndex,apiKeyIndex:saved.apiKeyIndex,
         apiPrivateKey:saved.apiPrivateKey,
@@ -183,9 +197,28 @@ export default function LighterMarketPreview({
       // No stored/valid signer: user can authorize once explicitly.
       // A public account is still readable without trading registration.
       if(!stopped)setTradingIdentity(null);
-    }).finally(()=>{if(!stopped)setRestoringSavedSigner(false);});
+    }).finally(()=>{
+      if(!stopped){
+        setRestoringSavedSigner(false);
+        setSignerRestore(previous=>previous.wallet===normalizedWallet?
+          {...previous,complete:true}:previous);
+      }
+    });
     return ()=>{stopped=true;};
   },[walletAddress]);
+
+  // Wait for the local signer lookup to finish before opening a sheet. A saved
+  // device key gets a silent verification attempt; never auto-register a new
+  // key just because the verification endpoint is temporarily unavailable.
+  useEffect(()=>{
+    if(section!=="trade"||!walletAddress||!signerRestore.complete||
+      signerRestore.wallet!==walletAddress.toLowerCase()||
+      signerRestore.hasSaved||restoringSavedSigner||tradingIdentity)return;
+    const key=walletAddress.toLowerCase();
+    if(promptedWallets.current.has(key))return;
+    promptedWallets.current.add(key);
+    setAuthSheetOpen(true);
+  },[section,walletAddress,signerRestore,restoringSavedSigner,tradingIdentity]);
 
   // Keep transaction/status feedback out of the Trade layout and dismiss
   // automatically; the modal retains registration/recovery instructions.
@@ -263,6 +296,13 @@ export default function LighterMarketPreview({
     if (!tradingIdentity) {
       setTradingNotice("");
       setAuthSheetOpen(true);
+      return;
+    }
+    // A slider change is only a draft; do not send a leveraged-sized order
+    // when its requested on-chain margin setting was rejected or not applied.
+    if(kind==="perp"&&chosenLeverage>1&&marginUpdateMarketId!==selected.id){
+      setTradingNotice("Confirm the real Lighter margin update before placing an order sized at "+
+        chosenLeverage+"x. Your selected leverage is only a draft.");
       return;
     }
     const orderSide = side === "buy" ? (kind === "perp" ? "LONG" : "BUY") : (kind === "perp" ? "SHORT" : "SELL");
@@ -457,6 +497,15 @@ export default function LighterMarketPreview({
     return ()=>{stale=true;};
   },[walletAddress,tradingIdentity,accountTab,section,accountReload]);
 
+  // Keep SDK rate-limit JSON/escaped responses out of the user-facing popup.
+  // A rejected margin update must not look like an applied leverage setting.
+  const readableMarginError=(error:unknown):string=>{
+    const raw=error instanceof Error?error.message:String(error??"");
+    if(/rate.?limit|ratelimit|volume quota|429|too many requests/i.test(raw))
+      return "Lighter API rate limit reached. Wait and retry the margin update; leverage was not confirmed.";
+    return raw.replace(/\\n/g,"\n").trim()||"Lighter rejected leverage update.";
+  };
+
   const submitMarginSettings = async () => {
     if (!walletAddress || !selected || kind !== "perp" || marginBusy) return;
     if (!tradingIdentity) {
@@ -465,8 +514,8 @@ export default function LighterMarketPreview({
     if (!selected.maxLeverage || chosenLeverage > selected.maxLeverage || chosenLeverage < 1) {
       setMarginStatus("Lighter did not verify this leverage. No update sent."); return;
     }
-    if (!window.confirm("UPDATE REAL LIGHTER MARGIN SETTINGS\\n" + selected.symbol +
-      "\\n" + marginMode.toUpperCase() + " · " + chosenLeverage + "x\\nConfirm on Lighter mainnet?")) return;
+    if (!window.confirm("UPDATE REAL LIGHTER MARGIN SETTINGS\n" + selected.symbol +
+      "\n" + marginMode.toUpperCase() + " · " + chosenLeverage + "x\nConfirm on Lighter mainnet?")) return;
     setMarginBusy(true); setMarginStatus("Submitting signed Lighter margin update…");
     try {
       const tx = await updateLighterPerpMargin({
@@ -477,7 +526,8 @@ export default function LighterMarketPreview({
         ". Execution must be confirmed on Lighter; the displayed choice is not a verified active setting.");
       setAccountReload(v => v + 1);
     } catch(e) {
-      setMarginStatus(e instanceof Error ? e.message : "Lighter rejected leverage update.");
+      setMarginUpdateMarketId(null);
+      setMarginStatus(readableMarginError(e));
     } finally { setMarginBusy(false); }
   };
 
@@ -492,7 +542,7 @@ export default function LighterMarketPreview({
           setTradingNotice("Session key disconnected. Your registered key remains on Lighter.");
         }} className="underline text-brand-muted">Disconnect</button>
       </div> : <>
-        <p className="text-brand-muted leading-relaxed">One wallet signature authorizes a personal key for Lighter mainnet orders and verified-wallet withdrawals. Review the request carefully. HideDex does not store the key.</p>
+        <p className="text-brand-muted leading-relaxed">One wallet signature authorizes a personal key for Lighter mainnet orders and verified-wallet withdrawals. Review the request carefully. This browser saves the key encrypted locally on this device.</p>
         <div className="grid grid-cols-[1fr_1.9fr] gap-2 pt-2">
           <button type="button" disabled={tradingBusy} onClick={() => setAuthSheetOpen(false)}
             className="rounded-xl border border-brand-border bg-brand-surface px-2 py-3 font-bold text-brand-muted disabled:opacity-40">Cancel</button>
@@ -1220,10 +1270,10 @@ export default function LighterMarketPreview({
             availableOrderTypes={["MARKET","LIMIT"]}
             onOrderType={next => {if(next === "MARKET" || next === "LIMIT") setOrderType(next.toLowerCase() as "market"|"limit");}}
             marginMode={marginMode.toUpperCase() as "CROSS"|"ISOLATED"}
-            onMarginMode={next => {setMarginMode(next.toLowerCase() as "cross"|"isolated");setMarginStatus("");}}
+            onMarginMode={next => {setMarginMode(next.toLowerCase() as "cross"|"isolated");setMarginUpdateMarketId(null);setMarginStatus("");}}
             leverage={chosenLeverage}
             maxLeverage={selected?.maxLeverage ?? null}
-            onLeverage={next => {setChosenLeverage(next);setMarginStatus("");}}
+            onLeverage={next => {setChosenLeverage(next);setMarginUpdateMarketId(null);setMarginStatus("");}}
             onApplySettings={submitMarginSettings}
             settingsBusy={marginBusy}
             settingsMessage={marginStatus}
@@ -1256,8 +1306,12 @@ export default function LighterMarketPreview({
             onSelect={percent => {
               const available=availableForMarket??0;
               const price=orderType==="limit"?Number(limitPrice):marketPrice;
-              if(price&&price>0&&available>0)setAmount(String(Number((sizeUnit==="USD"
-                ? available*percent/100:available*percent/100/price).toFixed(6))));
+              // Like the Original4 perp percentage presets, margin × chosen
+              // leverage gives a *draft* notional. Spot never uses leverage.
+              // Real execution still requires Lighter to accept the margin update.
+              const notional=available*percent/100*(kind==="perp"?chosenLeverage:1);
+              if(price&&price>0&&notional>0)setAmount(String(Number((sizeUnit==="USD"
+                ? notional:notional/price).toFixed(sizeUnit==="USD"?6:10))));
             }}
           />
           {kind === "perp" && <>
