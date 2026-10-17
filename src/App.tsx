@@ -28,6 +28,7 @@ import TVChart from "./components/trading/TVChart";
 import OrderBook from "./components/trading/OrderBook";
 import RedesignedTerminal from "./components/trading/RedesignedTerminal";
 import LighterMarketPreview from "./components/trading/LighterMarketPreview";
+import AsterVenueAdapter from "./components/trading/AsterVenueAdapter";
 import RecentTrades from "./components/trading/RecentTrades";
 import PositionTable from "./components/trading/PositionTable";
 import PortfolioPanel from "./components/dashboard/PortfolioPanel";
@@ -448,8 +449,11 @@ export default function App() {
   // One verified, in-memory session per connected wallet. Never trust
   // localStorage, query strings or a public status GET to unlock the app.
   const [requestedTab, setActiveTab] = useState<ActiveTab>(ActiveTab.Landing);
-  const [selectedExchange, setSelectedExchange] = useState<"hyperliquid" | "lighter">(() => {
-    try { return sessionStorage.getItem("hidedex_exchange") === "lighter" ? "lighter" : "hyperliquid"; }
+  const [selectedExchange, setSelectedExchange] = useState<"hyperliquid" | "lighter" | "aster">(() => {
+    try {
+      const saved=sessionStorage.getItem("hidedex_exchange");
+      return saved==="lighter"||saved==="aster"?saved:"hyperliquid";
+    }
     catch { return "hyperliquid"; }
   });
   useEffect(() => {
@@ -1159,6 +1163,39 @@ export default function App() {
   const onLighterCatalog=useCallback((rows:TokenMetadata[])=>{
     setLighterSidebarTokens(prev=>{
       if(prev.length===rows.length&&prev.every((x,i)=>x.symbol===rows[i].symbol&&x.price===rows[i].price))return prev;
+      return rows;
+    });
+  },[]);
+
+  // Aster's market and favorites are independent of both existing exchanges.
+  // Only public market data is loaded until Aster Agent/Builder authorization
+  // is verified; the current UI must never show an HL/Lighter wallet balance.
+  const asterFavoritesKey="favorites:aster:"+favoritesOwner;
+  const [asterWatchlist,setAsterWatchlist]=useState<string[]>(()=>
+    readLighterFavorites(asterFavoritesKey));
+  const [asterSidebarTokens,setAsterSidebarTokens]=useState<TokenMetadata[]>([]);
+  const [asterMarketRequest,setAsterMarketRequest]=useState<{symbol:string;nonce:number}|null>(null);
+  const asterOwnerRef=useRef(asterFavoritesKey);
+  const skipAsterPersist=useRef(false);
+  useEffect(()=>{
+    if(asterOwnerRef.current===asterFavoritesKey)return;
+    asterOwnerRef.current=asterFavoritesKey;
+    skipAsterPersist.current=true;
+    setAsterWatchlist(readLighterFavorites(asterFavoritesKey));
+  },[asterFavoritesKey]);
+  useEffect(()=>{
+    if(asterOwnerRef.current!==asterFavoritesKey)return;
+    if(skipAsterPersist.current){skipAsterPersist.current=false;return;}
+    try{localStorage.setItem(asterFavoritesKey,JSON.stringify(asterWatchlist));}catch{}
+  },[asterFavoritesKey,asterWatchlist]);
+  const toggleAsterFavorite=useCallback((symbol:string)=>{
+    const id=String(symbol||"").toUpperCase();if(!id)return;
+    setAsterWatchlist(prev=>prev.includes(id)?prev.filter(x=>x!==id):[...prev,id]);
+  },[]);
+  const onAsterCatalog=useCallback((rows:TokenMetadata[])=>{
+    setAsterSidebarTokens(prev=>{
+      if(prev.length===rows.length&&prev.every((t,i)=>
+        t.symbol===rows[i].symbol&&t.price===rows[i].price))return prev;
       return rows;
     });
   },[]);
@@ -3870,14 +3907,19 @@ export default function App() {
             onDisconnectWallet={handleDisconnectWallet}
             isMobileOpen={mobileSidebarOpen}
             onCloseMobile={() => setMobileSidebarOpen(false)}
-            watchlist={selectedExchange === "lighter" ? lighterWatchlist : watchlist}
-            onToggleWatchlist={selectedExchange === "lighter" ? toggleLighterFavorite : handleToggleWatchlist}
+            watchlist={selectedExchange === "lighter" ? lighterWatchlist :
+              selectedExchange === "aster" ? asterWatchlist : watchlist}
+            onToggleWatchlist={selectedExchange === "lighter" ? toggleLighterFavorite :
+              selectedExchange === "aster" ? toggleAsterFavorite : handleToggleWatchlist}
             onSelectToken={(symbol) => {
               if(selectedExchange==="hyperliquid")setSelectedSymbol(symbol);
-              else if(lighterSidebarTokens.some(t=>t.symbol===symbol))
+              else if(selectedExchange==="lighter"&&lighterSidebarTokens.some(t=>t.symbol===symbol))
                 setLighterMarketRequest(prev=>({symbol,nonce:(prev?.nonce??0)+1}));
+              else if(selectedExchange==="aster"&&asterSidebarTokens.some(t=>t.symbol===symbol))
+                setAsterMarketRequest(prev=>({symbol,nonce:(prev?.nonce??0)+1}));
             }}
-            tokens={selectedExchange === "lighter" ? lighterSidebarTokens : tokens}
+            tokens={selectedExchange === "lighter" ? lighterSidebarTokens :
+              selectedExchange === "aster" ? asterSidebarTokens : tokens}
           />
         )}
 
@@ -4206,6 +4248,41 @@ export default function App() {
                 section === "funds" ? ActiveTab.Portfolio :
                 section === "account" ? ActiveTab.Profile :
                 marketKind === "spot" ? ActiveTab.Spot : ActiveTab.Perp
+              )}
+            />
+          )}
+
+          {/* ASTER: existing shared HideDex chart, order book, order form and
+              market selector, supplied with ASTER-only read-only V3 data.
+              No signed Aster orders, deposits or account data are implied. */}
+          {selectedExchange === "aster" && (
+            activeTab === ActiveTab.Markets || activeTab === ActiveTab.Dashboard ||
+            activeTab === ActiveTab.Spot || activeTab === ActiveTab.Perp ||
+            activeTab === ActiveTab.Portfolio || activeTab === ActiveTab.Profile ||
+            activeTab === ActiveTab.Orders || activeTab === ActiveTab.TradeHistory
+          ) && (
+            <AsterVenueAdapter
+              walletAddress={walletConnected?walletAddress:""}
+              onConnectWallet={()=>setShowWalletModal(true)}
+              section={
+                activeTab===ActiveTab.Dashboard?"dashboard":
+                activeTab===ActiveTab.Markets?"markets":
+                activeTab===ActiveTab.Portfolio?"funds":
+                activeTab===ActiveTab.Profile?"account":
+                activeTab===ActiveTab.Orders||activeTab===ActiveTab.TradeHistory?"orders":"trade"
+              }
+              initialKind={activeTab===ActiveTab.Spot?"spot":"perp"}
+              onMarketCatalog={onAsterCatalog}
+              watchlist={asterWatchlist}
+              onToggleFavorite={toggleAsterFavorite}
+              sidebarMarketRequest={asterMarketRequest}
+              initialOrdersTab={activeTab===ActiveTab.TradeHistory?"TRADE_HISTORY":"OPEN_ORDERS"}
+              onSelectSection={(section,kind)=>setActiveTab(
+                section==="dashboard"?ActiveTab.Dashboard:
+                section==="markets"?ActiveTab.Markets:
+                section==="funds"?ActiveTab.Portfolio:
+                section==="account"?ActiveTab.Profile:
+                kind==="spot"?ActiveTab.Spot:ActiveTab.Perp
               )}
             />
           )}
