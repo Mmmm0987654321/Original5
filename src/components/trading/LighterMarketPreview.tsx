@@ -29,6 +29,7 @@ import HideDexOrderBookPanel, {type HideDexBookLevel} from "./HideDexOrderBookPa
 import {HideDexTradeGrid,HideDexOrderForm,HideDexTopMarketPane} from "./HideDexTradeLayout";
 import {HideDexTradePercentPresets,HideDexTradeOptionToggle} from "./HideDexTradeOptions";
 import HideDexTradeTriggerPrice from "./HideDexTradeTriggerPrice";
+import HideDexTradeOutcomeInput from "./HideDexTradeOutcomeInput";
 import HideDexMobileMarketHeader from "./HideDexMobileMarketHeader";
 import HideDexDesktopMarketBar from "./HideDexDesktopMarketBar";
 import HideDexMarketInfoDropdown from "./HideDexMarketInfoDropdown";
@@ -135,6 +136,12 @@ export default function LighterMarketPreview({
   const [attachTpSl, setAttachTpSl] = useState(false);
   const [takeProfit, setTakeProfit] = useState("");
   const [stopLoss, setStopLoss] = useState("");
+  const [tpUnit,setTpUnit] = useState<"%"|"$">("%");
+  const [slUnit,setSlUnit] = useState<"%"|"$">("%");
+  const [tpGainInput,setTpGainInput] = useState("");
+  const [slLossInput,setSlLossInput] = useState("");
+  const [showTpUnitDropdown,setShowTpUnitDropdown] = useState(false);
+  const [showSlUnitDropdown,setShowSlUnitDropdown] = useState(false);
   const [openOrdersError, setOpenOrdersError] = useState("");
   const [liveOrders, setLiveOrders] = useState<Awaited<ReturnType<typeof getLighterSignedOpenOrders>> | null>(null);
 
@@ -545,6 +552,25 @@ export default function LighterMarketPreview({
   // before signing, but never combine independent subaccounts for order sizing.
   const displayTradingAccount = signedAccount ?? (publicAccounts?.length===1 ? publicAccounts[0] : null);
   const inputPrice = orderType === "limit" ? Number(limitPrice) : marketPrice;
+  // Original4 presentation: gain/loss fields represent *price change* from
+  // the selected entry/limit reference, never execution PnL or guaranteed fill.
+  const lighterTargetRef = inputPrice != null && Number.isFinite(inputPrice) && inputPrice>0 ? inputPrice : null;
+  const fromLighterPrice=(value:string,kind:"tp"|"sl",unit:"%"|"$"):string=>{
+    const trigger=Number(value);
+    if(!value.trim()||!Number.isFinite(trigger)||lighterTargetRef===null)return "";
+    const direction=side==="buy"?1:-1;
+    const change=(trigger-lighterTargetRef)*(kind==="tp"?direction:-direction);
+    return (unit==="%"?100*change/lighterTargetRef:change).toFixed(2);
+  };
+  const toLighterPrice=(value:string,kind:"tp"|"sl",unit:"%"|"$"):string=>{
+    const v=Number(value);
+    if(!value.trim()||!Number.isFinite(v)||lighterTargetRef===null)return "";
+    const direction=side==="buy"?1:-1;
+    const change=(unit==="%"?lighterTargetRef*v/100:v)*(kind==="tp"?direction:-direction);
+    const result=lighterTargetRef+change;
+    const decimals=Math.min(8,Math.max(2,selected?.priceDecimals??2));
+    return Number.isFinite(result)&&result>0?result.toFixed(decimals):"";
+  };
   const inputAmount = Number(amount);
   const sizeInCoin = Number.isFinite(inputAmount) && inputAmount > 0 && inputPrice !== null && inputPrice > 0
     ? sizeUnit === "USD" ? inputAmount / inputPrice : inputAmount : 0;
@@ -956,11 +982,22 @@ export default function LighterMarketPreview({
                 onChange={setAttachTpSl}/>
             </div>
             {attachTpSl && !reduceOnly && <div className="grid grid-cols-2 gap-1.5 md:gap-2 animate-in fade-in slide-in-from-top-1 duration-150">
-              <HideDexTradeTriggerPrice kind="tp" value={takeProfit}
-                onChange={e=>setTakeProfit(e.target.value)} disabled={tradingBusy}/>
-              <HideDexTradeTriggerPrice kind="sl" value={stopLoss}
-                onChange={e=>setStopLoss(e.target.value)} disabled={tradingBusy}/>
-              <p className="col-span-2 text-[9px] text-brand-muted">Lighter native atomic TP/SL is available only for supported perpetual entries.</p>
+              <div className="relative"><HideDexTradeTriggerPrice kind="tp" value={takeProfit}
+                onChange={e=>{setTakeProfit(e.target.value);setTpGainInput(fromLighterPrice(e.target.value,"tp",tpUnit));}}
+                disabled={tradingBusy}/></div>
+              <HideDexTradeOutcomeInput kind="tp" value={tpGainInput} unit={tpUnit}
+                open={showTpUnitDropdown} onToggle={()=>setShowTpUnitDropdown(v=>!v)}
+                onUnit={next=>{setTpUnit(next);setTpGainInput(fromLighterPrice(takeProfit,"tp",next));setShowTpUnitDropdown(false);}}
+                onChange={value=>{setTpGainInput(value);setTakeProfit(toLighterPrice(value,"tp",tpUnit));}}
+                disabled={tradingBusy}/>
+              <div className="relative"><HideDexTradeTriggerPrice kind="sl" value={stopLoss}
+                onChange={e=>{setStopLoss(e.target.value);setSlLossInput(fromLighterPrice(e.target.value,"sl",slUnit));}}
+                disabled={tradingBusy}/></div>
+              <HideDexTradeOutcomeInput kind="sl" value={slLossInput} unit={slUnit}
+                open={showSlUnitDropdown} onToggle={()=>setShowSlUnitDropdown(v=>!v)}
+                onUnit={next=>{setSlUnit(next);setSlLossInput(fromLighterPrice(stopLoss,"sl",next));setShowSlUnitDropdown(false);}}
+                onChange={value=>{setSlLossInput(value);setStopLoss(toLighterPrice(value,"sl",slUnit));}}
+                disabled={tradingBusy}/>
             </div>}
           </>}
           <div className="bg-brand-bg/50 border border-brand-border rounded-lg p-1.5 font-mono text-[9px] space-y-0.5">

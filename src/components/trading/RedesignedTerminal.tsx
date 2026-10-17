@@ -78,6 +78,7 @@ import HideDexOrderBookPanel from "./HideDexOrderBookPanel";
 import {HideDexTradeGrid,HideDexOrderForm,HideDexTopMarketPane} from "./HideDexTradeLayout";
 import {HideDexTradePercentPresets,HideDexTradeOptionToggle} from "./HideDexTradeOptions";
 import HideDexTradeTriggerPrice from "./HideDexTradeTriggerPrice";
+import HideDexTradeOutcomeInput from "./HideDexTradeOutcomeInput";
 import HideDexMobileMarketHeader from "./HideDexMobileMarketHeader";
 import HideDexDesktopMarketBar from "./HideDexDesktopMarketBar";
 import HideDexMarketInfoDropdown from "./HideDexMarketInfoDropdown";
@@ -4870,78 +4871,21 @@ export default function RedesignedTerminal({
                         />
                       </div>
 
-                      {/* Gain Percentage/Dollar Input with Dropdown */}
-                      <div className="relative">
-                        <div className="flex h-[34px] md:h-[38px] bg-brand-surface border border-brand-border focus-within:border-[#18c29c]/60 rounded-[10px] overflow-hidden transition-all px-3 items-center justify-between">
-                          <input
-                            type="number"
-                            step="any"
-                            value={tpGainInput}
-                            onChange={(e) => {
-                              setTpGainInput(e.target.value);
-                              const gainVal = parseFloat(e.target.value);
-                              if (!isNaN(gainVal) && basePrice > 0) {
-                                if (tpUnit === "%") {
-                                  const targetPrice = orderSide === "BUY"
-                                    ? basePrice * (1 + gainVal / 100)
-                                    : basePrice * (1 - gainVal / 100);
-                                  setTpPriceInput(targetPrice.toFixed(2));
-                                } else {
-                                  const targetPrice = orderSide === "BUY"
-                                    ? basePrice + gainVal
-                                    : basePrice - gainVal;
-                                  setTpPriceInput(targetPrice.toFixed(2));
-                                }
-                              } else {
-                                setTpPriceInput("");
-                              }
-                            }}
-                            className="w-full bg-transparent text-xs text-brand-text font-mono focus:outline-none placeholder:text-brand-muted placeholder:font-semibold placeholder:font-sans pr-1"
-                            placeholder={tpUnit === "%" ? "Gain %" : "Gain $"}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowTpUnitDropdown(!showTpUnitDropdown)}
-                            className="flex items-center gap-1 text-[10px] font-bold text-brand-sub hover:text-brand-text transition-colors cursor-pointer select-none"
-                          >
-                            <span className="text-xs font-semibold text-brand-sub">{tpUnit === "%" ? "%" : "$"}</span>
-                            <ChevronDown className={`w-3 h-3 text-brand-muted transition-transform ${showTpUnitDropdown ? "rotate-180" : ""}`} />
-                          </button>
-                        </div>
-
-                        {showTpUnitDropdown && (
-                          <>
-                            <div className="fixed inset-0 z-35" onClick={() => setShowTpUnitDropdown(false)} />
-                            <div className="absolute right-0 top-[40px] w-[50px] bg-brand-card border border-brand-border rounded-[10px] shadow-2xl z-50 flex flex-col py-1 divide-y divide-brand-border/50 animate-in fade-in duration-100">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  handleTpUnitChange("$");
-                                  setShowTpUnitDropdown(false);
-                                }}
-                                className={`w-full py-1.5 text-[10px] font-bold text-center cursor-pointer transition-colors ${
-                                  tpUnit === "$" ? "text-[#4bf2c6]" : "text-brand-sub hover:text-brand-text"
-                                }`}
-                              >
-                                $
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  handleTpUnitChange("%");
-                                  setShowTpUnitDropdown(false);
-                                }}
-                                className={`w-full py-1.5 text-[10px] font-bold text-center cursor-pointer transition-colors ${
-                                  tpUnit === "%" ? "text-[#4bf2c6]" : "text-brand-sub hover:text-brand-text"
-                                }`}
-                              >
-                                %
-                              </button>
-                            </div>
-                          </>
-                        )}
-                      </div>
-
+                      {/* Original4 Gain Percentage/Dollar Input with Dropdown */}
+                      <HideDexTradeOutcomeInput kind="tp" value={tpGainInput} unit={tpUnit}
+                        open={showTpUnitDropdown} onToggle={()=>setShowTpUnitDropdown(v=>!v)}
+                        onUnit={unit=>{handleTpUnitChange(unit);setShowTpUnitDropdown(false);}}
+                        onChange={value=>{
+                          setTpGainInput(value);
+                          const gainVal=parseFloat(value);
+                          if(!isNaN(gainVal)&&basePrice>0) {
+                            const targetPrice=tpUnit==="%"
+                              ? (orderSide==="BUY"?basePrice*(1+gainVal/100):basePrice*(1-gainVal/100))
+                              : (orderSide==="BUY"?basePrice+gainVal:basePrice-gainVal);
+                            setTpPriceInput(targetPrice.toFixed(2));
+                          } else setTpPriceInput("");
+                        }}/>
+                      
                       {/* Stop Loss Target Price */}
                       <div className="relative">
                         <HideDexTradeTriggerPrice kind="sl"
@@ -4970,77 +4914,21 @@ export default function RedesignedTerminal({
                         />
                       </div>
 
-                      {/* Loss Percentage/Dollar Input with Dropdown */}
-                      <div className="relative">
-                        <div className="flex h-[34px] md:h-[38px] bg-brand-surface border border-brand-border focus-within:border-rose-500/50 rounded-[10px] overflow-hidden transition-all px-3 items-center justify-between">
-                          <input
-                            type="number"
-                            step="any"
-                            value={slLossInput}
-                            onChange={(e) => {
-                              setSlLossInput(e.target.value);
-                              const lossVal = parseFloat(e.target.value);
-                              if (!isNaN(lossVal) && basePrice > 0) {
-                                if (slUnit === "%") {
-                                  const targetPrice = orderSide === "BUY"
-                                    ? basePrice * (1 - lossVal / 100)
-                                    : basePrice * (1 + lossVal / 100);
-                                  setSlPriceInput(targetPrice.toFixed(2));
-                                } else {
-                                  const targetPrice = orderSide === "BUY"
-                                    ? basePrice - lossVal
-                                    : basePrice + lossVal;
-                                  setSlPriceInput(targetPrice.toFixed(2));
-                                }
-                              } else {
-                                setSlPriceInput("");
-                              }
-                            }}
-                            className="w-full bg-transparent text-xs text-brand-text font-mono focus:outline-none placeholder:text-brand-muted placeholder:font-semibold placeholder:font-sans pr-1"
-                            placeholder={slUnit === "%" ? "Loss %" : "Loss $"}
-                          />
-                          <button
-                            type="button"
-                            onClick={() => setShowSlUnitDropdown(!showSlUnitDropdown)}
-                            className="flex items-center gap-1 text-[10px] font-bold text-brand-sub hover:text-brand-text transition-colors cursor-pointer select-none"
-                          >
-                            <span className="text-xs font-semibold text-brand-sub">{slUnit === "%" ? "%" : "$"}</span>
-                            <ChevronDown className={`w-3 h-3 text-brand-muted transition-transform ${showSlUnitDropdown ? "rotate-180" : ""}`} />
-                          </button>
-                        </div>
+                      {/* Original4 Loss Percentage/Dollar Input with Dropdown */}
+                      <HideDexTradeOutcomeInput kind="sl" value={slLossInput} unit={slUnit}
+                        open={showSlUnitDropdown} onToggle={()=>setShowSlUnitDropdown(v=>!v)}
+                        onUnit={unit=>{handleSlUnitChange(unit);setShowSlUnitDropdown(false);}}
+                        onChange={value=>{
+                          setSlLossInput(value);
+                          const lossVal=parseFloat(value);
+                          if(!isNaN(lossVal)&&basePrice>0) {
+                            const targetPrice=slUnit==="%"
+                              ? (orderSide==="BUY"?basePrice*(1-lossVal/100):basePrice*(1+lossVal/100))
+                              : (orderSide==="BUY"?basePrice-lossVal:basePrice+lossVal);
+                            setSlPriceInput(targetPrice.toFixed(2));
+                          } else setSlPriceInput("");
+                        }}/>
 
-                        {showSlUnitDropdown && (
-                          <>
-                            <div className="fixed inset-0 z-35" onClick={() => setShowSlUnitDropdown(false)} />
-                            <div className="absolute right-0 top-[40px] w-[50px] bg-brand-card border border-brand-border rounded-[10px] shadow-2xl z-50 flex flex-col py-1 divide-y divide-brand-border/50 animate-in fade-in duration-100">
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  handleSlUnitChange("$");
-                                  setShowSlUnitDropdown(false);
-                                }}
-                                className={`w-full py-1.5 text-[10px] font-bold text-center cursor-pointer transition-colors ${
-                                  slUnit === "$" ? "text-[#18c29c]" : "text-brand-sub hover:text-brand-text"
-                                }`}
-                              >
-                                $
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  handleSlUnitChange("%");
-                                  setShowSlUnitDropdown(false);
-                                }}
-                                className={`w-full py-1.5 text-[10px] font-bold text-center cursor-pointer transition-colors ${
-                                  slUnit === "%" ? "text-[#18c29c]" : "text-brand-sub hover:text-brand-text"
-                                }`}
-                              >
-                                %
-                              </button>
-                            </div>
-                          </>
-                        )}
-                      </div>
                     </div>
                   )}
                 </div>
