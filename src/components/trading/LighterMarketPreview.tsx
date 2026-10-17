@@ -16,7 +16,7 @@ import {
   verifyLighterTradingKey, updateLighterPerpMargin, setLighterPositionTriggers,
   lighterPositionTriggerKind, matchesLighterPositionTrigger, type LighterTradingIdentity,
 } from "../../lib/lighterTrading";
-import { depositLighterUsdcOnEthereum, depositLighterUsdcFromArbitrum, type LighterWalletProvider } from "../../lib/lighterFunding";
+import { depositLighterUsdcOnEthereum, depositLighterUsdcFromArbitrum, quoteLighterEthereumDepositNetworkFee, type LighterWalletProvider } from "../../lib/lighterFunding";
 import TVChart from "./TVChart";
 import TopOrderBookView from "./TopOrderBookView";
 import MarketsPanel from "../dashboard/MarketsPanel";
@@ -162,6 +162,7 @@ export default function LighterMarketPreview({
   const [orderBookSizeUnit, setOrderBookSizeUnit] = useState<"USD" | "COIN">("USD");
   const [fundsModal, setFundsModal] = useState<"deposit" | "withdraw" | null>(null);
   const [depositAmount, setDepositAmount] = useState("");
+  const [depositFeeQuote, setDepositFeeQuote] = useState<string|null>(null);
   const [depositNetwork, setDepositNetwork] = useState<"arbitrum" | "ethereum">("arbitrum");
   const [fundingBusy, setFundingBusy] = useState(false);
   const [fundingStatus, setFundingStatus] = useState("");
@@ -956,6 +957,23 @@ export default function LighterMarketPreview({
     return ()=>{stopped=true;controller.abort();};
   },[walletAddress,section,performancePeriod]);
 
+  // Fee preview is READ ONLY and conditional on the existing Ethereum
+  // allowance. Missing allowance / different network means wallet will quote
+  // approval + deposit gas at signing; never fabricate a zero fee.
+  useEffect(()=>{
+    setDepositFeeQuote(null);
+    if(fundsModal!=="deposit"||depositNetwork!=="ethereum"||
+       !walletAddress||!depositAmount.trim())return;
+    let cancelled=false;
+    const timer=window.setTimeout(()=>{
+      quoteLighterEthereumDepositNetworkFee({
+        walletAddress,amount:depositAmount,getWalletProvider
+      }).then(value=>{if(!cancelled)setDepositFeeQuote(value);})
+        .catch(()=>{if(!cancelled)setDepositFeeQuote(null);});
+    },750);
+    return ()=>{cancelled=true;window.clearTimeout(timer);};
+  },[fundsModal,depositNetwork,depositAmount,walletAddress,getWalletProvider]);
+
   // Keep Lighter balances, collateral and positions fresh even when the
   // user makes a transaction outside HideDex. Read-only refresh; no signing.
   useEffect(() => {
@@ -1239,7 +1257,12 @@ export default function LighterMarketPreview({
 
   const lighterBalanceRows: HideDexBalanceItem[] | null = publicAccounts===null ? null :
     publicAccounts.flatMap(account=>{
-      const assets=account.assets?.map(asset=>({
+      // Spot USDC and Perp collateral are different ledger routes. Do not
+      // double-count them, but also do not add a second empty USDC card.
+      // Nonzero / locked Spot balances remain individually visible.
+      const assets=account.assets?.filter(asset=>
+        asset.balance>0 || (asset.lockedBalance!==null && asset.lockedBalance>0)
+      ).map(asset=>({
         id:account.index+":"+asset.symbol+":spot",symbol:asset.symbol,
         name:"Spot · Lighter Account #"+account.index,
         total:asset.balance,locked:asset.lockedBalance,
@@ -2008,9 +2031,21 @@ export default function LighterMarketPreview({
                 ? "Requires Arbitrum native USDC and ETH gas. The official CCTP bridge may credit Lighter after 15–20 minutes."
                 : "Requires Ethereum-mainnet USDC and ETH gas. An exact-amount USDC approval may be required."}
             </p>
-            <HideDexFundingFeeCard deposit fee={null} receive={null}/>
+            <HideDexFundingFeeCard deposit
+              fee={depositNetwork==="ethereum"
+                ?depositFeeQuote??"Wallet quotes ETH gas at confirmation"
+                :"Wallet quotes Arbitrum gas; CCTP fee not quoted"}
+              receive={depositNetwork==="ethereum"&&
+                /^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?$/.test(depositAmount.trim())&&
+                Number(depositAmount)>=1
+                  ?Number(depositAmount).toLocaleString("en-US",{maximumFractionDigits:6})+
+                    " USDC (direct credit, gas separate)"
+                  :"—"}
+            />
             <HideDexFundingSubmit deposit busy={fundingBusy}
-              disabled={!walletAddress||!depositAmount.trim()}
+              disabled={!walletAddress||!Number.isFinite(Number(depositAmount))||
+                Number(depositAmount)<(depositNetwork==="arbitrum"?5:1)||
+                !/^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?$/.test(depositAmount.trim())}
               label="Deposit Collateral"
               onClick={async () => {
                 if (fundingBusy) return;
@@ -2040,11 +2075,19 @@ export default function LighterMarketPreview({
             <HideDexFundingAmount id="lighter-withdraw-amount" amount={withdrawAmount}
               onAmount={setWithdrawAmount} disabled={!tradingIdentity||fundingBusy}
               balanceLabel="Available Balance"
-              balance={displayTradingAccount?.availableBalance==null?"—":formatPrice(displayTradingAccount.availableBalance,4)+" USDC"}/>
-            <p className="text-[10px] text-brand-muted">Destination: {walletAddress || "Connect wallet"}. Network fees, account minimums and final timing are determined by Lighter.</p>
-            <HideDexFundingFeeCard deposit={false} fee={null} receive={null}/>
+              balance={displayTradingAccount?.availableBalance==null?"—":formatPrice(displayTradingAccount.availableBalance,4)+" USDC"}
+              minLabel="Minimum secure withdrawal: 1 USDC. Destination: your account owner wallet on Ethereum."/>
+            <p className="text-[10px] text-brand-muted">Destination: {walletAddress || "Connect wallet"}. This is the secure Ethereum settlement route (not fast withdrawal). Settlement may require an L1 claim; Lighter does not publish a fixed fee quote for this action.</p>
+            <HideDexFundingFeeCard deposit={false}
+              fee="Not quoted by Lighter"
+              receive={null}/>
             <HideDexFundingSubmit deposit={false} busy={fundingBusy}
-              disabled={!tradingIdentity||!withdrawAmount.trim()} onClick={submitWithdrawal}
+              disabled={!tradingIdentity||!withdrawAmount.trim()||
+                !/^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?$/.test(withdrawAmount.trim())||
+                Number(withdrawAmount)<1||
+                displayTradingAccount?.availableBalance==null||
+                Number(withdrawAmount)>displayTradingAccount.availableBalance}
+              onClick={submitWithdrawal}
               label="Withdraw Assets"/>
           </>}
           {fundingStatus && <p role="status" className="text-xs break-all rounded-lg border border-brand-border p-2">{fundingStatus}</p>}
