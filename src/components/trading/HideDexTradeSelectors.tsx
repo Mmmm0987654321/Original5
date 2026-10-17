@@ -24,13 +24,11 @@ export interface HideDexTradeSelectorsProps {
  onLeverage?: (next:number) => void;
  onLeverageCommit?: (next:number) => void;
  leverageDisabled?: boolean;
- onApplySettings?:()=>void; settingsBusy?:boolean; settingsMessage?:string;
 }
 export default function HideDexTradeSelectors({
  isPerp,orderType,onOrderType,availableOrderTypes,
  marginMode = "CROSS",onMarginMode,disabledMarginModes=[],
  leverage=1,maxLeverage,onLeverage,onLeverageCommit,leverageDisabled=false,
- onApplySettings,settingsBusy=false,settingsMessage,
 }: HideDexTradeSelectorsProps) {
  const [popup,setPopup] = useState<"order"|"margin"|"leverage"|null>(null);
  const host = useRef<HTMLDivElement>(null);
@@ -46,14 +44,6 @@ export default function HideDexTradeSelectors({
  const canLeverage = isPerp && !leverageDisabled && !!onLeverage &&
    typeof maxLeverage === "number" && Number.isFinite(maxLeverage) && maxLeverage >= 1;
  const cap = canLeverage ? Math.max(1,Math.floor(maxLeverage!)) : null;
- const applyAction = onApplySettings && <div className="border-t border-brand-border/50 mt-1 pt-1.5 space-y-1">
-   <p className="text-[9px] text-brand-muted">Draft settings; not active until signed and accepted.</p>
-   <button type="button" disabled={settingsBusy || !cap} onClick={onApplySettings}
-     className="w-full text-[10px] font-bold py-1.5 rounded-lg bg-accent text-brand-bg disabled:opacity-40">
-     {settingsBusy?"Submitting…":"Confirm real margin update"}
-   </button>
-   {settingsMessage && <p role="status" className="text-[9px] text-brand-muted break-all max-h-16 overflow-y-auto">{settingsMessage}</p>}
- </div>;
  return <div ref={host}
    className={`gap-1 md:gap-1.5 text-[10px] md:text-xs items-start ${isPerp
      ? "grid grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)_minmax(0,0.8fr)]" : "flex"}`}>
@@ -83,12 +73,11 @@ export default function HideDexTradeSelectors({
        <span className="capitalize text-[10px] truncate whitespace-nowrap">{marginMode.toLowerCase()}</span>
        <ChevronDown className="w-3 h-3 text-gray-500 shrink-0"/>
      </button>
-     {popup==="margin" && <div role="menu" className={"absolute left-0 mt-1 "+(onApplySettings?"w-44":"w-24")+" bg-brand-bg border border-brand-border rounded-lg shadow-xl z-50 p-1"}>
+     {popup==="margin" && <div role="menu" className="absolute left-0 mt-1 w-24 bg-brand-bg border border-brand-border rounded-lg shadow-xl z-50 p-1">
        {(["CROSS","ISOLATED"] as const).map(mode=>
          <button type="button" role="menuitem" key={mode} disabled={disabledMarginModes.includes(mode)}
-           onClick={() => {onMarginMode?.(mode);if(!onApplySettings)setPopup(null);}}
+           onClick={() => {onMarginMode?.(mode);setPopup(null);}}
            className={`w-full text-left px-2 py-1 text-[10px] rounded transition-colors font-bold ${marginMode===mode?"text-cyan-400 bg-brand-overlay-normal":"text-gray-400 hover:text-brand-text"} disabled:opacity-40 disabled:cursor-not-allowed`}>{mode}</button>)}
-       {applyAction}
      </div>}
    </div>}
    {isPerp && <div className="relative min-w-0">
@@ -112,10 +101,9 @@ export default function HideDexTradeSelectors({
        <div className="grid grid-cols-4 gap-1">
          {[2,5,10,cap].filter((v,i,arr)=>v<=cap && arr.indexOf(v)===i).map(v=>
            <button type="button" key={v}
-             onClick={()=>{onLeverage?.(v);onLeverageCommit?.(v);if(!onApplySettings)setPopup(null);}}
+             onClick={()=>{onLeverage?.(v);onLeverageCommit?.(v);setPopup(null);}}
              className={`py-0.5 rounded text-[8px] text-center font-bold border ${leverage===v?"bg-accent/10 border-accent text-accent":"bg-brand-overlay-subtle border-brand-border text-gray-400 hover:text-brand-text"}`}>{v===cap?"Max":v+"x"}</button>)}
        </div>
-       {applyAction}
      </div>}
    </div>}
  </div>;
