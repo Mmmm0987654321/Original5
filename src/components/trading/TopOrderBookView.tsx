@@ -14,6 +14,7 @@ interface TopOrderBookViewProps {
   bids: { price: number; size: number; total: number }[];
   onSelectPrice?: (price: number) => void;
   priceDecimals?: number;
+  quoteSymbol?:string;
 }
 
 export const TopOrderBookView: React.FC<TopOrderBookViewProps> = React.memo(({
@@ -23,6 +24,7 @@ export const TopOrderBookView: React.FC<TopOrderBookViewProps> = React.memo(({
   bids,
   onSelectPrice,
   priceDecimals,
+  quoteSymbol="USDC",
 }) => {
   const isPurr = symbol.toUpperCase() === "PURR";
   const decimals = priceDecimals !== undefined && Number.isInteger(priceDecimals) && priceDecimals >= 0 && priceDecimals <= 12 ? priceDecimals : isPurr ? 4 : 2;
@@ -54,7 +56,7 @@ export const TopOrderBookView: React.FC<TopOrderBookViewProps> = React.memo(({
       <div className="flex items-center justify-between pb-2.5 border-b border-brand-border text-xs">
         <div className="flex items-center gap-3">
           <span className="font-sans font-black text-brand-text text-sm sm:text-base">
-            ORDER BOOK <span className="text-brand-sub font-medium">({symbol}/USDC)</span>
+            ORDER BOOK <span className="text-brand-sub font-medium">({symbol}/{quoteSymbol})</span>
           </span>
           <div className="hidden sm:flex items-center gap-2 text-[11px] text-brand-sub font-semibold">
             <span>Spread: <strong className="text-brand-text">{spread > 0 ? `$${spread.toFixed(decimals)} (${spreadPercent.toFixed(3)}%)` : "--"}</strong></span>
@@ -75,7 +77,7 @@ export const TopOrderBookView: React.FC<TopOrderBookViewProps> = React.memo(({
           <div className="flex items-center justify-between text-[11px] font-sans font-bold text-brand-sub uppercase tracking-wider pb-2 border-b border-brand-border mb-1.5">
             <span className="text-rose-600 dark:text-rose-400 font-black">Asks (Sell)</span>
             <span>Size ({symbol})</span>
-            <span>Total ($)</span>
+            <span>Total ({quoteSymbol})</span>
           </div>
           <div className="space-y-1 overflow-y-auto max-h-[260px] pr-1 scrollbar-thin">
             {hasAsks ? (
@@ -110,7 +112,7 @@ export const TopOrderBookView: React.FC<TopOrderBookViewProps> = React.memo(({
           <div className="flex items-center justify-between text-[11px] font-sans font-bold text-brand-sub uppercase tracking-wider pb-2 border-b border-brand-border mb-1.5">
             <span className="text-emerald-600 dark:text-emerald-400 font-black">Bids (Buy)</span>
             <span>Size ({symbol})</span>
-            <span>Total ($)</span>
+            <span>Total ({quoteSymbol})</span>
           </div>
           <div className="space-y-1 overflow-y-auto max-h-[260px] pr-1 scrollbar-thin">
             {hasBids ? (
