@@ -271,7 +271,14 @@ export default function LighterMarketPreview({
   };
 
   const closeLighterPosition = async (accountIndex: number, symbol: string, signedSize: number) => {
-    if (!walletAddress || !tradingIdentity || tradingBusy) return;
+    if (!walletAddress || tradingBusy) return;
+    if (!tradingIdentity) {
+      // Original HideDex behavior: request signing through the bottom sheet
+      // only after the user explicitly selects Close. Never auto-close.
+      setTradingNotice("");
+      setAuthSheetOpen(true);
+      return;
+    }
     if (accountIndex !== tradingIdentity.accountIndex) {
       setTradingNotice("Select the registered signer for this Lighter subaccount before closing.");
       return;
@@ -674,8 +681,8 @@ export default function LighterMarketPreview({
                     roi={null}
                     shareAction={!isExpanded && <button type="button"
                       onClick={event=>{event.preventDefault();event.stopPropagation();closeLighterPosition(a.index,p.symbol,p.signedSize);}}
-                      disabled={tradingBusy||!tradingIdentity||tradingIdentity.accountIndex!==a.index}
-                      title={!tradingIdentity?"Enable trading to close this real position":tradingIdentity.accountIndex!==a.index?"Select signer for this account":"Close real Lighter position"}
+                      disabled={tradingBusy}
+                      title={!tradingIdentity?"Tap to enable trading for this position":tradingIdentity.accountIndex!==a.index?"Select signer for this account":"Close real Lighter position"}
                       className="px-2 py-1 rounded border border-brand-loss/40 bg-brand-loss/10 text-brand-loss text-[9px] font-extrabold uppercase disabled:opacity-40">
                       Close
                     </button>}
@@ -699,7 +706,7 @@ export default function LighterMarketPreview({
                         TP/SL
                       </button>
                       <button type="button" onClick={()=>closeLighterPosition(a.index,p.symbol,p.signedSize)}
-                        disabled={tradingBusy || !tradingIdentity || tradingIdentity.accountIndex!==a.index}
+                        disabled={tradingBusy}
                         className="w-full h-8 px-1 rounded-lg border bg-brand-loss/10 hover:bg-brand-loss/20 border-brand-loss/30 text-brand-loss text-[8px] sm:text-[10px] font-extrabold uppercase tracking-widest disabled:opacity-40">
                         Close
                       </button>
@@ -985,7 +992,7 @@ export default function LighterMarketPreview({
             </div>
             <div className="border-t border-brand-border/35 pt-2">
               <HideDexTradeOptionToggle kind="tpsl" checked={attachTpSl}
-                disabled={!tradingIdentity || tradingBusy || reduceOnly}
+                disabled={tradingBusy || reduceOnly}
                 onChange={setAttachTpSl}/>
             </div>
             {attachTpSl && !reduceOnly && <div className="grid grid-cols-2 gap-1.5 md:gap-2 animate-in fade-in slide-in-from-top-1 duration-150">
