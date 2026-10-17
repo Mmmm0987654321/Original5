@@ -336,7 +336,9 @@ export default function LighterMarketPreview({
       const request={key:marginKey(selected.id,chosenLeverage,marginMode),
         marketId:selected.id,leverage:chosenLeverage,mode:marginMode,attempt:0};
       if(!await applyLighterMargin(request)){
-        setTradingNotice("Lighter has not accepted the requested leverage. No order sent. "+
+        setTradingNotice(acknowledgedMarginRef.current===request.key?
+          "Waiting for Lighter to confirm "+request.leverage+"x "+request.mode+" leverage. No order sent; account will refresh automatically.":
+          "Lighter has not confirmed the requested leverage. No order sent. "+
           (marginRetryUntilRef.current>Date.now()?"Wait for the API rate-limit cooldown.":"Check your Lighter account settings."));
         return;
       }
@@ -710,7 +712,16 @@ export default function LighterMarketPreview({
   const applyLighterMargin=async(request:{
     key:string;marketId:number;leverage:number;mode:"cross"|"isolated";attempt:number;
   }):Promise<boolean>=>{
-    if(acknowledgedMarginRef.current===request.key)return true;
+    if(acknowledgedMarginRef.current===request.key){
+      // An accepted signed update may still be settling. Do not claim
+      // leverage is active or send a second signed margin update.
+      const verified=verifiedMarketMargin(request.marketId);
+      if(verified?.leverage===request.leverage&&verified.mode===request.mode)
+        return true;
+      setAccountReload(v=>v+1);
+      setMarginStatus("Waiting for Lighter to confirm the selected leverage.");
+      return false;
+    }
     if(marginFlightRef.current){
       // A different margin update is already signed and in flight.
       // Never launch an overlapping nonce write or use a stale snapshot.
@@ -747,11 +758,13 @@ export default function LighterMarketPreview({
            (latestMarginRequestRef.current===null&&
             selected?.id===request.marketId&&chosenLeverage===request.leverage&&
             marginMode===request.mode)){
+          // Prevent repeat signed leverage requests while account state
+          // catches up. Placement remains blocked until verified setting.
           acknowledgedMarginRef.current=request.key;
-          setMarginStatus("Lighter accepted the leverage transaction. Final settings are controlled by Lighter.");
+          setMarginStatus("Lighter accepted the leverage update. Waiting for account confirmation.");
         }
         setAccountReload(v=>v+1);
-        return true;
+        return false;
       }catch(error){
         const text=error instanceof Error?error.message:String(error);
         if(/didn['’]t use volume quota/i.test(text) && tradingIdentity){
