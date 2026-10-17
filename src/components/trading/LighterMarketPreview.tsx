@@ -5,6 +5,7 @@ import HideDexFundsOverview from "../dashboard/HideDexFundsOverview";
 import HideDexAssetAllocation from "../dashboard/HideDexAssetAllocation";
 import HideDexFundsPerformance, {type HideDexPerformancePeriod, type HideDexPerformanceMarket} from "../dashboard/HideDexFundsPerformance";
 import HideDexFundsModalHeader from "../dashboard/HideDexFundsModalHeader";
+import {HideDexFundingNetworkAsset,HideDexFundingDestination,HideDexFundingAmount,HideDexFundingPresets,HideDexFundingSubmit,HideDexFundingFeeNotice} from "../dashboard/HideDexFundingFields";
 import { DailyFillVolumeBars } from "../dashboard/AnalyticsPanel";
 import {
   registerLighterTradingKey, reconnectLighterTradingKey, getActiveLighterSigner,
@@ -1140,23 +1141,25 @@ export default function LighterMarketPreview({
           <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-6 pb-[max(env(safe-area-inset-bottom),1.25rem)] space-y-4">
           {fundsModal === "deposit" ? <>
             <p className="text-xs text-brand-muted">Real USDC → Lighter Perps. Your connected wallet signs on HideDex; no external exchange page.</p>
-            <label className="block text-xs font-semibold" htmlFor="lighter-deposit-network">Deposit network</label>
-            <select id="lighter-deposit-network" value={depositNetwork} disabled={fundingBusy}
-              onChange={event => { setDepositNetwork(event.target.value as "arbitrum" | "ethereum"); setFundingStatus(""); }}
-              className="w-full rounded-xl border border-brand-border bg-brand-overlay-subtle p-3 text-sm">
-              <option value="arbitrum">Arbitrum One · Native USDC</option>
-              <option value="ethereum">Ethereum Mainnet · USDC</option>
-            </select>
-            <label className="block text-xs font-semibold" htmlFor="lighter-deposit-amount">USDC amount (minimum {depositNetwork === "arbitrum" ? "5" : "1"})</label>
-            <input id="lighter-deposit-amount" type="text" inputMode="decimal" autoComplete="off"
-              value={depositAmount} disabled={fundingBusy} onChange={event => setDepositAmount(event.target.value)}
-              placeholder="1.00" className="w-full bg-brand-bg border border-brand-border rounded-xl px-3.5 py-2.5 text-xl font-bold font-mono disabled:opacity-50"/>
+            <HideDexFundingNetworkAsset
+              network={depositNetwork==="arbitrum"?"Arbitrum One":"Ethereum Mainnet"}
+              chainId={depositNetwork==="arbitrum"?42161:1}
+              options={[{value:"arbitrum",label:"Arbitrum One"},{value:"ethereum",label:"Ethereum Mainnet"}]}
+              value={depositNetwork} disabled={fundingBusy}
+              onNetworkChange={v=>{setDepositNetwork(v as "arbitrum"|"ethereum");setFundingStatus("");}}
+            />
+            <HideDexFundingAmount id="lighter-deposit-amount" amount={depositAmount}
+              onAmount={setDepositAmount} disabled={fundingBusy}
+              minLabel={`Minimum deposit: ${depositNetwork==="arbitrum"?5:1} USDC`}/>
             <p className="text-[11px] text-brand-muted">
               {depositNetwork === "arbitrum"
                 ? "Requires Arbitrum native USDC and ETH gas. The official CCTP bridge may credit Lighter after 15–20 minutes."
                 : "Requires Ethereum-mainnet USDC and ETH gas. An exact-amount USDC approval may be required."}
             </p>
-            <button type="button" disabled={fundingBusy || !walletAddress || !depositAmount.trim()}
+            <HideDexFundingFeeNotice>Bridge timing and fees depend on the selected network; the wallet confirms the real transaction.</HideDexFundingFeeNotice>
+            <HideDexFundingSubmit deposit busy={fundingBusy}
+              disabled={!walletAddress||!depositAmount.trim()}
+              label="Deposit Collateral"
               onClick={async () => {
                 if (fundingBusy) return;
                 setFundingBusy(true);
@@ -1175,25 +1178,24 @@ export default function LighterMarketPreview({
                 } finally {
                   setFundingBusy(false);
                 }
-              }}
-              className="w-full py-3.5 px-4 rounded-xl bg-accent hover:opacity-90 text-brand-bg font-bold text-sm shadow-md disabled:opacity-50">
-              {fundingBusy ? "Confirm in wallet…" : "Deposit USDC"}
-            </button>
+              }} />
           </> : <>
             <p className="text-xs text-brand-muted">Secure STANDARD USDC withdrawal to the L1 wallet that owns this Lighter account. No external website and no arbitrary recipient. Wallet and Lighter ownership are verified before submission.</p>
             {!tradingIdentity && <button type="button" onClick={() => setAuthSheetOpen(true)}
               className="text-xs font-bold text-accent underline">Enable Lighter trading to withdraw</button>}
-            <label className="block text-xs font-bold" htmlFor="lighter-withdraw-amount">Withdrawal amount (USDC)</label>
-            <input id="lighter-withdraw-amount" type="text" inputMode="decimal" autoComplete="off"
-              disabled={!tradingIdentity || fundingBusy} value={withdrawAmount}
-              onChange={e => setWithdrawAmount(e.target.value)} placeholder="USDC amount"
-              className="w-full bg-brand-bg border border-brand-border rounded-xl px-3.5 py-2.5 text-xl font-bold font-mono"/>
+            <HideDexFundingNetworkAsset network="Lighter settlement" />
+            <HideDexFundingDestination address={walletAddress}/>
+            <HideDexFundingAmount id="lighter-withdraw-amount" amount={withdrawAmount}
+              onAmount={setWithdrawAmount} disabled={!tradingIdentity||fundingBusy}
+              balanceLabel="Available Balance"
+              balance={displayTradingAccount?.availableBalance==null?"—":formatPrice(displayTradingAccount.availableBalance,4)+" USDC"}/>
             <p className="text-[10px] text-brand-muted">Destination: {walletAddress || "Connect wallet"}. Network fees, account minimums and final timing are determined by Lighter.</p>
-            <button type="button" disabled={!tradingIdentity || fundingBusy || !withdrawAmount.trim()}
-              onClick={submitWithdrawal}
-              className="w-full py-3.5 px-4 bg-accent text-brand-bg font-bold rounded-xl shadow-md disabled:opacity-40">
-              {fundingBusy ? "Submitting…" : "Confirm real Lighter withdrawal"}
-            </button>
+            <HideDexFundingFeeNotice>
+              Lighter verifies withdrawal fees and final settlement. No fee or minimum is guessed.
+            </HideDexFundingFeeNotice>
+            <HideDexFundingSubmit deposit={false} busy={fundingBusy}
+              disabled={!tradingIdentity||!withdrawAmount.trim()} onClick={submitWithdrawal}
+              label="Withdraw Assets"/>
           </>}
           {fundingStatus && <p role="status" className="text-xs break-all rounded-lg border border-brand-border p-2">{fundingStatus}</p>}
           </div>

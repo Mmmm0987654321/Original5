@@ -8,6 +8,7 @@ import HideDexFundsOverview from "./HideDexFundsOverview";
 import HideDexAssetAllocation from "./HideDexAssetAllocation";
 import HideDexFundsPerformance from "./HideDexFundsPerformance";
 import HideDexFundsModalHeader from "./HideDexFundsModalHeader";
+import {HideDexFundingNetworkAsset,HideDexFundingDestination,HideDexFundingAmount,HideDexFundingPresets,HideDexFundingSubmit,HideDexFundingFeeNotice} from "./HideDexFundingFields";
 import { 
   Wallet, 
   Eye, 
@@ -1350,89 +1351,19 @@ export default function PortfolioPanel({
                     {isDeposit ? (
                       /* DEPOSIT FORM */
                       <form onSubmit={handleDepositSubmit} className="space-y-4" id="hl-deposit-form">
-                        {/* 1. Network */}
-                        <div className="space-y-1.5">
-                          <label className="text-[11px] font-semibold text-brand-sub uppercase tracking-wider block">
-                            Network
-                          </label>
-                          <div className="rounded-xl border border-brand-border bg-brand-overlay-subtle p-3 flex items-center justify-between">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-8 h-8 rounded-lg bg-brand-overlay-normal border border-brand-border/60 flex items-center justify-center text-accent">
-                                <Network className="w-4 h-4" />
-                              </div>
-                              <span className="font-bold text-sm text-brand-text">Arbitrum One</span>
-                            </div>
-                            <div className="flex items-center gap-1.5 text-brand-sub">
-                              <span className="text-[11px] font-mono">Chain ID: <strong className="text-brand-text">42161</strong></span>
-                            </div>
-                          </div>
-                        </div>
+                        <HideDexFundingNetworkAsset network="Arbitrum One" chainId={42161}/>
 
-                        {/* 2. Asset Token */}
-                        <div className="space-y-1.5">
-                          <label className="text-[11px] font-semibold text-brand-sub uppercase tracking-wider block">
-                            Asset Token
-                          </label>
-                          <div className="rounded-xl border border-brand-border bg-brand-overlay-subtle p-3 flex items-center justify-between">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-8 h-8 rounded-full bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400 font-bold font-mono text-xs">
-                                $
-                              </div>
-                              <div>
-                                <span className="font-bold text-sm text-brand-text">USDC</span>
-                                <span className="text-xs text-brand-muted font-normal ml-1.5 hidden sm:inline">USD Coin</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
+                        <HideDexFundingAmount id="hl-deposit-amount" amount={amount}
+                          onAmount={v=>{setAmount(v);setTxErrorMessage("");}}
+                          balanceLabel="Wallet Balance"
+                          balance={walletConnected?displayWalletUsdc.toFixed(2)+" USDC":"—"}
+                          minLabel={`Minimum deposit is ${MIN_DEPOSIT_USDC} USDC.`} placeholder="Min 6 USDC"/>
 
-                        {/* 3. Amount */}
-                        <div className="space-y-1.5">
-                          <div className="flex justify-between items-center text-[11px] font-semibold text-brand-sub">
-                            <label className="uppercase tracking-wider">Amount</label>
-                            <span className="font-mono">
-                              Wallet Balance: <strong className="text-brand-text">{walletConnected ? displayWalletUsdc.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "0.00"} USDC</strong>
-                            </span>
-                          </div>
-                          <div className="rounded-xl border border-brand-border bg-brand-bg px-3.5 py-2.5 flex items-center justify-between focus-within:border-accent transition-colors">
-                            <input
-                              type="number"
-                              step="any"
-                              value={amount}
-                              onChange={(e) => {
-                                setAmount(e.target.value);
-                                setTxErrorMessage("");
-                              }}
-                              placeholder="Min 6 USDC"
-                              className="w-full bg-transparent text-xl sm:text-2xl font-bold font-mono text-brand-text placeholder:text-brand-muted/40 focus:outline-none"
-                              autoFocus
-                              required
-                            />
-                            <span className="text-sm font-bold font-mono text-brand-sub pl-2 shrink-0 select-none">
-                              USDC
-                            </span>
-                          </div>
-                          <p className="text-xs text-brand-muted">
-                            Minimum deposit is {MIN_DEPOSIT_USDC} USDC.
-                          </p>
-                        </div>
-
-                        {/* 4. Presets */}
-                        <div className="grid grid-cols-4 gap-2">
-                          {[25, 50, 75, 100].map((pct) => (
-                            <button
-                              key={pct}
-                              type="button"
-                              onClick={() => {
-                                setAmount(((displayWalletUsdc * pct) / 100).toFixed(2));
-                                setTxErrorMessage("");
-                              }}
-                              className="py-2 rounded-lg text-xs font-bold font-mono border border-brand-border bg-brand-overlay-subtle hover:bg-brand-overlay-normal text-brand-text transition-colors cursor-pointer text-center"
-                            >
-                              {pct}%
-                            </button>
-                          ))}
-                        </div>
+                        <HideDexFundingPresets available={walletConnected?displayWalletUsdc:null}
+                          onPercent={pct=>{
+                            setAmount(((displayWalletUsdc*pct)/100).toFixed(2));
+                            setTxErrorMessage("");
+                          }}/>
 
                         {/* 5. Deposit Fee Card */}
                         <div className="rounded-xl border border-brand-border/60 bg-brand-overlay-subtle p-3 space-y-2 font-mono text-xs">
@@ -1484,114 +1415,22 @@ export default function PortfolioPanel({
                     ) : (
                       /* WITHDRAW FORM */
                       <form onSubmit={handleWithdrawalSubmit} className="space-y-4" id="hl-withdrawal-form">
-                        {/* 1. Network */}
-                        <div className="space-y-1.5">
-                          <label className="text-[11px] font-semibold text-brand-sub uppercase tracking-wider block">
-                            Network
-                          </label>
-                          <div className="rounded-xl border border-brand-border bg-brand-overlay-subtle p-3 flex items-center justify-between">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-8 h-8 rounded-lg bg-brand-overlay-normal border border-brand-border/60 flex items-center justify-center text-accent">
-                                <Network className="w-4 h-4" />
-                              </div>
-                              <span className="font-bold text-sm text-brand-text">Arbitrum One</span>
-                            </div>
-                            <div className="flex items-center gap-1.5 text-brand-sub">
-                              <span className="text-[11px] font-mono">Chain ID: <strong className="text-brand-text">42161</strong></span>
-                            </div>
-                          </div>
-                        </div>
+                        <HideDexFundingNetworkAsset network="Arbitrum One" chainId={42161}/>
 
-                        {/* 2. Asset Token */}
-                        <div className="space-y-1.5">
-                          <label className="text-[11px] font-semibold text-brand-sub uppercase tracking-wider block">
-                            Asset Token
-                          </label>
-                          <div className="rounded-xl border border-brand-border bg-brand-overlay-subtle p-3 flex items-center justify-between">
-                            <div className="flex items-center gap-2.5">
-                              <div className="w-8 h-8 rounded-full bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400 font-bold font-mono text-xs">
-                                $
-                              </div>
-                              <div>
-                                <span className="font-bold text-sm text-brand-text">USDC</span>
-                                <span className="text-xs text-brand-muted font-normal ml-1.5 hidden sm:inline">USD Coin</span>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
+                        <HideDexFundingDestination address={walletAddress}/>
 
-                        {/* 3. Destination Wallet */}
-                        <div className="space-y-1.5">
-                          <div className="flex justify-between items-center text-[11px] font-semibold text-brand-sub">
-                            <label className="uppercase tracking-wider">Destination Wallet</label>
-                            <span className="text-emerald-400 font-bold flex items-center gap-1 font-mono text-[10px]">
-                              Connected
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                            </span>
-                          </div>
-                          <div className="rounded-xl border border-brand-border bg-brand-overlay-subtle p-3 flex items-center justify-between select-none">
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <div className="w-8 h-8 rounded-lg bg-brand-overlay-normal border border-brand-border/60 flex items-center justify-center text-accent shrink-0">
-                                <Wallet className="w-4 h-4" />
-                              </div>
-                              <span className="font-mono text-sm font-bold text-brand-text truncate">
-                                {walletAddress || "No wallet connected"}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
+                        <HideDexFundingAmount id="hl-withdraw-amount" amount={amount}
+                          onAmount={v=>{setAmount(v);setTxErrorMessage("");}}
+                          balanceLabel="Available Balance"
+                          balance={tradingStateReady?formatAmount(withdrawableUsd):"—"}
+                          minLabel={`Minimum withdrawal is ${MIN_WITHDRAWAL_USDC} USDC.`} placeholder="Min 6 USDC"/>
 
-                        {/* 4. Amount */}
-                        <div className="space-y-1.5">
-                          <div className="flex justify-between items-center text-[11px] font-semibold text-brand-sub">
-                            <label className="uppercase tracking-wider">Amount</label>
-                            <span className="font-mono">
-                              Available Balance: <strong className="text-brand-text">{tradingStateReady ? formatAmount(withdrawableUsd) : "--"}</strong>
-                            </span>
-                          </div>
-                          <div className="rounded-xl border border-brand-border bg-brand-bg px-3.5 py-2.5 flex items-center justify-between focus-within:border-accent transition-colors">
-                            <input
-                              type="number"
-                              step="any"
-                              value={amount}
-                              onChange={(e) => {
-                                setAmount(e.target.value);
-                                setTxErrorMessage("");
-                              }}
-                              placeholder="Min 6 USDC"
-                              className="w-full bg-transparent text-xl sm:text-2xl font-bold font-mono text-brand-text placeholder:text-brand-muted/40 focus:outline-none"
-                              required
-                            />
-                            <span className="text-sm font-bold font-mono text-brand-sub pl-2 shrink-0 select-none">
-                              USDC
-                            </span>
-                          </div>
-                          <p className="text-xs text-brand-muted">
-                            Minimum withdrawal is {MIN_WITHDRAWAL_USDC} USDC.
-                          </p>
-                        </div>
-
-                        {/* 5. Presets */}
-                        <div className="grid grid-cols-4 gap-2">
-                          {[25, 50, 75, 100].map((pct) => (
-                            <button
-                              key={pct}
-                              type="button"
-                              onClick={() => {
-                                if (!tradingStateReady) return;
-                                if (pct === 100) {
-                                  setAmount(String(Math.floor(withdrawableUsd * 100) / 100));
-                                } else {
-                                  setAmount(((withdrawableUsd * pct) / 100).toFixed(2));
-                                }
-                                setTxErrorMessage("");
-                              }}
-                              className="py-2 rounded-lg text-xs font-bold font-mono border border-brand-border bg-brand-overlay-subtle hover:bg-brand-overlay-normal text-brand-text transition-colors cursor-pointer text-center"
-                            >
-                              {pct}%
-                            </button>
-                          ))}
-                        </div>
+                        <HideDexFundingPresets available={tradingStateReady?withdrawableUsd:null}
+                          onPercent={pct=>{
+                            if(!tradingStateReady)return;
+                            setAmount(pct===100?String(Math.floor(withdrawableUsd*100)/100):((withdrawableUsd*pct)/100).toFixed(2));
+                            setTxErrorMessage("");
+                          }}/>
 
                         {/* 6. Network Fee & Est Receive */}
                         <div className="rounded-xl border border-brand-border/60 bg-brand-overlay-subtle p-3 space-y-2 font-mono text-xs">
