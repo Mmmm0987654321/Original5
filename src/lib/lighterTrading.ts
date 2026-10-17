@@ -274,6 +274,20 @@ export async function setLighterPositionTriggers(args:{
     if((args.takeProfit!==null&&duplicate(LighterConstant.ORDER_TYPE.TAKE_PROFIT))||
        (args.stopLoss!==null&&duplicate(LighterConstant.ORDER_TYPE.STOP_LOSS)))
       throw new Error("Existing Lighter TP/SL trigger detected. Manage or cancel the old trigger in Open Orders before setting another.");
+    // A Lighter SDK response can carry the volume-quota note even when a
+    // signed trigger reached the exchange. Reconcile by authenticated READ,
+    // never by repeating a signed transaction.
+    const confirmActiveTrigger=async(type:number):Promise<boolean>=>{
+      for(const delay of [600,1500,2800]){
+        await new Promise<void>(resolve=>setTimeout(resolve,delay));
+        try{
+          const rows=await s.client.getOpenOrders();
+          if(rows.some(o=>Number(o.market_index??o.market_id)===market.id&&
+            Number(o.type)===type&&o.reduce_only!==false))return true;
+        }catch{/* A failed read cannot prove either success or failure. */}
+      }
+      return false;
+    };
     const out:string[]=[];
     for(const [label,trigger] of [["TP",args.takeProfit],["SL",args.stopLoss]] as const){
       if(trigger===null)continue;
@@ -281,19 +295,29 @@ export async function setLighterPositionTriggers(args:{
       const triggerPx=rawOrder(market,Math.abs(position.signedSize),trigger).price;
       if(amount.baseAmount<=0n||amount.baseAmount>281474976710655n)
         throw new Error("Lighter trigger size is outside native uint48 limits.");
+      const orderKind=label==="TP"?LighterConstant.ORDER_TYPE.TAKE_PROFIT:
+        LighterConstant.ORDER_TYPE.STOP_LOSS;
       try{
         const result=await s.client.rest.createTriggerOrder(s.signer,{
           marketIndex:market.id,baseAmount:amount.baseAmount,isAsk:closeSell,
-          orderType:label==="TP"?LighterConstant.ORDER_TYPE.TAKE_PROFIT:LighterConstant.ORDER_TYPE.STOP_LOSS,
-          triggerPrice:triggerPx,price:amount.price,
+          orderType:orderKind,triggerPrice:triggerPx,price:amount.price,
           clientOrderIndex:clientOrderIndex(),applyIntegratorFee:false,
         });
         out.push(accepted(result));
       }catch(e){
-        if(out.length)throw new Error("The first Lighter trigger may already be active; the "+
-          label+" submission failed. Check Open Orders before retrying. "+
-          (e instanceof Error?e.message:String(e)));
-        throw e;
+        const note=e instanceof Error?e.message:String(e);
+        // No matching order of this type existed before the signed attempt,
+        // so a new signer-owned market/type/reduce-only order is real evidence.
+        if(await confirmActiveTrigger(orderKind)){
+          out.push("VERIFIED_ACTIVE_"+label);
+          continue;
+        }
+        if(out.length)throw new Error("Some Lighter TP/SL orders were accepted, but "+
+          label+" was not verified. Check Open Orders before trying again; no retry was sent.");
+        if(/didn['’]t use volume quota|ratelimit/i.test(note))
+          throw new Error("Lighter TP/SL submission could not be verified. Check Open Orders "+
+            "before trying again; the exchange may have received this order.");
+        throw new Error("Lighter "+label+" trigger was not confirmed: "+note);
       }
     }
     return out;

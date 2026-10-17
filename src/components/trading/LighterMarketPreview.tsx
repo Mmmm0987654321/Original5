@@ -1088,6 +1088,11 @@ export default function LighterMarketPreview({
       lighterInitialRequirement(orderValueUsd,chosenLeverage):null;
   const previewMarginConfirmed = activeMargin?.leverage===chosenLeverage &&
     activeMargin.mode===marginMode;
+  // This is the exchange-reported liquidation for an EXISTING position,
+  // not a speculative liquidation estimate for an unsubmitted order.
+  const currentPositionLiq = kind==="perp" && selected
+    ? signedAccount?.positions.find(p=>p.symbol===selected.symbol)?.liquidationPrice ?? null
+    : null;
   const hasReduciblePosition = Boolean(selected && tradingIdentity && publicAccounts?.some(a =>
     a.index === tradingIdentity.accountIndex && a.positions.some(p =>
       p.symbol === selected.symbol && (side === "sell" ? p.signedSize > 0 : p.signedSize < 0))));
@@ -1671,7 +1676,11 @@ export default function LighterMarketPreview({
             }:undefined,
           }}
           summary={{
-            isPerp:kind==="perp",liquidation:"—",
+            isPerp:kind==="perp",
+            liquidationLabel:currentPositionLiq!==null && currentPositionLiq>0?
+              "Open Position Liq.":"Liq. Price",
+            liquidation:currentPositionLiq!==null && currentPositionLiq>0?
+              "$"+formatPrice(currentPositionLiq,4):"—",
             orderValue:orderValueUsd!==null?"$"+formatPrice(orderValueUsd,2):"—",
             margin:previewMargin!==null?
               "≈$"+formatPrice(previewMargin,4)+(previewMarginConfirmed?" est.":" draft est."):"—",
@@ -1976,12 +1985,22 @@ export default function LighterMarketPreview({
         onSave={async(tp,sl)=>{
           if(!tradingIdentity||tradingIdentity.accountIndex!==tpSlTarget.accountIndex)
             throw new Error("Select the verified Lighter signer for this account.");
-          await setLighterPositionTriggers({
-            walletAddress,market,signedSize:tpSlTarget.signedSize,
-            takeProfit:tp,stopLoss:sl,
-          });
-          setTpSlTarget(null);
-          refreshAfterLighterWrite();
+          try{
+            await setLighterPositionTriggers({
+              walletAddress,market,signedSize:tpSlTarget.signedSize,
+              takeProfit:tp,stopLoss:sl,
+            });
+            setTpSlTarget(null);
+          }finally{
+            // A partial or ambiguous write also needs immediate real account
+            // reconciliation. Never resend a signed trigger on any timer.
+            refreshAfterLighterWrite();
+            try{
+              const orders=await getLighterSignedOpenOrders(walletAddress);
+              setLiveOrders(orders);
+              setOpenOrdersError("");
+            }catch{/* Timed account refresh remains scheduled. */}
+          }
         }}/>;
     })()}
     {singleCloseTarget&&lighterClosePosition&&<ClosePositionModal
