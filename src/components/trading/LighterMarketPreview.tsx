@@ -22,6 +22,7 @@ import HideDexPositionHeader from "./HideDexPositionHeader";
 import HideDexPositionDetails from "./HideDexPositionDetails";
 import HideDexTradeHistory from "./HideDexTradeHistory";
 import HideDexOpenOrders, {type HideDexOpenOrderRow} from "./HideDexOpenOrders";
+import HideDexBalancesView, {type HideDexBalanceItem} from "./HideDexBalancesView";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
 import HideDexOrderBookPanel, {type HideDexBookLevel} from "./HideDexOrderBookPanel";
 import {HideDexTradeGrid,HideDexOrderForm,HideDexTopMarketPane} from "./HideDexTradeLayout";
@@ -547,57 +548,22 @@ export default function LighterMarketPreview({
     return sorted.map(([price,size])=>({price,size,total:(cumulative+=size)}));
   };
 
-  const lighterAssetCards = (
-    <div className="rounded-xl border border-brand-border bg-brand-surface p-3 space-y-2">
-      <h3 className="text-xs font-bold">Lighter asset balances</h3>
-      {publicAccounts === null
-        ? <p className="text-xs text-brand-muted">{accountsLoading ? "Loading actual asset balances…" : "Connect wallet to check balances."}</p>
-        : publicAccounts.some(a => a.assets === null)
-          ? <p className="text-xs text-brand-muted">Assets unavailable from Lighter account response.</p>
-          : publicAccounts.flatMap(a => (a.assets ?? []).map(asset =>
-              <div key={a.index + ":" + asset.symbol}
-                className="flex justify-between gap-3 py-2 border-t border-brand-border/50 text-[11px]">
-                <div className="min-w-0">
-                  <p className="font-semibold">{asset.symbol} <span className="text-brand-muted font-normal">· Account #{a.index}</span></p>
-                  {asset.lockedBalance !== null && <p className="text-[10px] text-brand-muted">Locked: {formatPrice(asset.lockedBalance, 8)} {asset.symbol}</p>}
-                  {asset.marginBalance !== null && <p className="text-[10px] text-brand-muted">Reported margin balance: {formatPrice(asset.marginBalance,8)} {asset.symbol}</p>}
-                </div>
-                <div className="font-mono font-bold">{formatPrice(asset.balance, 8)}</div>
-              </div>
-            ))
-          }
-    </div>
-  );
-
-  const accountCards = (
-    <div className="space-y-3">
-      {!walletAddress && <p className="text-xs text-brand-muted">Connect your wallet to check registered Lighter accounts.</p>}
-      {accountsLoading && <p className="text-xs text-brand-muted">Loading Lighter account state…</p>}
-      {accountError && <p role="alert" className="text-xs text-rose-400">Lighter account lookup failed: {accountError}</p>}
-      {publicAccounts !== null && publicAccounts.length === 0 &&
-        <p className="text-xs text-brand-muted">No Lighter accounts found for this wallet.</p>}
-      {publicAccounts?.map(account => (
-        <div key={account.index} className="p-3 bg-brand-surface border border-brand-border rounded-xl">
-          <h3 className="text-sm font-bold mb-3">Lighter Account #{account.index}</h3>
-          <div className="grid grid-cols-2 gap-3 mb-3">
-            <div><p className="text-[10px] text-brand-muted">Available balance</p>
-              <p className="font-mono text-base font-bold text-brand-text">{formatPrice(account.availableBalance)} USDC</p></div>
-            <div><p className="text-[10px] text-brand-muted">Collateral</p>
-              <p className="font-mono text-base font-bold text-brand-text">{formatPrice(account.collateral)} USDC</p></div>
-          </div>
-          <h4 className="text-xs font-bold border-t border-brand-border pt-3">Open positions</h4>
-          {!account.positions.length && <p className="text-xs text-brand-muted mt-1">No open positions reported.</p>}
-          {account.positions.map((position, i) => <div key={position.symbol + i}
-            className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] py-2 border-b border-brand-border/50">
-              <span className="font-bold">{position.symbol}</span>
-              <span>{position.signedSize >= 0 ? "LONG" : "SHORT"} {formatPrice(Math.abs(position.signedSize), 5)}</span>
-              <span>Entry: {formatPrice(position.entryPrice)}</span>
-              <span>PnL: {formatPrice(position.unrealizedPnl)}</span>
-            </div>)}
-        </div>
-      ))}
-    </div>
-  );
+  const lighterBalanceRows: HideDexBalanceItem[] | null = publicAccounts===null ? null :
+    publicAccounts.flatMap(account=>{
+      const assets=account.assets?.map(asset=>({
+        id:account.index+":"+asset.symbol+":spot",symbol:asset.symbol,
+        name:"Spot · Lighter Account #"+account.index,
+        total:asset.balance,locked:asset.lockedBalance,
+        available:asset.lockedBalance===null?null:Math.max(0,asset.balance-asset.lockedBalance),
+        valueUsd:null,allocationPercent:null,color:"#2775ca",
+      } satisfies HideDexBalanceItem)) ?? [];
+      return [
+        {id:account.index+":perp",symbol:"USDC",name:"Perp Collateral · Account #"+account.index,
+          total:account.collateral,available:account.availableBalance,locked:null,
+          valueUsd:null,allocationPercent:null,color:"#2775ca"} satisfies HideDexBalanceItem,
+        ...assets
+      ];
+    });
 
   const knownPositionCount = publicAccounts === null ? undefined :
     publicAccounts.reduce((sum, acct) => sum + acct.positions.length, 0);
@@ -610,7 +576,12 @@ export default function LighterMarketPreview({
         ordersCount={undefined}
       />
       <div className="p-2 md:p-3 min-h-[110px] overflow-y-auto overflow-x-hidden">
-        {accountTab === "BALANCES" && <>{lighterAssetCards}{accountCards}</>}
+        {accountTab === "BALANCES" && <HideDexBalancesView
+          items={publicAccounts?.some(a=>a.assets===null)?null:lighterBalanceRows}
+          unavailableMessage={accountsLoading?"Loading verified Lighter balances…":
+            accountError?"Lighter balances unavailable: "+accountError:
+            "Lighter account assets are not verified or have not loaded."}
+        />}
         {accountTab === "POSITIONS" && (
           <div className="space-y-2">
             {accountsLoading && <p className="text-xs text-brand-muted">Checking Lighter positions…</p>}

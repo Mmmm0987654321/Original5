@@ -3,6 +3,7 @@ import HideDexPositionHeader from "./HideDexPositionHeader";
 import HideDexPositionDetails from "./HideDexPositionDetails";
 import HideDexTradeHistory from "./HideDexTradeHistory";
 import HideDexOpenOrders, {type HideDexOpenOrderRow} from "./HideDexOpenOrders";
+import HideDexBalancesView, {type HideDexBalanceItem} from "./HideDexBalancesView";
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -551,182 +552,24 @@ export default function TradingDashboardTabs({
       {/* Dynamic Inner Tab View Table */}
       <div className="p-2 md:p-3 min-h-[110px] overflow-y-auto overflow-x-hidden relative">
         {/* TAB 1: BALANCES */}
-        {activeBottomTab === "BALANCES" && (
-          <>
-            {/* Mobile Card View */}
-            <div className="block md:hidden flex flex-col gap-3 w-full max-h-[360px] overflow-y-auto pr-1">
-              {dynamicBalances.items.map((item) => {
-                const hasValueUSD = typeof item.valueUSD === "number" && Number.isFinite(item.valueUSD);
-                const allocPercent = hasValueUSD && dynamicBalances.totalValue > 0 ? (item.valueUSD / dynamicBalances.totalValue) * 100 : null;
-                let locked = 0;
-                if (item.symbol === "USDC") {
-                  locked = openOrders.filter(o => o.side === "BUY").reduce((sum, o) => sum + (o.price * o.size), 0);
-                } else {
-                  locked = openOrders.filter(o => o.symbol === item.symbol && o.side === "SELL").reduce((sum, o) => sum + o.size, 0);
-                }
-                const available =
-                  spotAvailableBalances?.[item.symbol] !== undefined
-                    ? spotAvailableBalances[item.symbol]
-                    : Math.max(0, item.balance - locked);
-                const isTop10 = ["BTC", "ETH", "SOL", "HYPE", "XRP", "AVAX", "SUI", "ARB", "OP", "ONDO"].includes(item.symbol.replace("-SPOT", "").replace("-USDC", "").toUpperCase());
-                return (
-                  <div key={item.symbol} className="bg-brand-card border border-brand-border/60 hover:border-brand-primary/30 rounded-xl p-3 flex flex-col gap-2.5 transition-all duration-150 shadow-md text-brand-sub">
-                    <div className="flex items-center justify-between border-b border-brand-divider/30 pb-2">
-                      <div className="flex items-center gap-2">
-                        {isTop10 && (
-                          <div 
-                            className="w-[24px] h-[24px] rounded-full flex items-center justify-center text-[10px] font-black text-white shrink-0"
-                            style={{ backgroundColor: item.bgColor }}
-                          >
-                            {item.symbol === "BTC" ? "₿" : item.symbol === "ETH" ? "Ξ" : item.symbol === "XRP" ? "✕" : item.symbol.slice(0, 1)}
-                          </div>
-                        )}
-                        <div>
-                          <span className="font-bold text-brand-text text-[12px]">{item.symbol}</span>
-                          <span className="text-[9px] text-brand-muted block -mt-1">{item.name}</span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <div className="text-brand-text font-bold text-[12px]">
-                          {hasValueUSD ? `$${item.valueUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "--"}
-                        </div>
-                        {allocPercent !== null ? (
-                          <span className="text-[9px] font-bold text-brand-primary bg-brand-primary/10 px-1.5 py-0.2 rounded border border-brand-primary/15">
-                            {allocPercent.toFixed(1)}% Alloc
-                          </span>
-                        ) : (
-                          <span className="text-[9px] font-bold text-brand-muted bg-brand-overlay-normal px-1.5 py-0.2 rounded border border-brand-border">
-                            --
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-2 text-[10px] text-brand-sub font-mono">
-                      <div>
-                        <span className="text-brand-muted block text-[8px] font-bold uppercase tracking-wider">Total</span>
-                        <span className="font-semibold text-brand-text">
-                          {item.balance.toLocaleString(undefined, { maximumFractionDigits: 4 })}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-brand-muted block text-[8px] font-bold uppercase tracking-wider">Available</span>
-                        <span className="font-semibold text-brand-profit">
-                          {available.toLocaleString(undefined, { maximumFractionDigits: 4 })}
-                        </span>
-                      </div>
-                      <div>
-                        <span className="text-brand-muted block text-[8px] font-bold uppercase tracking-wider">Locked</span>
-                        <span className="font-semibold text-brand-muted">
-                          {locked.toLocaleString(undefined, { maximumFractionDigits: 4 })}
-                        </span>
-                      </div>
-                    </div>
-                    {item.symbol !== "USDC" && available > 0 && typeof onCloseSpotPosition === "function" && (
-                      <div className="flex justify-end pt-2 border-t border-brand-divider/20">
-                        <button
-                          onClick={() => setSelectedCloseSpotSymbol(item.symbol)}
-                          className="px-2.5 py-1 rounded bg-brand-loss/10 hover:bg-brand-loss/20 border border-brand-loss/30 hover:border-brand-loss/50 text-brand-loss text-[9px] font-extrabold uppercase tracking-wider transition-all duration-150 cursor-pointer active:scale-95 select-none"
-                        >
-                          Close
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Desktop Table View */}
-            <div className="hidden md:block max-h-[360px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-brand-border/60 scrollbar-track-transparent">
-              <table className="w-full text-left border-collapse text-xs font-mono">
-                <thead>
-                  <tr className="text-[10px] font-mono text-brand-muted uppercase border-b border-brand-border pb-2">
-                    <th className="py-2.5">Asset</th>
-                    <th className="py-2.5">Available Balance</th>
-                    <th className="py-2.5">Locked Balance</th>
-                    <th className="py-2.5">Total Balance</th>
-                    <th className="py-2.5">USD Value</th>
-                    <th className="py-2.5">Allocation</th>
-                    <th className="py-2.5 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-brand-divider/30 text-brand-sub">
-                  {dynamicBalances.items.map((item) => {
-                    const hasValueUSD = typeof item.valueUSD === "number" && Number.isFinite(item.valueUSD);
-                    const allocPercent = hasValueUSD && dynamicBalances.totalValue > 0 ? (item.valueUSD / dynamicBalances.totalValue) * 100 : null;
-                    let locked = 0;
-                    if (item.symbol === "USDC") {
-                      locked = openOrders.filter(o => o.side === "BUY").reduce((sum, o) => sum + (o.price * o.size), 0);
-                    } else {
-                      locked = openOrders.filter(o => o.symbol === item.symbol && o.side === "SELL").reduce((sum, o) => sum + o.size, 0);
-                    }
-                    const available =
-                      spotAvailableBalances?.[item.symbol] !== undefined
-                        ? spotAvailableBalances[item.symbol]
-                        : Math.max(0, item.balance - locked);
-                    const isTop10 = ["BTC", "ETH", "SOL", "HYPE", "XRP", "AVAX", "SUI", "ARB", "OP", "ONDO"].includes(item.symbol.replace("-SPOT", "").replace("-USDC", "").toUpperCase());
-                    return (
-                      <tr key={item.symbol} className="hover:bg-brand-overlay-subtle transition-colors">
-                        <td className="py-2.5 font-bold text-brand-text flex items-center gap-2">
-                          {isTop10 && (
-                            <div 
-                              className="w-[20px] h-[20px] rounded-full flex items-center justify-center text-[8px] font-black text-white shrink-0"
-                              style={{ backgroundColor: item.bgColor }}
-                            >
-                              {item.symbol === "BTC" ? "₿" : item.symbol === "ETH" ? "Ξ" : item.symbol === "XRP" ? "✕" : item.symbol.slice(0, 1)}
-                            </div>
-                          )}
-                          <div>
-                            <span className="text-brand-text font-bold">{item.symbol}</span>
-                            <span className="text-[9px] text-brand-muted block">{item.name}</span>
-                          </div>
-                        </td>
-                        <td className="py-2.5 font-semibold text-brand-profit">
-                          {available.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
-                        </td>
-                        <td className="py-2.5 font-semibold text-brand-muted">
-                          {locked.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
-                        </td>
-                        <td className="py-2.5 font-semibold text-brand-text">
-                          {item.balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 })}
-                        </td>
-                        <td className="py-2.5 font-bold text-brand-text">
-                          {hasValueUSD ? `$${item.valueUSD.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "--"}
-                        </td>
-                        <td className="py-2.5">
-                          {allocPercent !== null ? (
-                            <div className="flex items-center justify-end gap-2">
-                              <span className="text-brand-sub">{allocPercent.toFixed(1)}%</span>
-                              <div className="w-16 h-1.5 bg-brand-overlay-normal rounded-full overflow-hidden hidden sm:block">
-                                <div className="h-full bg-brand-primary" style={{ width: `${allocPercent}%` }} />
-                              </div>
-                            </div>
-                          ) : (
-                            <div className="flex items-center justify-end gap-2">
-                              <span className="text-brand-muted">--</span>
-                            </div>
-                          )}
-                        </td>
-                        <td className="py-2.5 text-right">
-                          {item.symbol !== "USDC" && available > 0 && typeof onCloseSpotPosition === "function" ? (
-                            <button
-                              onClick={() => setSelectedCloseSpotSymbol(item.symbol)}
-                              className="px-2 py-0.5 rounded bg-brand-loss/10 hover:bg-brand-loss/20 border border-brand-loss/30 hover:border-brand-loss/50 text-brand-loss text-[9px] font-extrabold uppercase tracking-wider transition-all duration-150 cursor-pointer active:scale-95 select-none"
-                            >
-                              Close
-                            </button>
-                          ) : (
-                            <span className="text-brand-muted text-[10px]">—</span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </>
-        )}
+        {activeBottomTab === "BALANCES" && <HideDexBalancesView
+          items={dynamicBalances.items.map(item => {
+            const valueUsd=typeof item.valueUSD==="number" && Number.isFinite(item.valueUSD)?item.valueUSD:null;
+            const pct=valueUsd!==null && dynamicBalances.totalValue>0 ?
+              100*valueUsd/dynamicBalances.totalValue:null;
+            const locked=item.symbol==="USDC"
+              ? openOrders.filter(o=>o.side==="BUY").reduce((n,o)=>n+o.price*o.size,0)
+              : openOrders.filter(o=>o.symbol===item.symbol&&o.side==="SELL").reduce((n,o)=>n+o.size,0);
+            const available=spotAvailableBalances?.[item.symbol]!==undefined
+              ? spotAvailableBalances[item.symbol] : Math.max(0,item.balance-locked);
+            const canClose=item.symbol!=="USDC" && available>0 && typeof onCloseSpotPosition==="function";
+            return {
+              id:item.symbol,symbol:item.symbol,name:item.name,total:item.balance,
+              available,locked,valueUsd,allocationPercent:pct,color:item.bgColor,
+              canClose,onClose:canClose ? ()=>setSelectedCloseSpotSymbol(item.symbol) : undefined,
+            } satisfies HideDexBalanceItem;
+          })}
+        />}
 
         {/* TAB 2: POSITIONS */}
         {activeBottomTab === "POSITIONS" && (
