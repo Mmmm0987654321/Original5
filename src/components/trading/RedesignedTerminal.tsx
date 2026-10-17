@@ -77,6 +77,7 @@ import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelect
 import HideDexOrderBookPanel from "./HideDexOrderBookPanel";
 import {HideDexTradeGrid,HideDexOrderForm,HideDexTopMarketPane} from "./HideDexTradeLayout";
 import {HideDexTradePercentPresets,HideDexTradeOptionToggle} from "./HideDexTradeOptions";
+import HideDexTradeTriggerPrice from "./HideDexTradeTriggerPrice";
 import HideDexMobileMarketHeader from "./HideDexMobileMarketHeader";
 import HideDexDesktopMarketBar from "./HideDexDesktopMarketBar";
 import { HideDexSideAndAvailability, HideDexBasicOrderInputs } from "./HideDexTradeEntry";
@@ -4919,9 +4920,8 @@ export default function RedesignedTerminal({
                     <div className="grid grid-cols-2 gap-1.5 md:gap-2 animate-in fade-in slide-in-from-top-1 duration-150">
                       {/* Take Profit Target Price */}
                       <div className="relative">
-                        <input
-                          type="number"
-                          step="any"
+                        <HideDexTradeTriggerPrice kind="tp"
+
                           value={tpPriceInput}
                           onChange={(e) => {
                             setTpPriceInput(e.target.value);
@@ -4942,8 +4942,7 @@ export default function RedesignedTerminal({
                               setTpGainInput("");
                             }
                           }}
-                          className="w-full h-[34px] md:h-[38px] bg-brand-surface border border-brand-border focus:border-[#18c29c]/60 px-3 rounded-[10px] text-xs text-brand-text font-mono focus:outline-none transition-all placeholder:text-brand-muted placeholder:font-semibold placeholder:font-sans"
-                          placeholder="TP Price"
+
                         />
                       </div>
 
@@ -5021,9 +5020,8 @@ export default function RedesignedTerminal({
 
                       {/* Stop Loss Target Price */}
                       <div className="relative">
-                        <input
-                          type="number"
-                          step="any"
+                        <HideDexTradeTriggerPrice kind="sl"
+
                           value={slPriceInput}
                           onChange={(e) => {
                             setSlPriceInput(e.target.value);
@@ -5044,8 +5042,7 @@ export default function RedesignedTerminal({
                               setSlLossInput("");
                             }
                           }}
-                          className="w-full h-[34px] md:h-[38px] bg-brand-surface border border-brand-border focus:border-rose-500/50 px-3 rounded-[10px] text-xs text-brand-text font-mono focus:outline-none transition-all placeholder:text-brand-muted placeholder:font-semibold placeholder:font-sans"
-                          placeholder="SL Price"
+
                         />
                       </div>
 

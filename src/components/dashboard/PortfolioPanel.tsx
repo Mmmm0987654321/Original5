@@ -1387,30 +1387,8 @@ export default function PortfolioPanel({
                           </div>
                         </div>
 
-                        {/* 6. Primary CTA */}
-                        <button
-                          type="submit"
-                          disabled={Boolean(
-                            isDepositing ||
-                            !amount ||
-                            !Number.isFinite(parseFloat(amount)) ||
-                            parseFloat(amount) < MIN_DEPOSIT_USDC
-                          )}
-                          className="w-full py-3.5 px-4 rounded-xl bg-accent hover:opacity-90 active:scale-[0.99] text-brand-bg font-bold text-sm tracking-wide transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none"
-                        >
-                          {isDepositing ? (
-                            <>
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                              <span>Submitting...</span>
-                            </>
-                          ) : (
-                            <>
-                              <ArrowDownRight className="w-4 h-4" />
-                              <span>Deposit Collateral</span>
-                              <ArrowRight className="w-4 h-4" />
-                            </>
-                          )}
-                        </button>
+                        <HideDexFundingSubmit deposit submit busy={isDepositing}
+                          disabled={!amount||!Number.isFinite(parseFloat(amount))||parseFloat(amount)<MIN_DEPOSIT_USDC}/>
                       </form>
                     ) : (
                       /* WITHDRAW FORM */
@@ -1454,32 +1432,9 @@ export default function PortfolioPanel({
                           </div>
                         </div>
 
-                        {/* 7. Primary CTA */}
-                        <button
-                          type="submit"
-                          disabled={Boolean(
-                            isWithdrawing ||
-                            !tradingStateReady ||
-                            !amount ||
-                            !Number.isFinite(Number(amount)) ||
-                            Number(amount) < MIN_WITHDRAWAL_USDC ||
-                            Number(amount) > withdrawableUsd + 0.01
-                          )}
-                          className="w-full py-3.5 px-4 rounded-xl bg-accent hover:opacity-90 active:scale-[0.99] text-brand-bg font-bold text-sm tracking-wide transition-all shadow-md flex items-center justify-center gap-2 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:pointer-events-none"
-                        >
-                          {isWithdrawing ? (
-                            <>
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                              <span>Submitting...</span>
-                            </>
-                          ) : (
-                            <>
-                              <ArrowUpRight className="w-4 h-4" />
-                              <span>Withdraw Assets</span>
-                              <ArrowRight className="w-4 h-4" />
-                            </>
-                          )}
-                        </button>
+                        <HideDexFundingSubmit deposit={false} submit busy={isWithdrawing}
+                          disabled={!tradingStateReady||!amount||!Number.isFinite(Number(amount))||
+                            Number(amount)<MIN_WITHDRAWAL_USDC||Number(amount)>withdrawableUsd+0.01}/>
                       </form>
                     )}
                   </div>

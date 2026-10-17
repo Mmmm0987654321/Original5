@@ -26,6 +26,7 @@ import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelect
 import HideDexOrderBookPanel, {type HideDexBookLevel} from "./HideDexOrderBookPanel";
 import {HideDexTradeGrid,HideDexOrderForm,HideDexTopMarketPane} from "./HideDexTradeLayout";
 import {HideDexTradePercentPresets,HideDexTradeOptionToggle} from "./HideDexTradeOptions";
+import HideDexTradeTriggerPrice from "./HideDexTradeTriggerPrice";
 import HideDexMobileMarketHeader from "./HideDexMobileMarketHeader";
 import HideDexDesktopMarketBar from "./HideDexDesktopMarketBar";
 import { HideDexSideAndAvailability, HideDexBasicOrderInputs } from "./HideDexTradeEntry";
@@ -982,18 +983,12 @@ export default function LighterMarketPreview({
                 disabled={!tradingIdentity || tradingBusy || reduceOnly}
                 onChange={setAttachTpSl}/>
             </div>
-            {attachTpSl && !reduceOnly && <div className="grid grid-cols-2 gap-2">
-              <label className="text-[10px] text-brand-muted">Take Profit (USDC)
-                <input type="number" inputMode="decimal" min="0" placeholder="Trigger price"
-                  value={takeProfit} onChange={e => setTakeProfit(e.target.value)}
-                  className="w-full min-w-0 bg-brand-surface border border-brand-border rounded p-1.5 text-brand-text"/>
-              </label>
-              <label className="text-[10px] text-brand-muted">Stop Loss (USDC)
-                <input type="number" inputMode="decimal" min="0" placeholder="Trigger price"
-                  value={stopLoss} onChange={e => setStopLoss(e.target.value)}
-                  className="w-full min-w-0 bg-brand-surface border border-brand-border rounded p-1.5 text-brand-text"/>
-              </label>
-              <p className="col-span-2 text-[9px] text-brand-muted">Lighter native atomic TP/SL is available only on supported perpetual entries.</p>
+            {attachTpSl && !reduceOnly && <div className="grid grid-cols-2 gap-1.5 md:gap-2 animate-in fade-in slide-in-from-top-1 duration-150">
+              <HideDexTradeTriggerPrice kind="tp" value={takeProfit}
+                onChange={e=>setTakeProfit(e.target.value)} disabled={tradingBusy}/>
+              <HideDexTradeTriggerPrice kind="sl" value={stopLoss}
+                onChange={e=>setStopLoss(e.target.value)} disabled={tradingBusy}/>
+              <p className="col-span-2 text-[9px] text-brand-muted">Lighter native atomic TP/SL is available only for supported perpetual entries.</p>
             </div>}
           </>}
           <div className="bg-brand-bg/50 border border-brand-border rounded-lg p-1.5 font-mono text-[9px] space-y-0.5">
