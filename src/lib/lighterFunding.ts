@@ -20,7 +20,7 @@ export type LighterWalletProvider = {
   request: (args: { method: string; params?: any[] }) => Promise<any>;
 };
 
-async function verifiedUsdcAssetIndex(): Promise<number> {
+export async function verifiedUsdcAssetIndex(): Promise<number> {
   const data = await lighterPublicGet("/api/v1/assetDetails");
   const assets = Array.isArray(data.asset_details) ? data.asset_details : [];
   const matching = assets.filter(v => {
