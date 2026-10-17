@@ -4189,6 +4189,7 @@ export default function App() {
               sidebarMarketRequest={lighterMarketRequest}
               walletAddress={walletConnected ? walletAddress : ""}
               getWalletProvider={getTradingSetupProvider}
+              initialOrdersTab={activeTab===ActiveTab.TradeHistory?"TRADE_HISTORY":"OPEN_ORDERS"}
               section={
                 activeTab === ActiveTab.Markets || activeTab === ActiveTab.Dashboard ? "markets" :
                 activeTab === ActiveTab.Portfolio ? "funds" :

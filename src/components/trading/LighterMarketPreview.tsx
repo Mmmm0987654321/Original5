@@ -52,6 +52,7 @@ type Props = {
   watchlist?:readonly string[];
   onToggleFavorite?:(symbol:string)=>void;
   sidebarMarketRequest?:{symbol:string;nonce:number}|null;
+  initialOrdersTab?: "OPEN_ORDERS"|"TRADE_HISTORY";
 };
 
 const emptyBook: LighterMarketFeed = {
@@ -71,7 +72,7 @@ function labelKind(kind: Kind) { return kind === "perp" ? "Perpetual" : "Spot"; 
  */
 export default function LighterMarketPreview({
   walletAddress, getWalletProvider, section, initialKind = "perp", onSelectSection,
-  onMarketCatalog,watchlist=[],onToggleFavorite,sidebarMarketRequest,
+  onMarketCatalog,watchlist=[],onToggleFavorite,sidebarMarketRequest,initialOrdersTab,
 }: Props) {
   const [markets, setMarkets] = useState<LighterMarket[]>([]);
   const [selectedMarketId, setSelectedMarketId] = useState<number | null>(null);
@@ -86,7 +87,12 @@ export default function LighterMarketPreview({
   const [publicAccounts, setPublicAccounts] = useState<LighterPublicAccount[] | null>(null);
   const [feed, setFeed] = useState<LighterMarketFeed>(emptyBook);
   const [viewMode, setViewMode] = useState<"chart" | "orderbook">("chart");
-  const [accountTab, setAccountTab] = useState<TradingTabId>("POSITIONS");
+  const [accountTab, setAccountTab] = useState<TradingTabId>(()=>section==="orders" ? initialOrdersTab??"OPEN_ORDERS" : "POSITIONS");
+  // Original4 has distinct Orders and Trade History pages; use the same intended
+  // selected tab when navigating directly, without remounting a signer or wallet.
+  useEffect(()=>{
+    if(section==="orders") setAccountTab(initialOrdersTab??"OPEN_ORDERS");
+  },[section,initialOrdersTab]);
   const [expandedPositions, setExpandedPositions] = useState<Record<string, boolean>>({});
   const [positionSort, setPositionSort] = useState<"default" | "pnl" | "size">("default");
   const [side, setSide] = useState<"buy" | "sell">("buy");

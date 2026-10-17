@@ -290,10 +290,10 @@ export default function Navbar({
         {/* Keep the brand visible even when sensitive account details are hidden. */}
         <div
           onClick={() => handleNavClick(ActiveTab.Landing)}
-          className="flex items-center cursor-pointer group shrink-0 min-w-0"
+          className="flex items-center cursor-pointer group shrink-0"
           id="navbar-logo"
         >
-          <HideDexLogo size={28} showText={true} textSize="text-[13px] min-[390px]:text-sm sm:text-base" className="gap-1 sm:gap-2" />
+          <HideDexLogo size={trustShieldMode === "ANONYMOUS" ? 28 : 32} showText={true} textSize={trustShieldMode === "ANONYMOUS" ? "text-xs sm:text-base" : "text-sm sm:text-base"} />
         </div>
 
         {/* Centered command search, using only wired website features. */}
