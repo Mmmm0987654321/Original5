@@ -7,6 +7,8 @@ import HideDexFundsPerformance, {type HideDexPerformancePeriod, type HideDexPerf
 import HideDexFundsModalHeader from "../dashboard/HideDexFundsModalHeader";
 import {HideDexFundingNetworkAsset,HideDexFundingDestination,HideDexFundingAmount,HideDexFundingPresets,HideDexFundingSubmit,HideDexFundingFeeCard} from "../dashboard/HideDexFundingFields";
 import { DailyFillVolumeBars } from "../dashboard/AnalyticsPanel";
+import {ResponsiveContainer,LineChart,Line,XAxis,YAxis,Tooltip} from "recharts";
+import {getLighterPublicAnalytics,type LighterPublicAnalytics} from "../../lib/lighterPublicAnalytics";
 import {
   registerLighterTradingKey, reconnectLighterTradingKey, getActiveLighterSigner,
   clearLighterTradingKey, submitLighterOrder, withdrawLighterUsdc,
@@ -151,10 +153,14 @@ export default function LighterMarketPreview({
   const [liveFills,setLiveFills]=useState<Awaited<ReturnType<typeof getLighterSignedTradeHistory>>|null>(null);
   const [fillsLoading,setFillsLoading]=useState(false);
   const [fillsError,setFillsError]=useState("");
+  const [publicAnalytics,setPublicAnalytics]=useState<LighterPublicAnalytics|null>(null);
+  const [publicAnalyticsError,setPublicAnalyticsError]=useState("");
+  const [publicAnalyticsLoading,setPublicAnalyticsLoading]=useState(false);
 
   useEffect(() => {
     let stopped=false;
     const activeSigner=getActiveLighterSigner(walletAddress);
+    if(!activeSigner)clearLighterTradingKey();
     setTradingIdentity(activeSigner);
     setRecoveryKey("");setLiveOrders(null);setLiveFills(null);
     setTradingNotice("");setAuthSheetOpen(false);
@@ -190,7 +196,7 @@ export default function LighterMarketPreview({
     if (!walletAddress || tradingBusy) return;
     setTradingBusy(true); setTradingNotice("");
     try {
-      const { identity, recoveryKey: secret, txHash } = await registerLighterTradingKey({
+      const { identity, recoveryKey: secret } = await registerLighterTradingKey({
         walletAddress, getWalletProvider,
       });
       setTradingIdentity(identity);
@@ -438,8 +444,8 @@ export default function LighterMarketPreview({
     <div className="space-y-2 text-xs sm:text-sm">
       {tradingIdentity ? <div className="flex justify-between gap-2 items-center border border-brand-border rounded-lg p-2">
         <span className="text-emerald-500 font-bold">Lighter signing key · Account #{tradingIdentity.accountIndex} · Slot {tradingIdentity.apiKeyIndex}</span>
-        <button type="button" onClick={() => {
-          void forgetRememberedLighterSigner(walletAddress).catch(()=>{});
+        <button type="button" onClick={async () => {
+          await forgetRememberedLighterSigner(walletAddress).catch(()=>{});
           try{localStorage.removeItem("hidedex:lighter:key-ref:"+walletAddress.toLowerCase());}catch{}
           clearLighterTradingKey(); setTradingIdentity(null); setRecoveryKey(""); setLiveOrders(null); setLiveFills(null);
           setTradingNotice("Session key disconnected. Your registered key remains on Lighter.");
@@ -533,6 +539,26 @@ export default function LighterMarketPreview({
     }).finally(() => { if (!ac.signal.aborted) setAccountsLoading(false); });
     return () => ac.abort();
   }, [walletAddress, accountReload]);
+
+  // Public volume and cumulative trade PnL need no trading authorization.
+  // This is per verified L1-owned Lighter account, not exchange-wide volume.
+  useEffect(()=>{
+    let stopped=false;
+    const controller=new AbortController();
+    setPublicAnalytics(null);setPublicAnalyticsError("");
+    if(!walletAddress||section!=="funds"){
+      setPublicAnalyticsLoading(false);return ()=>controller.abort();
+    }
+    setPublicAnalyticsLoading(true);
+    getLighterPublicAnalytics(walletAddress,performancePeriod,controller.signal)
+      .then(value=>{if(!stopped){setPublicAnalytics(value);setPublicAnalyticsError("");}})
+      .catch(error=>{
+        if(!stopped&&!controller.signal.aborted){
+          setPublicAnalyticsError(error instanceof Error?error.message:"Lighter public volume unavailable.");
+        }
+      }).finally(()=>{if(!stopped)setPublicAnalyticsLoading(false);});
+    return ()=>{stopped=true;controller.abort();};
+  },[walletAddress,section,performancePeriod]);
 
   // Keep Lighter balances, collateral and positions fresh even when the
   // user makes a transaction outside HideDex. Read-only refresh; no signing.
@@ -1296,7 +1322,10 @@ export default function LighterMarketPreview({
             {([
               {label:"UNREALIZED PNL (LIVE)",value:performanceMarket==="spot" || unrealizedPnl===null ? "—" :
                 (unrealizedPnl<0?"-$":"+$")+formatPrice(Math.abs(unrealizedPnl),2)},
-              {label:"VOLUME (LOADED FILLS)",value:lighterStats?.volume===null||!lighterStats?"—":"$"+formatPrice(lighterStats.volume,2)},
+              {label:performanceMarket==="all"?"TOTAL VOLUME":"VOLUME (LOADED FILLS)",
+                value:performanceMarket==="all" && publicAnalytics ?
+                  "$"+formatPrice(publicAnalytics.volumeUsd,2):
+                  lighterStats?.volume===null||!lighterStats?"—":"$"+formatPrice(lighterStats.volume,2)},
               {label:"FEES (LOADED FILLS)",value:lighterStats?.fee===null||!lighterStats?"—":"$"+formatPrice(lighterStats.fee,4)},
               {label:"EXECUTED ORDERS",value:lighterStats?.orders===null||!lighterStats?"—":String(lighterStats.orders)},
             ]).map(item=><div key={item.label}
@@ -1305,22 +1334,47 @@ export default function LighterMarketPreview({
               <strong className="block text-lg font-mono mt-2">{hideBalance?"••••":item.value}</strong>
             </div>)}
           </div>}
-          chart={<div className="h-[180px] sm:h-[220px] w-full rounded-xl bg-brand-overlay-subtle/50 border border-brand-border/40 flex flex-col items-center justify-center text-center p-4">
-            <TrendingUp className="w-6 h-6 text-brand-muted/60 mb-2"/>
-            <span className="text-xs font-semibold text-brand-muted">
-              Historical equity series is not available from the verified Lighter feed.
-              Live PnL is a current snapshot; actual loaded-fill volume is displayed below.
-            </span>
+          chart={<div className="h-[180px] sm:h-[220px] w-full rounded-xl bg-brand-overlay-subtle/50 border border-brand-border/40 p-3">
+            {performanceMarket==="all" && publicAnalytics && publicAnalytics.tradePnlSeries.length>=2
+              ? <div className="h-full w-full flex flex-col">
+                  <span className="text-[10px] font-bold text-brand-muted mb-2">Cumulative Trading PnL · Lighter (USDC)</span>
+                  <div className="flex-1 min-h-0">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={publicAnalytics.tradePnlSeries} margin={{top:5,right:4,left:-20,bottom:3}}>
+                        <XAxis dataKey="time" type="number" domain={["dataMin","dataMax"]}
+                          tickFormatter={t=>new Date(Number(t)).toLocaleDateString()} tick={{fontSize:9}}/>
+                        <YAxis tick={{fontSize:9}} width={46}/>
+                        <Tooltip labelFormatter={v=>new Date(Number(v)).toLocaleString()}
+                          formatter={v=>["$"+formatPrice(Number(v),2),"Trading PnL"]}/>
+                        <Line dataKey="value" type="monotone" stroke="#18c29c" strokeWidth={2}
+                          dot={false} activeDot={{r:3}} isAnimationActive={false}/>
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              : <div className="h-full flex flex-col items-center justify-center text-center gap-2">
+                  <TrendingUp className="w-6 h-6 text-brand-muted/60"/>
+                  <span className="text-xs font-semibold text-brand-muted">
+                    {publicAnalyticsLoading?"Loading Lighter PnL…":
+                      publicAnalyticsError||"Lighter did not return a complete trading PnL series for this period."}
+                  </span>
+                </div>}
           </div>}
         />
         <DailyFillVolumeBars
-          fills={lighterStats?.chartFills??[]}
+          fills={performanceMarket==="all" && publicAnalytics ?
+            publicAnalytics.buckets.map(row=>({time:row.time,volumeUsd:row.volumeUsd})):
+            lighterStats?.chartFills??[]}
           period={performancePeriod}
           walletConnected={Boolean(walletAddress)}
           sensitiveHidden={hideBalance}
+          sourceLabel={performanceMarket==="all" && publicAnalytics?"Lighter public account volume":"loaded fills"}
           unavailableMessage={!walletAddress?undefined:
+            performanceMarket==="all"?
+              (publicAnalyticsLoading?"Loading public Lighter volume…":
+               publicAnalyticsError||(!publicAnalytics?"Lighter public volume unavailable.":undefined)):
             restoringSavedSigner?"Restoring saved Lighter data…":
-            !tradingIdentity?"Lighter fills need a verified account key (one-time enable trading).":
+            !tradingIdentity?"Lighter fills require a verified account key.":
             fillsError||(!liveFills?"Loading verified Lighter fills…":undefined)}
         />
       </div>;
