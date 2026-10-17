@@ -435,8 +435,24 @@ export async function withdrawLighterUsdc(args: {
     const available = Number(account?.available_balance);
     if (!Number.isFinite(available) || amount > available)
       throw new Error("Amount exceeds verified Lighter available balance.");
-    const tx = await s.client.withdraw({ amount: args.amount.trim(), routeType: 0 });
-    return accepted(tx);
+    // This pinned SDK's documented high-level secure-withdrawal API accepts
+    // {amount}. It selects its own correct default route/asset. Explicitly
+    // injecting routeType:0 was rejected in the live browser as
+    // "invalid route type" despite 0 being a valid *protocol* perp route.
+    // Do NOT guess another numeric route or use a different SDK/signing flow.
+    // Secure withdrawal always targets the verified L1 owner above.
+    try {
+      const tx = await s.client.withdraw({ amount: args.amount.trim() });
+      return accepted(tx);
+    } catch (error) {
+      const raw=error instanceof Error?error.message:String(error);
+      if(/invalid route type/i.test(raw)) {
+        // It may be an SDK/protocol compatibility error. A failed response
+        // alone cannot establish transaction status; never auto retry.
+        throw new Error("Lighter did not confirm the secure Ethereum withdrawal route. Check your Lighter withdrawal history before attempting it again.");
+      }
+      throw error;
+    }
   });
 }
 
