@@ -151,7 +151,7 @@ export default function ClosePositionModal({
               </span>
             </div>
             <div>
-              <span className="text-brand-muted block text-[9px] font-bold uppercase tracking-wider">Mark Price (Live)</span>
+              <span className="text-brand-muted block text-[9px] font-bold uppercase tracking-wider">{lighterMode?"Last Trade Price (reference)":"Mark Price (Live)"}</span>
               <span className="font-bold text-brand-text text-xs sm:text-[13px]">
                 {Number.isFinite(position.markPrice) && position.markPrice > 0
                   ? `$${position.markPrice.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}`
