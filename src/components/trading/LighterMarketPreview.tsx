@@ -103,6 +103,7 @@ export default function LighterMarketPreview({
   },[section,initialOrdersTab]);
   const [expandedPositions, setExpandedPositions] = useState<Record<string, boolean>>({});
   const [closeAllPositionsOpen,setCloseAllPositionsOpen]=useState(false);
+  const [cancelAllOrdersOpen,setCancelAllOrdersOpen]=useState(false);
   const [restoringSavedSigner,setRestoringSavedSigner]=useState(false);
   const [positionSort, setPositionSort] = useState<HideDexPositionSort>("DEFAULT");
   const [side, setSide] = useState<"buy" | "sell">("buy");
@@ -372,6 +373,44 @@ export default function LighterMarketPreview({
       throw new Error((accepted?accepted+" orders already accepted. ":"")+
         (e instanceof Error?e.message:"Close All failed."));
     }finally{setAccountReload(v=>v+1);setTradingBusy(false);}
+  };
+
+  /** Confirmed user action; cancel only orders belonging to the verified
+   * active Lighter signer account. No other wallet or venue is affected.
+   */
+  const cancelAllLighterOrders = async ():Promise<void> => {
+    if(!walletAddress||!tradingIdentity||tradingBusy)
+      throw new Error("Authorize the correct Lighter signer before cancelling orders.");
+    setTradingBusy(true);
+    let acceptedCount=0;
+    try {
+      const owned=await getLighterAccountIndexes(walletAddress);
+      if(!owned.includes(tradingIdentity.accountIndex))
+        throw new Error("Lighter signing account ownership could not be verified.");
+      const live=await getLighterSignedOpenOrders(walletAddress);
+      if(!live.length)throw new Error("No active Lighter orders remain.");
+      const catalog=await getLighterMarkets();
+      const targets=live.map(order=>{
+        const marketIndex=Number(order.market_index??order.market_id);
+        const orderIndex=Number(order.order_index);
+        const market=catalog.find(item=>item.id===marketIndex);
+        return {market,orderIndex};
+      });
+      if(targets.some(row=>!row.market || !Number.isSafeInteger(row.orderIndex) || row.orderIndex<0))
+        throw new Error("Unverified Lighter order identifier: no cancellations sent.");
+      for(const {market,orderIndex} of targets){
+        if(!market)throw new Error("Lighter market no longer verified.");
+        await cancelLighterSignedOrder({walletAddress,market,orderIndex});
+        acceptedCount++;
+      }
+      setTradingNotice("Lighter accepted "+acceptedCount+" cancellations. Refresh the open orders list to verify.");
+    }catch(e){
+      throw new Error((acceptedCount?acceptedCount+" cancellations already accepted. ":"")+
+        (e instanceof Error?e.message:"Cancel All failed."));
+    }finally{
+      setAccountReload(value=>value+1);
+      setTradingBusy(false);
+    }
   };
 
   const cancelLighterOrder = async (marketId: number, orderIndex: number) => {
@@ -835,6 +874,16 @@ export default function LighterMarketPreview({
         onCloseAll={()=>{if(!tradingIdentity){setAuthSheetOpen(true);return;}setCloseAllPositionsOpen(true);}}
         closeDisabled={tradingBusy||knownPositionCount===0}
       />}
+      {accountTab==="OPEN_ORDERS" && liveOrders!==null && liveOrders.length>0 && (
+        <div className="flex items-center justify-end px-2.5 py-1.5 bg-brand-bg/50 border-b border-brand-border text-[9px] md:text-[10px] text-gray-500 font-bold uppercase tracking-wider relative">
+          <button type="button"
+            disabled={tradingBusy || !tradingIdentity}
+            onClick={()=>setCancelAllOrdersOpen(true)}
+            className="text-rose-400 hover:text-rose-300 transition-colors cursor-pointer disabled:opacity-40">
+            Cancel All
+          </button>
+        </div>
+      )}
       <div className="p-2 md:p-3 min-h-[110px] overflow-y-auto overflow-x-hidden">
         {accountTab === "BALANCES" && <HideDexBalancesView
           items={publicAccounts?.some(a=>a.assets===null)?null:lighterBalanceRows}
@@ -1478,6 +1527,9 @@ export default function LighterMarketPreview({
     {closeAllPositionsOpen&&<CloseAllConfirmationModal action="close_positions"
       onClose={()=>setCloseAllPositionsOpen(false)}
       onConfirm={closeAllLighterPositions}/>}
+    {cancelAllOrdersOpen&&<CloseAllConfirmationModal action="cancel_orders"
+      onClose={()=>setCancelAllOrdersOpen(false)}
+      onConfirm={cancelAllLighterOrders}/>}
     {section === "orders" && <div className="rounded-xl border border-brand-border bg-brand-bg p-3">
       {lighterAccountTabs}
     </div>}
