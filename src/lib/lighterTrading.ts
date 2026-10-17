@@ -7,7 +7,7 @@
  */
 import { BrowserProvider, getAddress } from "ethers";
 import {
-  initLighterSigner, LighterClient, LighterOnboarding, LighterHelper,
+  initLighterSigner, LighterClient, LighterOnboarding, LighterHelper, LighterConstant,
   type LighterSignerContext, type LighterActiveOrder,
 } from "@hitesh23k/lighter-sdk/browser";
 import wasmUrl from "@hitesh23k/lighter-sdk/lighterSigner.wasm?url";
@@ -228,6 +228,66 @@ export async function submitLighterOrder(args: {
         : await s.client.rest.createLimitOrder(s.signer, {...params, timeInForce: "gtc" });
     }
     return accepted(tx);
+  });
+}
+
+
+/** Signed Lighter native TP/SL triggers for an already-open perpetual position.
+ * No simulated triggers or new position-entry. Orders are real reduce-only.
+ * Each leg is independently accepted; the caller must refresh actual orders.
+ */
+export async function setLighterPositionTriggers(args:{
+  walletAddress:string;market:LighterMarket;signedSize:number;
+  takeProfit:number|null;stopLoss:number|null;
+}):Promise<string[]>{
+  return withWrite(async()=>{
+    const s=active(args.walletAddress);
+    if(!await verifyLighterTradingKey(args.walletAddress))
+      throw new Error("Lighter trading signer is not authorized.");
+    if(args.market.kind!=="perp"||!(args.signedSize!==0&&Number.isFinite(args.signedSize))||
+       (args.takeProfit===null&&args.stopLoss===null))
+      throw new Error("A verified perp position and TP or SL trigger price are required.");
+    const catalog=await getLighterMarkets();
+    const market=catalog.find(m=>m.id===args.market.id&&m.kind==="perp"&&m.symbol===args.market.symbol);
+    if(!market||market.priceDecimals!==args.market.priceDecimals||
+       market.sizeDecimals!==args.market.sizeDecimals||market.multiplier!==args.market.multiplier)
+      throw new Error("Lighter market metadata changed. No trigger submitted.");
+    const [account]=await getLighterPublicAccounts([s.signer.accountIndex]);
+    const position=account?.positions.find(p=>p.symbol===market.symbol);
+    if(!position||Math.sign(position.signedSize)!==Math.sign(args.signedSize)||
+       Math.abs(position.signedSize-args.signedSize)>1e-9)
+      throw new Error("Position size or side changed. Verify position before attaching TP/SL.");
+    const anchor=market.lastTradePrice;
+    if(!(anchor&&anchor>0))throw new Error("Lighter trigger reference price is unavailable.");
+    const closeSell=position.signedSize>0;
+    if((args.takeProfit!=null&&(!Number.isFinite(args.takeProfit)||args.takeProfit<=0||
+        (closeSell?args.takeProfit<=anchor:args.takeProfit>=anchor)))||
+       (args.stopLoss!=null&&(!Number.isFinite(args.stopLoss)||args.stopLoss<=0||
+        (closeSell?args.stopLoss>=anchor:args.stopLoss<=anchor))))
+      throw new Error("TP/SL direction must match current market and position side.");
+    const out:string[]=[];
+    for(const [label,trigger] of [["TP",args.takeProfit],["SL",args.stopLoss]] as const){
+      if(trigger===null)continue;
+      const amount=rawOrder(market,Math.abs(position.signedSize),closeSell?trigger*0.98:trigger*1.02);
+      const triggerPx=rawOrder(market,Math.abs(position.signedSize),trigger).price;
+      if(amount.baseAmount<=0n||amount.baseAmount>281474976710655n)
+        throw new Error("Lighter trigger size is outside native uint48 limits.");
+      try{
+        const result=await s.client.rest.createTriggerOrder(s.signer,{
+          marketIndex:market.id,baseAmount:amount.baseAmount,isAsk:closeSell,
+          orderType:label==="TP"?LighterConstant.ORDER_TYPE.TAKE_PROFIT:LighterConstant.ORDER_TYPE.STOP_LOSS,
+          triggerPrice:triggerPx,price:amount.price,
+          clientOrderIndex:clientOrderIndex(),applyIntegratorFee:false,
+        });
+        out.push(accepted(result));
+      }catch(e){
+        if(out.length)throw new Error("The first Lighter trigger may already be active; the "+
+          label+" submission failed. Check Open Orders before retrying. "+
+          (e instanceof Error?e.message:String(e)));
+        throw e;
+      }
+    }
+    return out;
   });
 }
 

@@ -6,7 +6,8 @@ interface TpSlModalProps {
   position: Position;
   openOrders: OpenOrder[];
   onClose: () => void;
-  onSave: (tpPrice: number | null, slPrice: number | null) => void;
+  onSave: (tpPrice: number | null, slPrice: number | null) => Promise<void> | void;
+  priceOnly?:boolean;
   tradingEnabled?: boolean;
   onSetupRequired?: () => void;
   onCancelOrder?: (id: string) => Promise<void> | void;
@@ -19,7 +20,8 @@ export default function TpSlModal({
   onSave, 
   tradingEnabled = true,
   onSetupRequired,
-  onCancelOrder 
+  onCancelOrder,
+  priceOnly=false,
 }: TpSlModalProps) {
   const isLong = position.type === "LONG";
   const entryPrice = position.entryPrice;
@@ -27,8 +29,8 @@ export default function TpSlModal({
   const leverage = position.leverage;
 
   // Unit modes: "PRICE" | "PERCENT" | "PNL"
-  const [tpMode, setTpMode] = useState<"PRICE" | "PERCENT" | "PNL">("PERCENT");
-  const [slMode, setSlMode] = useState<"PRICE" | "PERCENT" | "PNL">("PERCENT");
+  const [tpMode, setTpMode] = useState<"PRICE" | "PERCENT" | "PNL">(priceOnly?"PRICE":"PERCENT");
+  const [slMode, setSlMode] = useState<"PRICE" | "PERCENT" | "PNL">(priceOnly?"PRICE":"PERCENT");
 
   // Input string values
   const [tpInput, setTpInput] = useState<string>("");
@@ -182,7 +184,9 @@ export default function TpSlModal({
   };
 
   // Handle Save
-  const handleSave = () => {
+  const [saving,setSaving]=useState(false);
+  const [saveError,setSaveError]=useState("");
+  const handleSave = async () => {
     if (!tradingEnabled) {
       // Release the sheet so the real wallet setup modal can appear on top.
       onClose();
@@ -192,7 +196,11 @@ export default function TpSlModal({
     if (!tpInput.trim() && !slInput.trim()) return;
     const tpPrice = getCalculatedTpPrice();
     const slPrice = getCalculatedSlPrice();
-    onSave(tpPrice, slPrice);
+    if(saving)return;
+    setSaving(true);setSaveError("");
+    try{await onSave(tpPrice,slPrice);}catch(e){
+      setSaveError(e instanceof Error?e.message:"Lighter TP/SL was not accepted.");
+    }finally{setSaving(false);}
   };
 
   const currentTpPrice = getCalculatedTpPrice();
@@ -244,7 +252,7 @@ export default function TpSlModal({
             <span className={`px-1 py-0.2 rounded text-[8px] font-black tracking-wider ${isLong ? "bg-emerald-500/10 text-brand-profit border border-emerald-500/20" : "bg-rose-500/10 text-brand-loss border border-rose-500/20"}`}>
               {position.type}
             </span>
-            <span>{leverage}x</span>
+            {!priceOnly&&<span>{leverage}x</span>}
           </span>
           <span className="font-semibold">Entry Price: ${entryPrice.toLocaleString(undefined, { minimumFractionDigits: 1 })}</span>
         </div>
@@ -273,6 +281,7 @@ export default function TpSlModal({
               <div className="relative">
                 <button
                   type="button"
+                  disabled={priceOnly}
                   onClick={() => {
                     setShowTpDropdown(!showTpDropdown);
                     setShowSlDropdown(false);
@@ -347,6 +356,7 @@ export default function TpSlModal({
               <div className="relative">
                 <button
                   type="button"
+                  disabled={priceOnly}
                   onClick={() => {
                     setShowSlDropdown(!showSlDropdown);
                     setShowTpDropdown(false);
@@ -466,7 +476,7 @@ export default function TpSlModal({
                 {currentTpPrice ? `$${currentTpPrice.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}` : "Not Set"}
               </span>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-[10px] border-t border-brand-divider/10 pt-1">
+            {!priceOnly&&<div className="grid grid-cols-2 gap-2 text-[10px] border-t border-brand-divider/10 pt-1">
               <div className="flex justify-between">
                 <span className="text-brand-muted">Est. Profit:</span>
                 <span className="text-brand-profit font-bold">
@@ -479,7 +489,7 @@ export default function TpSlModal({
                   {tpMetrics ? `+${tpMetrics.percent.toFixed(1)}%` : "--"}
                 </span>
               </div>
-            </div>
+            </div>}
           </div>
 
           {/* Stop Loss Live Analysis */}
@@ -490,7 +500,7 @@ export default function TpSlModal({
                 {currentSlPrice ? `$${currentSlPrice.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}` : "Not Set"}
               </span>
             </div>
-            <div className="grid grid-cols-2 gap-2 text-[10px] border-t border-brand-divider/10 pt-1">
+            {!priceOnly&&<div className="grid grid-cols-2 gap-2 text-[10px] border-t border-brand-divider/10 pt-1">
               <div className="flex justify-between">
                 <span className="text-brand-muted">Est. Loss:</span>
                 <span className="text-brand-loss font-bold">
@@ -503,14 +513,14 @@ export default function TpSlModal({
                   {slMetrics ? `-${Math.abs(slMetrics.percent).toFixed(1)}%` : "--"}
                 </span>
               </div>
-            </div>
+            </div>}
           </div>
         </div>
 
 
 
         {/* Quick Percent Buttons Side-By-Side Layout (dense styling) */}
-        <div className="grid grid-cols-2 gap-3 border-t border-brand-divider/10 pt-2.5 mt-2.5">
+        {!priceOnly&&<div className="grid grid-cols-2 gap-3 border-t border-brand-divider/10 pt-2.5 mt-2.5">
           {/* TP Presets */}
           <div className="space-y-1">
             <span className="text-[8px] text-brand-muted uppercase font-bold tracking-wider block text-center">TP Presets</span>
@@ -544,8 +554,9 @@ export default function TpSlModal({
               ))}
             </div>
           </div>
-        </div>
+        </div>}
 
+        {saveError&&<p role="alert" className="text-xs text-brand-loss mt-2">{saveError}</p>}
         {!tradingEnabled && (
           <div className="mt-3 rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-brand-text">
             Trading is not enabled. Use Enable Trading to complete wallet setup.
@@ -563,11 +574,11 @@ export default function TpSlModal({
           <button
             onClick={handleSave}
             type="button"
-            disabled={tradingEnabled && !tpInput.trim() && !slInput.trim()}
+            disabled={saving||(tradingEnabled && !tpInput.trim() && !slInput.trim())}
             className="flex-1 min-h-11 rounded-xl bg-brand-primary font-bold text-sm transition-all cursor-pointer active:scale-95 text-center flex items-center justify-center select-none hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ color: "#101318" }}
           >
-            {tradingEnabled ? "Confirm TP / SL" : "Enable Trading"}
+            {saving?"Saving TP/SL…":tradingEnabled ? "Confirm TP / SL" : "Enable Trading"}
           </button>
         </div>
 

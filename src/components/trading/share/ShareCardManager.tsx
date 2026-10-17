@@ -10,6 +10,7 @@ interface ShareCardPopupProps {
   onClose: () => void;
   positionData?: any; // Active or closed position from trading engine/Hyperliquid
   walletAddress?: string;
+  verifiedOnly?: boolean;
 }
 
 export default function ShareCardPopup({
@@ -17,6 +18,7 @@ export default function ShareCardPopup({
   onClose,
   positionData,
   walletAddress = "",
+  verifiedOnly = false,
 }: ShareCardPopupProps) {
   const { formatWalletAddress } = useTrustShield();
   const [config, setConfig] = useState<ShareCardConfig>(DEFAULT_CONFIG);
@@ -73,12 +75,12 @@ export default function ShareCardPopup({
       // Short delay ensures fonts and styles are parsed in context
       const renderTimeout = setTimeout(() => {
         if (canvasRef.current) {
-          renderShareCardToCanvas(canvasRef.current, data, config, windowWidth);
+          renderShareCardToCanvas(canvasRef.current, data, verifiedConfig, windowWidth);
         }
       }, 50);
       return () => clearTimeout(renderTimeout);
     }
-  }, [isOpen, config, windowWidth, currentDate, currentTime]);
+  }, [isOpen, config, windowWidth, currentDate, currentTime, verifiedOnly, positionData]);
 
   if (!isOpen) return null;
 
@@ -86,25 +88,37 @@ export default function ShareCardPopup({
   const data: ShareCardData = {
     symbol: positionData?.symbol || "BTC",
     type: positionData?.type || "LONG",
-    size: positionData?.size || 1.25,
-    entryPrice: positionData?.entryPrice || 91250.0,
-    markPrice: positionData?.markPrice || 92433.5,
-    margin: positionData?.margin || 5700.0,
-    leverage: positionData?.leverage || 20,
-    unrealizedPnl: positionData?.unrealizedPnl ?? 1479.38,
-    unrealizedPnlPercent: positionData?.unrealizedPnlPercent ?? 25.95,
+    size: verifiedOnly ? (Number.isFinite(positionData?.size)?positionData.size:0) : (positionData?.size || 1.25),
+    entryPrice: verifiedOnly ? (Number.isFinite(positionData?.entryPrice)?positionData.entryPrice:0) : (positionData?.entryPrice || 91250.0),
+    markPrice: verifiedOnly ? (Number.isFinite(positionData?.markPrice)?positionData.markPrice:0) : (positionData?.markPrice || 92433.5),
+    margin: verifiedOnly ? (Number.isFinite(positionData?.margin)?positionData.margin:0) : (positionData?.margin || 5700.0),
+    leverage: verifiedOnly ? (Number.isFinite(positionData?.leverage)?positionData.leverage:0) : (positionData?.leverage || 20),
+    unrealizedPnl: verifiedOnly ? (Number.isFinite(positionData?.unrealizedPnl)?positionData.unrealizedPnl:0) : (positionData?.unrealizedPnl ?? 1479.38),
+    unrealizedPnlPercent: verifiedOnly ? (Number.isFinite(positionData?.unrealizedPnlPercent)?positionData.unrealizedPnlPercent:0) : (positionData?.unrealizedPnlPercent ?? 25.95),
     walletAddress: formatWalletAddress(walletAddress || positionData?.walletAddress || ""),
-    username: positionData?.username || "Trader_Hyper",
+    username: verifiedOnly ? "" : (positionData?.username || "Trader_Hyper"),
     date: currentDate,
     time: currentTime,
   };
 
+  // Same original Share Card renderer, with any unavailable venue metrics
+  // explicitly hidden. Illustrative defaults can never become Lighter facts.
+  const verifiedConfig=verifiedOnly?{
+    ...config,
+    showLeverage:config.showLeverage&&Number.isFinite(positionData?.leverage)&&positionData.leverage>0,
+    showMarkPrice:false,showPnlPercent:false,
+    showMargin:config.showMargin&&Number.isFinite(positionData?.margin)&&positionData.margin>0,
+    showPnlDollar:config.showPnlDollar&&Number.isFinite(positionData?.unrealizedPnl),
+    showEntryPrice:config.showEntryPrice&&Number.isFinite(positionData?.entryPrice)&&positionData.entryPrice>0,
+    showVolume:config.showVolume&&Number.isFinite(positionData?.entryPrice)&&positionData.entryPrice>0,
+    showUsername:false,
+  }:config;
   const handleDownload = () => {
     setIsExporting(true);
     setTimeout(() => {
       if (canvasRef.current) {
         // Render with high quality
-        renderShareCardToCanvas(canvasRef.current, data, config, windowWidth);
+        renderShareCardToCanvas(canvasRef.current, data, verifiedConfig, windowWidth);
         // Download files
         exportCanvasAsPNG(canvasRef.current, data.symbol);
         setIsExporting(false);

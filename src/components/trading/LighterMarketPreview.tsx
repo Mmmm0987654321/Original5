@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Layers, Wallet, TrendingUp, Unlock, Lock, ArrowUpRight, ArrowDownRight, ChevronRight, ChevronDown, X, ShieldCheck, Copy, Check, Eye, EyeOff, BarChart3 } from "lucide-react";
+import { Layers, Wallet, TrendingUp, Unlock, Lock, ArrowUpRight, ArrowDownRight, ChevronRight, ChevronDown, X, ShieldCheck, Copy, Check, Eye, EyeOff, BarChart3, Share2 } from "lucide-react";
 import { TrustShieldValue } from "../common/TrustShieldValue";
 import HideDexFundsOverview from "../dashboard/HideDexFundsOverview";
 import HideDexAssetAllocation from "../dashboard/HideDexAssetAllocation";
@@ -13,7 +13,7 @@ import {
   registerLighterTradingKey, reconnectLighterTradingKey, getActiveLighterSigner,
   clearLighterTradingKey, submitLighterOrder, withdrawLighterUsdc,
   getLighterSignedOpenOrders, getLighterSignedTradeHistory, cancelLighterSignedOrder,
-  verifyLighterTradingKey, updateLighterPerpMargin, type LighterTradingIdentity,
+  verifyLighterTradingKey, updateLighterPerpMargin, setLighterPositionTriggers, type LighterTradingIdentity,
 } from "../../lib/lighterTrading";
 import { depositLighterUsdcOnEthereum, depositLighterUsdcFromArbitrum, type LighterWalletProvider } from "../../lib/lighterFunding";
 import TVChart from "./TVChart";
@@ -30,6 +30,8 @@ import HideDexTradeHistory, {type HideDexHistoryRow} from "./HideDexTradeHistory
 import {rememberLighterSigner,readRememberedLighterSigner,forgetRememberedLighterSigner} from "../../lib/lighterDeviceKey";
 import CloseAllConfirmationModal from "./CloseAllConfirmationModal";
 import ClosePositionModal from "./ClosePositionModal";
+import TpSlModal from "./TpSlModal";
+import ShareCardPopup from "./share/ShareCardManager";
 import type {Position} from "../../types";
 import HideDexTradingToast from "./HideDexTradingToast";
 import HideDexPlaceOrderButton from "./HideDexPlaceOrderButton";
@@ -176,6 +178,8 @@ export default function LighterMarketPreview({
     }
   };
   useEffect(()=>()=>refreshTimersRef.current.forEach(id=>window.clearTimeout(id)),[]);
+  const [shareTarget,setShareTarget]=useState<{accountIndex:number;symbol:string;signedSize:number}|null>(null);
+  const [tpSlTarget,setTpSlTarget]=useState<{accountIndex:number;symbol:string;signedSize:number}|null>(null);
   const [singleCloseTarget,setSingleCloseTarget]=useState<{
     accountIndex:number;symbol:string;signedSize:number;
   }|null>(null);
@@ -362,7 +366,9 @@ export default function LighterMarketPreview({
     const fillTarget={accountIndex:tradingIdentity.accountIndex,marketId:selected.id,
       symbol:selected.symbol,side,since:Date.now()-1500,kind};
     setTradingBusy(true);setNoticeKind("pending");
-    setTradingNotice("Submitting signed Lighter order…");
+    setNoticeTitle(selected.symbol+" "+(kind==="perp"?"Perpetual":"Spot")+" "+(side==="buy"?"Buy":"Sell")+" Order — Submitting...");
+    setTradingNotice("Quantity: ~"+formatPrice(sizeInCoin,8)+" "+selected.symbol+
+      "\nValue: "+formatPrice(sizeInCoin*marketPrice,2)+" USDC");
     try {
       const tx = await submitLighterOrder({
         walletAddress, market: selected, side, type: orderType,
@@ -372,9 +378,11 @@ export default function LighterMarketPreview({
         stopLoss:attachTpSl && stopLoss.trim() ? Number(stopLoss) : undefined,
       });
       setNoticeKind("success");
-      setNoticeTitle(selected.symbol+" Order Submitted");
+      setNoticeTitle(selected.symbol+" "+(kind==="perp"?"Perpetual":"Spot")+
+        " "+(side==="buy"?"Buy":"Sell")+" Order Submitted");
       setAwaitingFill({...fillTarget,txHash:tx});
-      setTradingNotice("Signed order accepted by Lighter. Checking verified fills.");
+      setTradingNotice("Quantity: ~"+formatPrice(sizeInCoin,8)+" "+selected.symbol+
+        "\nValue: "+formatPrice(sizeInCoin*marketPrice,2)+" USDC");
       setAmount("");
       refreshAfterLighterWrite();
     } catch (e) {
@@ -386,8 +394,8 @@ export default function LighterMarketPreview({
           symbol:selected.symbol,previousSize});
         setAwaitingFill(fillTarget);
         setNoticeKind("pending");
-        setNoticeTitle("Verifying Lighter order");
-        setTradingNotice("Transaction response unclear. Checking verified fills before any second trade.");
+        setNoticeTitle("Order status unconfirmed");
+        setTradingNotice("Check Open Orders or Trade History before retrying this order.");
         refreshAfterLighterWrite();
       }else{
         setNoticeKind("error");
@@ -429,8 +437,7 @@ export default function LighterMarketPreview({
       throw new Error("Lighter account verification unavailable. No close was sent.");
     const latest=latestAccount.positions.find(p=>p.symbol===symbol);
     if(!latest){
-      setNoticeKind("success");
-      setTradingNotice("This position is already closed on Lighter. Updating the screen.");
+      setTradingNotice("");
       refreshAfterLighterWrite();
       return;
     }
@@ -438,22 +445,21 @@ export default function LighterMarketPreview({
        Math.abs(latest.signedSize)>Math.abs(signedSize)+1e-10)
       throw new Error("The position changed since this Close panel opened. Refreshing before another close.");
     const coinSize = Math.abs(latest.signedSize);
-    setTradingBusy(true);setNoticeKind("pending");
-    setTradingNotice("Sending signed reduce-only position close…");
+    setTradingNotice(""); // ClosePositionModal owns the spinner.
+    setTradingBusy(true);
     try {
       const tx = await submitLighterOrder({
         walletAddress, market:m, side:signedSize > 0 ? "sell":"buy",
         type:"market", coinSize, referencePrice:m.lastTradePrice, reduceOnly:true,
       });
-      setNoticeKind("success");
-      setTradingNotice("Lighter accepted close transaction "+tx+". Verifying the live position.");
+      setTradingNotice(""); // Real account refresh below handles completion.
       refreshAfterLighterWrite();
     } catch (e) {
       const message=e instanceof Error?e.message:String(e);
       if(/didn['’]t use volume quota/i.test(message)){
         setNoticeKind("pending");
         setUncertainPosition({accountIndex,symbol,previousSize:latest.signedSize});
-        setTradingNotice("Lighter close response is inconclusive. Checking positions; do not submit another close yet.");
+        setTradingNotice(""); // Shared modal retains ambiguous-status error.
         refreshAfterLighterWrite();
         throw new Error("Close status pending verification. Do not repeat: waiting for live Lighter positions.");
       }
@@ -571,7 +577,7 @@ export default function LighterMarketPreview({
 
   useEffect(() => {
     let cancelled = false;
-    if (!walletAddress || !tradingIdentity || accountTab !== "OPEN_ORDERS") {
+    if (!walletAddress || !tradingIdentity || (accountTab !== "OPEN_ORDERS" && accountTab !== "POSITIONS")) {
       setLiveOrders(null);setOpenOrdersError("");
       return;
     }
@@ -610,12 +616,8 @@ export default function LighterMarketPreview({
           sameAccountFill.tx_hash.toLowerCase()===awaitingFill.txHash.toLowerCase());
         setAwaitingFill(null);
         setUncertainPosition(null);
-        setNoticeKind("success");
-        setNoticeTitle(hashMatch?"Order Filled":"Lighter Fill Confirmed");
-        setTradingNotice(awaitingFill.symbol+" "+awaitingFill.side.toUpperCase()+
-          ": verified signer-account fill at "+sameAccountFill.price+
-          " (size "+sameAccountFill.size+")."+
-          (hashMatch?"":" Exact order-to-fill linkage not confirmed."));
+        // Fill is reconciled to account history silently. Hyperliquid's
+        // original single submitted-order toast is retained; no second popup.
       }
     }).catch(e=>{
       if(!stale)setFillsError(e instanceof Error?e.message:"Lighter fills unavailable.");
@@ -907,8 +909,8 @@ export default function LighterMarketPreview({
     const current=account.positions.find(p=>p.symbol===uncertainPosition.symbol)?.signedSize??0;
     if(Math.abs(current-uncertainPosition.previousSize)>1e-10){
       setUncertainPosition(null);
-      setNoticeKind("success");
-      setTradingNotice("Lighter account position changed. Verify final fill details in Trade History.");
+      // Account sync updates the shared card silently; no second close toast.
+      setTradingNotice("");
     }
   },[publicAccounts,uncertainPosition]);
 
@@ -925,10 +927,8 @@ export default function LighterMarketPreview({
   useEffect(()=>{
     if(!awaitingFill)return;
     const id=window.setTimeout(()=>{
+      // No automatic duplicate order, no second Lighter-only status popup.
       setAwaitingFill(null);
-      setNoticeKind("pending");
-      setNoticeTitle("Fill not yet verified");
-      setTradingNotice("No matching verified Lighter fill was returned yet. Check Open Orders or Trade History before resubmitting.");
     },35000);
     return ()=>window.clearTimeout(id);
   },[awaitingFill]);
@@ -1286,6 +1286,11 @@ export default function LighterMarketPreview({
                 const isExpanded = expandedPositions[key] ?? false;
                 return <HideDexPositionCard key={key}>
                   <HideDexPositionHeader
+                    shareAction={<button type="button"
+                      onClick={event=>{event.preventDefault();event.stopPropagation();
+                        setShareTarget({accountIndex:a.index,symbol:p.symbol,signedSize:p.signedSize});}}
+                      className="p-1 rounded bg-violet-600/10 hover:bg-violet-600/20 text-violet-400 hover:text-violet-300 border border-violet-500/10 hover:border-violet-500/30 transition-all duration-150 cursor-pointer active:scale-95"
+                      title="Share Position"><Share2 className="w-3 h-3"/></button>}
                     symbol={p.symbol}
                     side={p.signedSize>=0?"LONG":"SHORT"}
                     isExpanded={isExpanded}
@@ -1321,11 +1326,20 @@ export default function LighterMarketPreview({
                         value:p.allocatedMargin!==null&&p.allocatedMargin>0 ?
                           "$"+formatPrice(p.allocatedMargin,4):"—",tone:"muted"},
                       {label:"Mark Price",value:"—",tone:"muted"},
-                      {label:"TP / SL Target",value:"Not verified",tone:"muted"},
+                      {label:"TP / SL Target",value:(()=>{
+                        const market=markets.find(m=>m.kind==="perp"&&m.symbol===p.symbol);
+                        const orders=tradingIdentity?.accountIndex===a.index&&market?
+                          liveOrders?.filter(o=>Number(o.market_index??o.market_id)===market.id&&o.reduce_only===true)??[]:[];
+                        const tp=orders.some(o=>Number(o.type)===4);
+                        const sl=orders.some(o=>Number(o.type)===2);
+                        return tp||sl?(tp?"TP set":"")+(tp&&sl?" · ":"")+(sl?"SL set":""):"Not set";
+                      })(),tone:"muted"},
                     ]}
                     actions={<>
-                      <button type="button" disabled title="Existing-position TP/SL attachment is not verified for Lighter"
-                        className="w-full h-8 px-1 rounded-lg border bg-brand-overlay-subtle border-brand-primary/30 text-brand-primary text-[8px] sm:text-[10px] font-extrabold uppercase tracking-widest flex items-center justify-center text-center transition-all duration-150 disabled:opacity-40">
+                      <button type="button"
+                        onClick={()=>setTpSlTarget({accountIndex:a.index,symbol:p.symbol,signedSize:p.signedSize})}
+                        disabled={tradingBusy} title="Real Lighter TP/SL triggers"
+                        className="w-full h-8 px-1 rounded-lg border bg-brand-overlay-subtle hover:bg-brand-overlay-normal border-brand-primary/30 hover:border-brand-primary/50 text-brand-primary text-[8px] sm:text-[10px] font-extrabold uppercase tracking-widest flex items-center justify-center text-center transition-all duration-150 cursor-pointer active:scale-95 disabled:opacity-40">
                         TP/SL
                       </button>
                       <button type="button" onClick={()=>requestLighterPositionClose(a.index,p.symbol,p.signedSize)}
@@ -1927,6 +1941,51 @@ export default function LighterMarketPreview({
       </HideDexFundsDialogShell>
     )}
 
+    {shareTarget&&(()=> {
+      const account=publicAccounts?.find(a=>a.index===shareTarget.accountIndex);
+      const p=account?.positions.find(x=>x.symbol===shareTarget.symbol&&x.signedSize===shareTarget.signedSize);
+      if(!p)return null;
+      const market=markets.find(m=>m.kind==="perp"&&m.symbol===p.symbol);
+      const setting=account?.marginSettings.find(x=>x.marketId===market?.id);
+      const lev=setting&&setting.initialMarginFraction>0?10000/setting.initialMarginFraction:null;
+      return <ShareCardPopup isOpen onClose={()=>setShareTarget(null)}
+        walletAddress={walletAddress} verifiedOnly positionData={{
+          symbol:p.symbol,type:p.signedSize>0?"LONG":"SHORT",
+          size:Math.abs(p.signedSize),entryPrice:p.entryPrice,
+          markPrice:null,margin:p.allocatedMargin,
+          leverage:lev&&Number.isInteger(lev)&&lev>0&&lev<=(market?.maxLeverage??0)?lev:null,
+          unrealizedPnl:p.unrealizedPnl,unrealizedPnlPercent:null,
+        }}/>;
+    })()}
+    {tpSlTarget&&(()=>{
+      const account=publicAccounts?.find(a=>a.index===tpSlTarget.accountIndex);
+      const position=account?.positions.find(p=>p.symbol===tpSlTarget.symbol&&p.signedSize===tpSlTarget.signedSize);
+      const market=markets.find(m=>m.kind==="perp"&&m.symbol===tpSlTarget.symbol);
+      if(!position||!market)return null;
+      // Price-only original modal until Lighter ROI/leverage calculations
+      // can be independently verified. Never pretend missing data is known.
+      const modalPosition:Position={
+        id:account!.index+":"+position.symbol,symbol:position.symbol,
+        type:position.signedSize>0?"LONG":"SHORT",size:Math.abs(position.signedSize),
+        leverage:0,entryPrice:position.entryPrice??0,
+        markPrice:market.lastTradePrice??0,liqPrice:position.liquidationPrice??0,
+        margin:position.allocatedMargin??0,unrealizedPnl:position.unrealizedPnl??0,
+        unrealizedPnlPercent:0,
+      };
+      return <TpSlModal position={modalPosition} priceOnly openOrders={[]}
+        onClose={()=>setTpSlTarget(null)} tradingEnabled={!!tradingIdentity}
+        onSetupRequired={()=>setAuthSheetOpen(true)}
+        onSave={async(tp,sl)=>{
+          if(!tradingIdentity||tradingIdentity.accountIndex!==tpSlTarget.accountIndex)
+            throw new Error("Select the verified Lighter signer for this account.");
+          await setLighterPositionTriggers({
+            walletAddress,market,signedSize:tpSlTarget.signedSize,
+            takeProfit:tp,stopLoss:sl,
+          });
+          setTpSlTarget(null);
+          refreshAfterLighterWrite();
+        }}/>;
+    })()}
     {singleCloseTarget&&lighterClosePosition&&<ClosePositionModal
       position={lighterClosePosition}
       lighterMode
