@@ -482,16 +482,13 @@ export default function Navbar({
                           <p className="text-[8px] sm:text-[9px] text-gray-400 font-bold tracking-wider uppercase">
                             {selectedExchange === "lighter" ? "Lighter Account" : "Ledger Balance"}
                           </p>
-                          {selectedExchange === "lighter" ? (
-                            <p className="text-xs text-brand-muted mt-1">See Lighter view for verified balances</p>
-                          ) : (
-                            <p className="text-xs sm:text-sm font-bold text-brand-text mt-0.5">
-                              <TrustShieldValue
-                                fieldKey="portfolio"
-                                value={`${balanceUSDC.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`}
-                              />
-                            </p>
-                          )}
+                          <p className="text-xs sm:text-sm font-bold text-brand-text mt-0.5">
+                            {selectedExchange === "lighter"
+                              ? "— USDC"
+                              : <TrustShieldValue fieldKey="portfolio"
+                                  value={`${balanceUSDC.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`}
+                                />}
+                          </p>
                           <span className="text-[8px] sm:text-[9px] text-cyan-400 font-mono mt-1 block">
                             Wallet: {walletType}
                           </span>

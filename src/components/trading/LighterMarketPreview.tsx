@@ -832,12 +832,7 @@ export default function LighterMarketPreview({
           onView={setViewMode}
           marketInfoOpen={isMarketInfoOpen}
           onMarketInfo={()=>setIsMarketInfoOpen(v=>!v)}
-          rightAddon={<button type="button" role="switch" aria-checked={kind==="perp"}
-            aria-label="Switch Lighter Spot and Perpetual"
-            onClick={()=>switchKind(kind==="perp"?"spot":"perp")}
-            className="self-center shrink-0 w-9 h-5 rounded-full bg-accent p-0.5">
-            <span className={"block w-4 h-4 rounded-full bg-brand-bg transition-transform "+(kind==="perp"?"translate-x-4":"translate-x-0")}/>
-          </button>}
+
         />
         {isMarketInfoOpen && <HideDexMarketInfoDropdown
           ticker={selected?.symbol??"--"}
@@ -1024,7 +1019,6 @@ export default function LighterMarketPreview({
             {label:"Margin in Trade",value:showBalance(null),subtitle:"Locked margin not independently verified",
               icon:<Lock className="w-3 h-3 sm:w-3.5 sm:h-3.5"/>,iconTone:"text-amber-500"},
           ]}
-          note="Spot and perpetual balances are distinct. Only verified Lighter values are shown; no Hyperliquid figures or invented margin."
         />
         <HideDexAssetAllocation
           totalLabel="KNOWN"
@@ -1034,7 +1028,6 @@ export default function LighterMarketPreview({
             {label:"Perp Collateral",color:"#18c29c",amount:showBalance(verifiedCollateral),percentage:null},
             {label:"Spot USDC",color:"#717b8b",amount:showBalance(spotAvailable),percentage:null},
           ]}
-          footnote="Lighter does not supply a verified combined Spot + Perp asset valuation here. No percentage chart or synthetic allocation is shown."
         />
         <HideDexFundsPerformance
           period={performancePeriod}

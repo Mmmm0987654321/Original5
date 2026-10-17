@@ -31,7 +31,6 @@ export interface HideDexFundsOverviewProps {
  onTransfer?: () => void;
  transferLabel?: string;
  cards: readonly HideDexBalanceCard[];
- note?: React.ReactNode;
 }
 /** Pure presentation from the original HideDex PortfolioPanel.
  * Both venues use this exact same markup. Actions, balances and account data
@@ -148,6 +147,5 @@ export default function HideDexFundsOverview(props: HideDexFundsOverviewProps) {
          </div>
        </div>)}
    </div>
-   {props.note && <p className="text-[10px] leading-relaxed text-brand-muted px-1">{props.note}</p>}
  </>;
 }

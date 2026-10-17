@@ -11,7 +11,6 @@ export interface HideDexAssetAllocationProps {
  totalLabel:string;
  totalValue:React.ReactNode;
  totalUnit?:string;
- footnote?:React.ReactNode;
 }
 /** Original Funds asset-allocation layout; never infers missing USD valuations. */
 export default function HideDexAssetAllocation(p:HideDexAssetAllocationProps){
@@ -53,6 +52,5 @@ export default function HideDexAssetAllocation(p:HideDexAssetAllocationProps){
        </div>)}
      </div>
    </div>
-   {p.footnote && <p className="pt-2 text-[10px] leading-relaxed text-brand-muted">{p.footnote}</p>}
  </div>;
 }

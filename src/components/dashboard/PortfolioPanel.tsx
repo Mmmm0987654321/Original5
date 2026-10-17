@@ -999,8 +999,6 @@ export default function PortfolioPanel({
                   subtitle:`Pos: ${formatAmount(lockedPositionMargin,false)} | Ord: ${formatAmount(lockedOrderMargin,false)}`,
                   icon:<Lock className="w-3 h-3 sm:w-3.5 sm:h-3.5"/>,iconTone:"text-amber-500"},
               ]}
-              note={<>Available = spendable USDC after exchange holds/margin. Total Spot includes held funds and assets;
-                Perpetual Equity includes open-position PnL. These amounts are not supposed to be equal.</>}
             />
 
             <HideDexAssetAllocation

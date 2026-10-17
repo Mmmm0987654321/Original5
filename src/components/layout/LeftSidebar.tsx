@@ -109,7 +109,7 @@ export default function LeftSidebar({
               <div className="relative group">
                 <div className="w-2 h-2 rounded-full bg-emerald-400" />
                 <div className="absolute left-full ml-2 top-1/2 -translate-y-1/2 bg-brand-surface border border-brand-border px-2 py-1 rounded text-[10px] font-mono text-brand-text opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 whitespace-nowrap">
-                  {formatAddress(walletAddress)} ({selectedExchange === "lighter" ? <span className="text-[9px] text-brand-muted">Lighter · see Funds</span> : <TrustShieldValue fieldKey="portfolio" value={`${balanceUSDC.toFixed(2)}`} hideEyeIcon />})
+                  {formatAddress(walletAddress)} ({selectedExchange === "lighter" ? <span className="text-brand-muted font-mono">—</span> : <TrustShieldValue fieldKey="portfolio" value={`${balanceUSDC.toFixed(2)}`} hideEyeIcon />})
                 </div>
               </div>
             ) : (
@@ -124,7 +124,7 @@ export default function LeftSidebar({
                 <div className="flex justify-between items-center text-[9px] text-brand-sub font-mono pt-1 border-t border-brand-border animate-in fade-in">
                   <span>Bal:</span>
                   <span className="text-accent font-bold">
-                    {selectedExchange === "lighter" ? <span className="text-[9px] text-brand-muted">Lighter · see Funds</span> : <TrustShieldValue fieldKey="portfolio" value={`${balanceUSDC.toFixed(2)}`} hideEyeIcon />}
+                    {selectedExchange === "lighter" ? <span className="text-brand-muted font-mono">—</span> : <TrustShieldValue fieldKey="portfolio" value={`${balanceUSDC.toFixed(2)}`} hideEyeIcon />}
                   </span>
                 </div>
               </>
