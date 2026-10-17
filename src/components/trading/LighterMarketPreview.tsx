@@ -123,6 +123,9 @@ export default function LighterMarketPreview({
   },[section,initialOrdersTab]);
   const [expandedPositions, setExpandedPositions] = useState<Record<string, boolean>>({});
   const [closeAllPositionsOpen,setCloseAllPositionsOpen]=useState(false);
+  const [pendingBulkClose,setPendingBulkClose]=useState<{
+    accountIndex:number;positions:Array<{symbol:string;signedSize:number}>;
+  }|null>(null);
   const [cancelAllOrdersOpen,setCancelAllOrdersOpen]=useState(false);
   const [restoringSavedSigner,setRestoringSavedSigner]=useState(false);
   const [positionSort, setPositionSort] = useState<HideDexPositionSort>("DEFAULT");
@@ -377,9 +380,10 @@ export default function LighterMarketPreview({
         setUncertainPosition({accountIndex:tradingIdentity.accountIndex,
           symbol:selected.symbol,previousSize});
         setAwaitingFill(fillTarget);
-        setNoticeKind("pending");
-        setNoticeTitle("Order status unconfirmed");
-        setTradingNotice("Check Open Orders or Trade History before retrying this order.");
+        // No second oversized status toast. Keep the uncertainty guard and
+        // reconcile real signer-owned fills / positions / open orders quietly.
+        // Never retry a signed order from a timer.
+        setTradingNotice("");
         refreshAfterLighterWrite();
       }else{
         setNoticeKind("error");
@@ -485,42 +489,98 @@ export default function LighterMarketPreview({
     } finally { setTradingBusy(false); }
   };
 
-  /** Original4 confirmation surface calls this only on explicit user approval. */
+  /** One confirmation submits exactly one reduce-only close per verified market.
+   * The signer requires serialized writes; two close requests are not an atomic
+   * exchange order. Ambiguous responses are reconciled with READS, not retried.
+   */
   const closeAllLighterPositions=async():Promise<void>=>{
-    if(!walletAddress||!tradingIdentity||tradingBusy)
-      throw new Error("Reconnect the appropriate Lighter signer first.");
+    if(!walletAddress||!tradingIdentity||tradingBusy||pendingBulkClose)
+      throw new Error("A Lighter close is already processing. Wait for live position verification.");
     setTradingBusy(true);
-    let accepted=0;
+    let submitted=0;
+    let targets:Array<{symbol:string;signedSize:number}>=[];
+    let signerIndex=tradingIdentity.accountIndex;
+    const issues:string[]=[];
     try{
-      const indexes=await getLighterAccountIndexes(walletAddress);
-      if(!indexes.includes(tradingIdentity.accountIndex))
+      const owned=await getLighterAccountIndexes(walletAddress);
+      if(!owned.includes(signerIndex))
         throw new Error("Unverified Lighter signer account. No orders sent.");
-      const allAccounts=await getLighterPublicAccounts(indexes);
-      if(allAccounts.some(a=>a.index!==tradingIdentity.accountIndex&&a.positions.length>0))
-        throw new Error("Other Lighter subaccounts still have positions. Close separately with each account signer.");
-      const account=allAccounts.find(a=>a.index===tradingIdentity.accountIndex);
-      if(!account?.positions.length)throw new Error("No verified Lighter positions remain.");
-      const catalog=await getLighterMarkets();
-      const targets=account.positions.map(pos=>({
-        pos,market:catalog.find(m=>m.kind==="perp"&&m.symbol===pos.symbol),
-      }));
-      if(targets.some(t=>!t.market?.lastTradePrice||t.market.lastTradePrice<=0||
-        !Number.isFinite(t.pos.signedSize)||t.pos.signedSize===0))
-        throw new Error("At least one open position has no verified market/size/price. No orders sent.");
-      for(const {pos,market} of targets){
-        if(!market?.lastTradePrice)throw new Error("Market no longer verified.");
-        await submitLighterOrder({
-          walletAddress,market,side:pos.signedSize>0?"sell":"buy",
-          type:"market",coinSize:Math.abs(pos.signedSize),
-          referencePrice:market.lastTradePrice,reduceOnly:true,
-        });
-        accepted++;
+      const allAccounts=await getLighterPublicAccounts(owned);
+      if(allAccounts.some(a=>a.index!==signerIndex&&a.positions.length>0))
+        throw new Error("Other Lighter subaccounts have positions. Select their authorized signer separately.");
+      const account=allAccounts.find(a=>a.index===signerIndex);
+      if(!account?.positions.length){
+        setCloseAllPositionsOpen(false);
+        return;
       }
-      setTradingNotice("Lighter accepted "+accepted+" reduce-only closes. Verify final fills in Positions.");
-    }catch(e){
-      throw new Error((accepted?accepted+" orders already accepted. ":"")+
-        (e instanceof Error?e.message:"Close All failed."));
-    }finally{refreshAfterLighterWrite();setTradingBusy(false);}
+      const catalog=await getLighterMarkets();
+      targets=account.positions.map(({symbol,signedSize})=>({symbol,signedSize}));
+      if(targets.some(t=>!Number.isFinite(t.signedSize)||t.signedSize===0||
+        !catalog.some(m=>m.kind==="perp"&&m.symbol===t.symbol&&m.lastTradePrice&&m.lastTradePrice>0)))
+        throw new Error("An open position is missing a verified market or close size. No orders sent.");
+      // One user approval covers ALL positions in this verified signer account.
+      setPendingBulkClose({accountIndex:signerIndex,positions:targets});
+      for(const target of targets){
+        const market=catalog.find(m=>m.kind==="perp"&&m.symbol===target.symbol);
+        if(!market?.lastTradePrice)continue; // preflight verified these
+        try{
+          // Revalidate each position before signing, so a filled/changed
+          // position cannot be accidentally closed twice.
+          const [fresh]=await getLighterPublicAccounts([signerIndex]);
+          const active=fresh?.positions.find(p=>p.symbol===target.symbol);
+          if(!fresh) {issues.push(target.symbol);continue;}
+          if(!active)continue; // Already flat.
+          if(Math.sign(active.signedSize)!==Math.sign(target.signedSize)||
+             Math.abs(active.signedSize)>Math.abs(target.signedSize)+1e-10){
+            issues.push(target.symbol);continue;
+          }
+          await submitLighterOrder({
+            walletAddress,market,side:active.signedSize>0?"sell":"buy",
+            type:"market",coinSize:Math.abs(active.signedSize),
+            referencePrice:market.lastTradePrice,reduceOnly:true,
+          });
+          submitted++;
+        }catch(error){
+          // Lighter may report a volume-quota note after accepting a write.
+          // This never justifies a second signed close for the same symbol.
+          issues.push(target.symbol);
+        }
+      }
+      // Confirm whether ALL targeted positions are flat using exchange reads.
+      // Reconciliation remains read-only even if an SDK response was ambiguous.
+      for(const delay of [800,1700,3000,4500]){
+        await new Promise<void>(resolve=>window.setTimeout(resolve,delay));
+        try{
+          const [latest]=await getLighterPublicAccounts([signerIndex]);
+          if(latest){
+            setPublicAccounts(current=>current?.map(a=>a.index===latest.index?latest:a)??[latest]);
+            if(targets.every(t=>!latest.positions.some(p=>p.symbol===t.symbol&&
+              Math.abs(p.signedSize)>1e-10))){
+              setPendingBulkClose(null);
+              setTradingNotice("");
+              setCloseAllPositionsOpen(false);
+              return;
+            }
+          }
+        }catch{/* A read failure is never a reason to resend signed closes. */}
+      }
+      // Keep the confirmation view safe while pending and allow account
+      // refreshes to close it automatically when all positions turn flat.
+      throw new Error("Close requests processed for "+targets.length+
+        " positions. Verification is still pending for some. The list refreshes automatically; no repeat close was sent.");
+    }catch(error){
+      if(!targets.length){
+        setPendingBulkClose(null);
+        throw error;
+      }
+      // Protect users from raw SDK JSON and misleading partial success.
+      if(submitted===0&&issues.length===0)setPendingBulkClose(null);
+      if(error instanceof Error && error.message.startsWith("Close requests processed"))throw error;
+      throw new Error("Some Lighter positions are not yet verified closed. Check the live Positions list before another close; no automatic duplicate order was sent.");
+    }finally{
+      refreshAfterLighterWrite();
+      setTradingBusy(false);
+    }
   };
 
   /** Confirmed user action; cancel only orders belonging to the verified
@@ -906,6 +966,18 @@ export default function LighterMarketPreview({
   }, [walletAddress]);
 
   useEffect(()=>{
+    if(!pendingBulkClose||!publicAccounts)return;
+    const latest=publicAccounts.find(a=>a.index===pendingBulkClose.accountIndex);
+    if(!latest)return;
+    if(pendingBulkClose.positions.every(t=>
+      !latest.positions.some(p=>p.symbol===t.symbol&&Math.abs(p.signedSize)>1e-10))){
+      setPendingBulkClose(null);
+      setCloseAllPositionsOpen(false);
+      setTradingNotice("");
+    }
+  },[pendingBulkClose,publicAccounts]);
+
+  useEffect(()=>{
     if(!uncertainPosition||!publicAccounts)return;
     const account=publicAccounts.find(a=>a.index===uncertainPosition.accountIndex);
     if(!account)return;
@@ -922,7 +994,8 @@ export default function LighterMarketPreview({
     const id=window.setTimeout(()=>{
       setUncertainPosition(null);
       setNoticeKind("pending");
-      setTradingNotice("Lighter has not confirmed a position change yet. Check Trade History/Open Orders before placing the same order again.");
+      setNoticeTitle("Lighter Order");
+      setTradingNotice("Order verification is delayed. Check Positions or Trade History before submitting another order.");
     },30000);
     return ()=>window.clearTimeout(id);
   },[uncertainPosition]);
@@ -1736,11 +1809,11 @@ export default function LighterMarketPreview({
             isPerp:kind==="perp",
             // The estimate is a live scenario, NOT an exact liquidation or
             // an existing position's liq. Unknown data stays unavailable.
-            liquidationLabel:"New Order Liq. (est.)",
+            liquidationLabel:"New Order Liq.",
             liquidation:draftLiqPrice!==null?"≈$"+formatPrice(draftLiqPrice,4):"—",
             orderValue:orderValueUsd!==null?"$"+formatPrice(orderValueUsd,2):"—",
             margin:previewMargin!==null?
-              "≈$"+formatPrice(previewMargin,4)+(previewMarginConfirmed?" est.":" draft est."):"—",
+              "≈$"+formatPrice(previewMargin,4):"—",
           }}
           place={{
             type:"button",onClick:submitTrade,side:side==="buy"?"BUY":"SELL",
