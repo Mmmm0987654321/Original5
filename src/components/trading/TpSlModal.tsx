@@ -486,13 +486,13 @@ export default function TpSlModal({
               <div className="flex justify-between">
                 <span className="text-brand-muted">Est. Profit:</span>
                 <span className="text-brand-profit font-bold">
-                  {!priceOnly && tpMetrics ? `+$${tpMetrics.pnl.toFixed(2)}` : "--"}
+                  {tpMetrics && entryPrice>0 && size>0 ? `+$${tpMetrics.pnl.toFixed(2)}` : "--"}
                 </span>
               </div>
               <div className="flex justify-between border-l border-brand-divider/10 pl-2">
                 <span className="text-brand-muted">ROI:</span>
                 <span className="text-brand-profit font-bold">
-                  {!priceOnly && hasVerifiedLeverage && tpMetrics ? `+${tpMetrics.percent.toFixed(1)}%` : "--"}
+                  {hasVerifiedLeverage && tpMetrics ? `+${tpMetrics.percent.toFixed(1)}%` : "--"}
                 </span>
               </div>
             </div>
@@ -510,13 +510,13 @@ export default function TpSlModal({
               <div className="flex justify-between">
                 <span className="text-brand-muted">Est. Loss:</span>
                 <span className="text-brand-loss font-bold">
-                  {!priceOnly && slMetrics ? `-$${Math.abs(slMetrics.pnl).toFixed(2)}` : "--"}
+                  {slMetrics && entryPrice>0 && size>0 ? `-$${Math.abs(slMetrics.pnl).toFixed(2)}` : "--"}
                 </span>
               </div>
               <div className="flex justify-between border-l border-brand-divider/10 pl-2">
                 <span className="text-brand-muted">ROI:</span>
                 <span className="text-brand-loss font-bold">
-                  {!priceOnly && hasVerifiedLeverage && slMetrics ? `-${Math.abs(slMetrics.percent).toFixed(1)}%` : "--"}
+                  {hasVerifiedLeverage && slMetrics ? `-${Math.abs(slMetrics.percent).toFixed(1)}%` : "--"}
                 </span>
               </div>
             </div>

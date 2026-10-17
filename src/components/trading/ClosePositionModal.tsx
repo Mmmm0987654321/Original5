@@ -15,6 +15,7 @@ interface ClosePositionModalProps {
   lighterMode?: boolean;
   verifiedUnrealizedPnl?: number | null;
   verifiedMargin?: number | null;
+  verifiedMarkPrice?: boolean;
   /** Exchange-specific errors remain visible through the common top toast. */
   onError?: (message:string)=>void;
 }
@@ -26,6 +27,7 @@ export default function ClosePositionModal({
   lighterMode=false,
   verifiedUnrealizedPnl=null,
   verifiedMargin=null,
+  verifiedMarkPrice=false,
   onError,
 }: ClosePositionModalProps) {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -162,7 +164,7 @@ export default function ClosePositionModal({
               </span>
             </div>
             <div>
-              <span className="text-brand-muted block text-[9px] font-bold uppercase tracking-wider">{lighterMode?"Last Trade Price (reference)":"Mark Price (Live)"}</span>
+              <span className="text-brand-muted block text-[9px] font-bold uppercase tracking-wider">{lighterMode&&!verifiedMarkPrice?"Last Trade Price (reference)":"Mark Price (Live)"}</span>
               <span className="font-bold text-brand-text text-xs sm:text-[13px]">
                 {Number.isFinite(position.markPrice) && position.markPrice > 0
                   ? `$${position.markPrice.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}`

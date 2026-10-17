@@ -1312,7 +1312,8 @@ export default function LighterMarketPreview({
                     right={[
                       {label:"Margin",
                         value:p.allocatedMargin!==null&&Number.isFinite(p.allocatedMargin)&&p.allocatedMargin>=0 ?
-                          "$"+formatPrice(p.allocatedMargin,4):"—",tone:"muted"},
+                          "$"+formatPrice(p.allocatedMargin,4):"—",
+                        tone:p.allocatedMargin!==null&&Number.isFinite(p.allocatedMargin)?"normal":"muted"},
                       {label:(()=>{
                         const m=markets.find(x=>x.kind==="perp"&&x.symbol===p.symbol);
                         return m?.markPrice&&m.markPrice>0?"Mark Price":"Last Price";
@@ -1977,6 +1978,8 @@ export default function LighterMarketPreview({
     {singleCloseTarget&&lighterClosePosition&&<ClosePositionModal
       position={lighterClosePosition}
       lighterMode
+      verifiedMarkPrice={Boolean(markets.find(m=>m.kind==="perp"&&
+        m.symbol===singleCloseTarget.symbol)?.markPrice)}
       onError={message=>{
         setNoticeKind(/pending|verif|inconclusive/i.test(message)?"pending":"error");
         setNoticeTitle("Lighter Close Position");
