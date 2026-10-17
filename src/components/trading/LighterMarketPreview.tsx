@@ -27,6 +27,8 @@ import HideDexPositionDetails from "./HideDexPositionDetails";
 import HideDexTradeHistory, {type HideDexHistoryRow} from "./HideDexTradeHistory";
 import {rememberLighterSigner,readRememberedLighterSigner,forgetRememberedLighterSigner} from "../../lib/lighterDeviceKey";
 import CloseAllConfirmationModal from "./CloseAllConfirmationModal";
+import ClosePositionModal from "./ClosePositionModal";
+import type {Position} from "../../types";
 import HideDexTradingToast from "./HideDexTradingToast";
 import HideDexPlaceOrderButton from "./HideDexPlaceOrderButton";
 import HideDexFundsDialogShell from "../dashboard/HideDexFundsDialogShell";
@@ -912,6 +914,25 @@ export default function LighterMarketPreview({
     };
   },[liveFills,markets,performancePeriod,performanceMarket,accountReload]);
 
+  const lighterClosePosition:Position|null=useMemo(()=>{
+    if(!singleCloseTarget)return null;
+    const account=publicAccounts?.find(a=>a.index===singleCloseTarget.accountIndex);
+    const p=account?.positions.find(p=>p.symbol===singleCloseTarget.symbol&&
+      p.signedSize===singleCloseTarget.signedSize);
+    if(!p)return null;
+    const market=markets.find(m=>m.kind==="perp"&&m.symbol===p.symbol);
+    // Lighter mode hides unverified ROI, leverage, margin and proceeds.
+    return {
+      id:singleCloseTarget.accountIndex+":"+p.symbol,
+      symbol:p.symbol,type:p.signedSize>0?"LONG":"SHORT",
+      size:Math.abs(p.signedSize),leverage:0,
+      entryPrice:p.entryPrice>0?p.entryPrice:0,
+      markPrice:market?.lastTradePrice??0,liqPrice:p.liquidationPrice??0,
+      margin:p.allocatedMargin??0,unrealizedPnl:p.unrealizedPnl??0,
+      unrealizedPnlPercent:0,
+    };
+  },[singleCloseTarget,publicAccounts,markets]);
+
   const lighterAccountTabs = (
     <div className="bg-brand-bg border border-brand-border rounded-xl overflow-hidden shadow-xl" id="terminal-dashboard-panel-unified">
       <TradingAccountTabBar
@@ -1597,14 +1618,21 @@ export default function LighterMarketPreview({
       </HideDexFundsDialogShell>
     )}
 
-    {singleCloseTarget&&<CloseAllConfirmationModal action="close_position"
-      symbol={singleCloseTarget.symbol}
+    {singleCloseTarget&&lighterClosePosition&&<ClosePositionModal
+      position={lighterClosePosition}
+      lighterMode
+      verifiedUnrealizedPnl={publicAccounts
+        ?.find(a=>a.index===singleCloseTarget.accountIndex)?.positions
+        .find(p=>p.symbol===singleCloseTarget.symbol&&
+          p.signedSize===singleCloseTarget.signedSize)?.unrealizedPnl??null}
       onClose={()=>setSingleCloseTarget(null)}
-      onConfirm={async()=>{
+      onConfirmClose={async(_position,closePercent)=>{
         const target=singleCloseTarget;
-        if(!target)throw new Error("Position selection expired.");
+        if(!target||closePercent!==100)
+          throw new Error("Only full close is available for Lighter.");
         await closeLighterPosition(target.accountIndex,target.symbol,target.signedSize);
-      }}/>}
+      }}
+    />}
     {closeAllPositionsOpen&&<CloseAllConfirmationModal action="close_positions"
       onClose={()=>setCloseAllPositionsOpen(false)}
       onConfirm={closeAllLighterPositions}/>}

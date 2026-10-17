@@ -12,18 +12,22 @@ interface ClosePositionModalProps {
   position: Position;
   onClose: () => void;
   onConfirmClose: (position: Position, closePercent: number) => Promise<void> | void;
+  lighterMode?: boolean;
+  verifiedUnrealizedPnl?: number | null;
 }
 
 export default function ClosePositionModal({
   position,
   onClose,
   onConfirmClose,
+  lighterMode=false,
+  verifiedUnrealizedPnl=null,
 }: ClosePositionModalProps) {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [closePercent, setClosePercent] = useState<number>(100);
 
-  const safeClosePercent = Math.min(100, Math.max(1, closePercent));
+  const safeClosePercent = lighterMode?100:Math.min(100, Math.max(1, closePercent));
 
   // Proportional market close calculations
   const closeFraction = safeClosePercent / 100;
@@ -119,9 +123,9 @@ export default function ClosePositionModal({
                 {tokenChar}
               </div>
               <span className="font-extrabold text-brand-text text-base tracking-tight">{cleanSym || position.symbol}</span>
-              <span className="bg-brand-overlay-normal border border-brand-border text-brand-sub text-[11px] font-semibold px-2 py-0.5 rounded-md">
+              {!lighterMode&&<span className="bg-brand-overlay-normal border border-brand-border text-brand-sub text-[11px] font-semibold px-2 py-0.5 rounded-md">
                 {marginModeStr} {displayLeverage}
-              </span>
+              </span>}
             </div>
 
             <div className="flex items-center gap-2">
@@ -133,7 +137,7 @@ export default function ClosePositionModal({
                 {position.type}
               </span>
               <span className={`font-bold text-base font-mono ${position.unrealizedPnl >= 0 ? "text-pnl-profit" : "text-pnl-loss"}`}>
-                {position.unrealizedPnl >= 0 ? "+" : ""}{position.unrealizedPnlPercent.toFixed(1)}%
+                {lighterMode?"ROI: —":<>{position.unrealizedPnl >= 0 ? "+" : ""}{position.unrealizedPnlPercent.toFixed(1)}%</>}
               </span>
             </div>
           </div>
@@ -143,7 +147,7 @@ export default function ClosePositionModal({
             <div>
               <span className="text-brand-muted block text-[9px] font-bold uppercase tracking-wider">Entry Price</span>
               <span className="font-bold text-brand-text text-xs sm:text-[13px]">
-                ${position.entryPrice.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 2 })}
+                {lighterMode&&position.entryPrice<=0?"—":"$"+position.entryPrice.toLocaleString(undefined,{minimumFractionDigits:1,maximumFractionDigits:2})}
               </span>
             </div>
             <div>
@@ -157,7 +161,7 @@ export default function ClosePositionModal({
             <div className="text-right">
               <span className="text-brand-muted block text-[9px] font-bold uppercase tracking-wider">PnL</span>
               <span className={`font-bold text-xs sm:text-[13px] ${position.unrealizedPnl >= 0 ? "text-pnl-profit" : "text-pnl-loss"}`}>
-                {position.unrealizedPnl >= 0 ? "+$" : "-$"}{Math.abs(position.unrealizedPnl).toFixed(2)}
+                {lighterMode&&verifiedUnrealizedPnl===null?"—":<>{position.unrealizedPnl >= 0 ? "+$" : "-$"}{Math.abs(position.unrealizedPnl).toFixed(2)}</>}
               </span>
             </div>
           </div>
@@ -194,7 +198,7 @@ export default function ClosePositionModal({
             </span>
           </div>
 
-          {/* Interactive Range Control */}
+          {!lighterMode&&<>{/* Interactive Range Control */}
           <div className="relative w-full flex items-center">
             <input
               type="range"
@@ -228,7 +232,7 @@ export default function ClosePositionModal({
                 {pct}%
               </button>
             ))}
-          </div>
+          </div></>}
         </div>
 
         {/* Summary Metric Area */}
@@ -240,12 +244,13 @@ export default function ClosePositionModal({
             </span>
           </div>
 
-          <div className="flex items-center justify-between text-brand-sub">
+          {!lighterMode&&<div className="flex items-center justify-between text-brand-sub">
             <span>Unrealized PnL (estimate)</span>
             <span className={`font-bold ${estimatedPnl >= 0 ? "text-pnl-profit" : "text-pnl-loss"}`}>
               {estimatedPnl >= 0 ? "+" : ""}${estimatedPnl.toFixed(2)}
             </span>
-          </div>
+          </div>}
+
 
           <div className="flex items-center justify-between text-brand-muted">
             <span className="flex items-center gap-1">
@@ -254,15 +259,16 @@ export default function ClosePositionModal({
             <span className="text-brand-muted">Charged at execution</span>
           </div>
 
-          <div className="flex items-center justify-between pt-2 border-t border-brand-divider/30">
+          {!lighterMode&&<div className="flex items-center justify-between pt-2 border-t border-brand-divider/30">
             <span className="text-brand-sub">Est. Proceeds (before fees)</span>
             <span className="font-bold text-brand-profit text-sm">
               ${estReceive.toFixed(2)} USDC
             </span>
-          </div>
+          </div>}
+
         </div>
 
-        <p className="text-[11px] text-brand-muted leading-snug">Estimates use current mark price; final fill price, fees and proceeds can differ.</p>
+        <p className="text-[11px] text-brand-muted leading-snug">{lighterMode?"Lighter: full-size reduce-only market close. Final price and fees may vary. No estimated proceeds are shown.":"Estimates use current mark price; final fill price, fees and proceeds can differ."}</p>
 
         {/* Error Notification */}
         {errorMsg && (
