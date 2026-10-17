@@ -190,14 +190,23 @@ export async function getAsterBook(
 
 export async function getAsterCandles(
   kind:AsterMarketKind,symbol:string,
-  interval:"1m"|"3m"|"5m"|"15m"|"30m"|"1h"|"2h"|"4h"|"6h"|"8h"|"12h"|"1d"|"3d"|"1w",
-  limit=300,signal?:AbortSignal
+  interval:string,
+  limit=300,signal?:AbortSignal,startTimeMs?:number,endTimeMs?:number
 ):Promise<AsterCandle[]>{
   safeSymbol(symbol);
+  if(!["1m","3m","5m","15m","30m","1h","2h","4h","6h","8h","12h","1d","3d","1w","1M"].includes(interval))
+    throw new Error("Unsupported Aster candle interval");
   if(!Number.isInteger(limit)||limit<1||limit>1000)throw new Error("Invalid Aster candle limit");
-  const data=await publicGet(kind,prefix(kind)+
-    "/klines?symbol="+encodeURIComponent(symbol)+"&interval="+interval+
-    "&limit="+limit,signal);
+  const params=new URLSearchParams({symbol,interval,limit:String(limit)});
+  if(startTimeMs!==undefined) {
+    if(!Number.isSafeInteger(startTimeMs)||startTimeMs<0)throw new Error("Invalid Aster start time");
+    params.set("startTime",String(startTimeMs));
+  }
+  if(endTimeMs!==undefined) {
+    if(!Number.isSafeInteger(endTimeMs)||endTimeMs<0)throw new Error("Invalid Aster end time");
+    params.set("endTime",String(endTimeMs));
+  }
+  const data=await publicGet(kind,prefix(kind)+"/klines?"+params.toString(),signal);
   if(!Array.isArray(data))throw new Error("Invalid Aster V3 candles");
   return data.flatMap(v=>{
     if(!Array.isArray(v)||v.length<7)return [];
@@ -207,4 +216,18 @@ export async function getAsterCandles(
       c===null||volume===null||volume<0||h<l)return [];
     return [{openTimeMs:start,open:o,high:h,low:l,close:c,volume,closeTimeMs:end}];
   });
+}
+
+/** Convert verified Aster OHLCV candles to the exact ORIGINAL TVChart format.
+ * Never fetch Hyperliquid/Lighter candles for an Aster market.
+ */
+export async function getAsterChartCandles(
+  kind:AsterMarketKind,symbol:string,interval:string,
+  limit:number,startMs:number,endMs:number,signal?:AbortSignal
+):Promise<{candles:Array<{t:number;o:string;h:string;l:string;c:string;v:string}>}>{
+  const candles=await getAsterCandles(kind,symbol,interval,limit,signal,startMs,endMs);
+  return {candles:candles.map(c=>({
+    t:c.openTimeMs,o:String(c.open),h:String(c.high),l:String(c.low),
+    c:String(c.close),v:String(c.volume),
+  }))};
 }
