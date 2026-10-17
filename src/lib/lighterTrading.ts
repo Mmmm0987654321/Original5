@@ -421,7 +421,9 @@ export async function withdrawLighterUsdc(args: {
     if (!/^(?:[0-9]+)(?:\.[0-9]{1,6})?$/.test(args.amount.trim()))
       throw new Error("Enter a valid USDC amount (up to 6 decimal places).");
     const amount = Number(args.amount);
-    if (!(amount > 0) || !Number.isFinite(amount)) throw new Error("Invalid withdrawal amount.");
+    // Secure route (not fast withdrawal): official minimum 1 USDC equivalent.
+    if (!Number.isFinite(amount) || amount < 1)
+      throw new Error("Lighter secure USDC withdrawal minimum is 1 USDC.");
     if (!(await verifyLighterTradingKey(args.walletAddress))) throw new Error("Lighter key registration pending.");
     const owned = await getLighterAccountIndexes(s.address);
     if (!owned.includes(s.signer.accountIndex))
