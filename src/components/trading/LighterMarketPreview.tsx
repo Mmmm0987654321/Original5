@@ -937,6 +937,7 @@ export default function LighterMarketPreview({
       </HideDexTopMarketPane>
       <HideDexTradeGrid>
         <HideDexOrderForm>
+          <div className="flex flex-1 flex-col gap-2 md:gap-3">
           <HideDexTradeSelectors
             isPerp={kind === "perp"}
             orderType={orderType.toUpperCase() as TradeOrderType}
@@ -1014,7 +1015,7 @@ export default function LighterMarketPreview({
                 disabled={tradingBusy}/>
             </div>}
           </>}
-          <div className="bg-brand-bg/50 border border-brand-border rounded-lg p-1.5 font-mono text-[9px] space-y-0.5">
+          <div className="bg-brand-bg/50 border border-brand-border rounded-lg p-1.5 text-[9px] md:text-[10px] font-mono space-y-0.5 mt-auto">
             {kind === "perp" && <div className="flex justify-between text-brand-muted"><span>Liq. Price</span><span>—</span></div>}
             <div className="flex justify-between text-brand-muted"><span>Order Value</span>
               <span>{orderValueUsd !== null ? "$" + formatPrice(orderValueUsd, 2) : "—"}</span>
@@ -1028,6 +1029,7 @@ export default function LighterMarketPreview({
               (side === "buy" ? "bg-[#18c29c] text-[#030610]" : "bg-[#f25c5c] text-white")}>
             {tradingBusy ? "Processing…" : "PLACE " + (side === "buy" ? (kind === "perp" ? "LONG" : "BUY") : (kind === "perp" ? "SHORT" : "SELL"))}
           </button>
+          </div>
         </HideDexOrderForm>
         <HideDexOrderBookPanel
           asks={makeLighterBookRows(feed.asks,"ask").reverse()}

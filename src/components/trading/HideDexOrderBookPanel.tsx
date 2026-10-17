@@ -53,7 +53,7 @@ export default function HideDexOrderBookPanel(props:HideDexOrderBookPanelProps) 
      })}
    </div>;
  return <div ref={rootRef} id="terminal-order-book"
-   className="col-span-5 min-w-0 self-start bg-brand-bg border border-brand-border rounded-xl p-1.5 md:p-2.5 flex flex-col justify-between shadow-lg relative min-h-[390px] md:min-h-[440px]">
+   className={`col-span-5 min-w-0 bg-brand-bg border border-brand-border rounded-xl p-1.5 md:p-2.5 flex flex-col justify-between shadow-lg relative ${props.shrinkOnTpSl ? "self-start h-auto md:self-stretch md:h-full" : "h-full"}`}>
    <div className={`flex flex-col min-h-0 overflow-hidden ${props.shrinkOnTpSl?"h-auto md:flex-grow md:h-full":"flex-grow h-full"}`}>
      <div className="grid grid-cols-2 text-[8px] md:text-[10px] font-sans font-black uppercase tracking-wider text-gray-500 border-b border-brand-border pb-1 md:pb-1.5 mb-1 md:mb-1.5 flex-shrink-0 items-center">
        <span>Price</span>
