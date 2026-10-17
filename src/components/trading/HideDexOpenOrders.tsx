@@ -38,11 +38,17 @@ export default function HideDexOpenOrders({
            [ord.trigger?"Trigger Price":"Price",ord.priceLabel],
            ["Size",ord.sizeLabel],
            ["Filled / Remaining",ord.filledLabel+" / "+ord.remainingLabel],
-           ["Time / Status",ord.timestamp+" · "+ord.status],
          ].map(([label,value])=><div key={label}>
            <span className="text-brand-muted block text-[8px] font-bold uppercase tracking-wider">{label}</span>
-           <span className="font-semibold text-brand-text">{value}</span>
+           <span className={`font-semibold ${label==="Filled / Remaining"?"text-brand-sub":"text-brand-text"}`}>{value}</span>
          </div>)}
+         <div>
+           <span className="text-brand-muted block text-[8px] font-bold uppercase tracking-wider">Time / Status</span>
+           <span className="font-semibold text-brand-sub flex items-center gap-1.5">
+             <span>{ord.timestamp}</span>
+             <span className="text-[8px] text-cyan-400 bg-cyan-400/10 px-1 rounded font-bold uppercase">{ord.status}</span>
+           </span>
+         </div>
        </div>
      </div>)}
    </div>
@@ -55,7 +61,11 @@ export default function HideDexOpenOrders({
        <tbody className="divide-y divide-brand-divider/30 text-brand-sub">
          {orders.map(ord=><tr key={ord.id} className="hover:bg-brand-overlay-subtle transition-colors">
            <td className="py-2.5 font-bold text-brand-text">{ord.symbol}{ord.isSpot?"-SPOT":"-PERP"}</td>
-           <td className="py-2.5">{ord.side}</td>
+           <td className="py-2.5">
+             <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${ord.side==="BUY"
+               ?"bg-brand-profit/10 text-brand-profit border border-brand-profit/20"
+               :"bg-brand-loss/10 text-brand-loss border border-brand-loss/20"}`}>{ord.side}</span>
+           </td>
            <td className="py-2.5">{ord.orderType}</td>
            <td className="py-2.5 font-semibold text-brand-text">{ord.priceLabel}
              {ord.trigger && <span className="text-violet-400 text-[8px] ml-1">Trigger</span>}</td>

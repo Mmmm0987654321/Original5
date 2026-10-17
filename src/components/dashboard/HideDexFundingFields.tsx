@@ -117,8 +117,3 @@ export function HideDexFundingFeeCard(p:{
    </div>
  </div>;
 }
-export function HideDexFundingFeeNotice({children}:{children:React.ReactNode}){
- return <div className="rounded-xl border border-brand-border/60 bg-brand-overlay-subtle p-3 font-mono text-xs text-brand-sub flex gap-2 items-start">
-   <Coins className="w-4 h-4 text-brand-muted shrink-0"/><div>{children}</div>
- </div>;
-}
