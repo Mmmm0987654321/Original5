@@ -139,10 +139,13 @@ export function DailyFillVolumeBars({
       const timestamp = Number(f.time);
       const px = Number(f.px);
       const sz = Number(f.sz);
+      const reportedUsd = f.volumeUsd == null ? null : Number(f.volumeUsd);
+      const amount = reportedUsd!==null&&Number.isFinite(reportedUsd)&&reportedUsd>=0
+        ? reportedUsd : px * sz;
       if (!Number.isFinite(timestamp) || timestamp <= 0 || timestamp < cutoff ||
-          !Number.isFinite(px) || px <= 0 || !Number.isFinite(sz) || sz <= 0) continue;
+          !Number.isFinite(amount) || amount < 0) continue;
       const day = new Date(timestamp).toISOString().slice(0, 10);
-      byDay.set(day, (byDay.get(day) ?? 0) + px * sz);
+      byDay.set(day, (byDay.get(day) ?? 0) + amount);
     }
     return [...byDay].map(([day, amount]) => ({ day, amount }))
       .sort((a, b) => a.day.localeCompare(b.day));

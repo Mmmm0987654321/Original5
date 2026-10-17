@@ -22,6 +22,7 @@ import TradingAccountTabBar, { type TradingTabId } from "./TradingAccountTabBar"
 import HideDexPositionHeader from "./HideDexPositionHeader";
 import HideDexPositionDetails from "./HideDexPositionDetails";
 import HideDexTradeHistory, {type HideDexHistoryRow} from "./HideDexTradeHistory";
+import {rememberLighterSigner,readRememberedLighterSigner,forgetRememberedLighterSigner} from "../../lib/lighterDeviceKey";
 import CloseAllConfirmationModal from "./CloseAllConfirmationModal";
 import HideDexOpenOrders, {type HideDexOpenOrderRow} from "./HideDexOpenOrders";
 import HideDexBalancesView, {type HideDexBalanceItem} from "./HideDexBalancesView";
@@ -98,6 +99,7 @@ export default function LighterMarketPreview({
   },[section,initialOrdersTab]);
   const [expandedPositions, setExpandedPositions] = useState<Record<string, boolean>>({});
   const [closeAllPositionsOpen,setCloseAllPositionsOpen]=useState(false);
+  const [restoringSavedSigner,setRestoringSavedSigner]=useState(false);
   const [positionSort, setPositionSort] = useState<"default" | "pnl" | "size">("default");
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [orderType, setOrderType] = useState<"market" | "limit">("market");
@@ -151,27 +153,30 @@ export default function LighterMarketPreview({
   const [fillsError,setFillsError]=useState("");
 
   useEffect(() => {
-    if (!getActiveLighterSigner(walletAddress)) {
-      clearLighterTradingKey();
-      setTradingIdentity(null); setRecoveryKey(""); setLiveOrders(null); setLiveFills(null);
-    } else {
-      setTradingIdentity(getActiveLighterSigner(walletAddress));
-    }
-    setTradingNotice("");
-    setAuthSheetOpen(false);
-    // Private signer stays in volatile memory; switching views must never create
-    // a second registration prompt. On reload users may reconnect their saved key.
-    if (walletAddress && !getActiveLighterSigner(walletAddress)) {
-      try {
-        const saved = JSON.parse(localStorage.getItem("hidedex:lighter:key-ref:"+walletAddress.toLowerCase())||"null");
-        if (saved && Number.isSafeInteger(saved.accountIndex) && Number.isSafeInteger(saved.apiKeyIndex)) {
-          setExistingAccountIndex(String(saved.accountIndex));
-          setExistingApiKeyIndex(String(saved.apiKeyIndex));
-          setShowExistingKey(true);
-        }
-      } catch { /* Invalid reference: ask user to authorize normally. */ }
-    }
-  }, [walletAddress]);
+    let stopped=false;
+    const activeSigner=getActiveLighterSigner(walletAddress);
+    setTradingIdentity(activeSigner);
+    setRecoveryKey("");setLiveOrders(null);setLiveFills(null);
+    setTradingNotice("");setAuthSheetOpen(false);
+    setRestoringSavedSigner(Boolean(walletAddress&&!activeSigner));
+    if(!walletAddress || activeSigner){setRestoringSavedSigner(false);return;}
+    // The device keeps only encrypted API-key ciphertext. Verify the decrypted
+    // key with Lighter every time; do not open an authorization popup.
+    readRememberedLighterSigner(walletAddress).then(async saved=>{
+      if(!saved||stopped)return;
+      const identity=await reconnectLighterTradingKey({
+        walletAddress,accountIndex:saved.accountIndex,apiKeyIndex:saved.apiKeyIndex,
+        apiPrivateKey:saved.apiPrivateKey,
+      });
+      if(!stopped)setTradingIdentity(identity);
+      else clearLighterTradingKey();
+    }).catch(()=>{
+      // No stored/valid signer: user can authorize once explicitly.
+      // A public account is still readable without trading registration.
+      if(!stopped)setTradingIdentity(null);
+    }).finally(()=>{if(!stopped)setRestoringSavedSigner(false);});
+    return ()=>{stopped=true;};
+  },[walletAddress]);
 
   // Keep transaction/status feedback out of the Trade layout and dismiss
   // automatically; the modal retains registration/recovery instructions.
@@ -194,10 +199,19 @@ export default function LighterMarketPreview({
           accountIndex:identity.accountIndex,apiKeyIndex:identity.apiKeyIndex,
         }));
       } catch { /* Optional public reference only; key remains memory-only. */ }
-      setRecoveryKey(secret);
-      setAuthSheetOpen(true); // Keep one-time backup visible only inside the secure sheet.
-      setTradingNotice("Lighter registration submitted" + (txHash ? ": " + txHash : "") +
-        ". Keep a secure backup of the API key below; this browser does not store it.");
+      setRecoveryKey(secret); // Backup remains accessible if the user opens settings.
+      try {
+        await rememberLighterSigner(walletAddress,{
+          accountIndex:identity.accountIndex,apiKeyIndex:identity.apiKeyIndex,apiPrivateKey:secret,
+        });
+        setAuthSheetOpen(false);
+        setTradingNotice("Lighter enabled. Signing key encrypted on this browser device. "+
+          "Save a separate backup; cleared browser data requires reconnecting.");
+      } catch {
+        // Never silently lose the only copy of a withdrawal-capable key.
+        setAuthSheetOpen(true);
+        setTradingNotice("Local encrypted storage unavailable. Please save your Lighter recovery key securely.");
+      }
       setAccountReload(v => v + 1);
     } catch (e) {
       setTradingNotice(e instanceof Error ? e.message : "Lighter authorization failed.");
@@ -212,6 +226,12 @@ export default function LighterMarketPreview({
         apiKeyIndex: Number(existingApiKeyIndex), apiPrivateKey: existingKey.trim(),
       });
       setTradingIdentity(identity);
+      try {
+        await rememberLighterSigner(walletAddress,{
+          accountIndex:identity.accountIndex,apiKeyIndex:identity.apiKeyIndex,
+          apiPrivateKey:existingKey.trim(),
+        });
+      } catch { /* Signing stays in volatile memory when storage is unavailable. */ }
       setExistingKey(""); setShowExistingKey(false);
       setAuthSheetOpen(false);
       try { localStorage.setItem("hidedex:lighter:key-ref:"+walletAddress.toLowerCase(),JSON.stringify({
@@ -377,7 +397,8 @@ export default function LighterMarketPreview({
   useEffect(()=>{
     let stale=false;
     setLiveFills(null);setFillsError("");
-    if(!walletAddress||!tradingIdentity||accountTab!=="TRADE_HISTORY"){
+    if(!walletAddress||!tradingIdentity||
+      (accountTab!=="TRADE_HISTORY" && section!=="funds")){
       setFillsLoading(false);return;
     }
     setFillsLoading(true);
@@ -387,7 +408,7 @@ export default function LighterMarketPreview({
       if(!stale){setLiveFills(null);setFillsError(e instanceof Error?e.message:"Lighter fills unavailable.");}
     }).finally(()=>{if(!stale)setFillsLoading(false);});
     return ()=>{stale=true;};
-  },[walletAddress,tradingIdentity,accountTab,accountReload]);
+  },[walletAddress,tradingIdentity,accountTab,section,accountReload]);
 
   const submitMarginSettings = async () => {
     if (!walletAddress || !selected || kind !== "perp" || marginBusy) return;
@@ -418,6 +439,8 @@ export default function LighterMarketPreview({
       {tradingIdentity ? <div className="flex justify-between gap-2 items-center border border-brand-border rounded-lg p-2">
         <span className="text-emerald-500 font-bold">Lighter signing key · Account #{tradingIdentity.accountIndex} · Slot {tradingIdentity.apiKeyIndex}</span>
         <button type="button" onClick={() => {
+          void forgetRememberedLighterSigner(walletAddress).catch(()=>{});
+          try{localStorage.removeItem("hidedex:lighter:key-ref:"+walletAddress.toLowerCase());}catch{}
           clearLighterTradingKey(); setTradingIdentity(null); setRecoveryKey(""); setLiveOrders(null); setLiveFills(null);
           setTradingNotice("Session key disconnected. Your registered key remains on Lighter.");
         }} className="underline text-brand-muted">Disconnect</button>
@@ -696,7 +719,7 @@ export default function LighterMarketPreview({
       const time=Number(fill.timestamp),ms=time<1e11?time*1000:time;
       const usd=fill.usd_amount==null?null:Number(fill.usd_amount);
       return [{
-        id:liveFills.accountIndex+":"+(fill.trade_id??fill.tx_hash??"fill")+":"+index,
+        id:String(fill.trade_id??fill.tx_hash??"fill")+":"+liveFills.accountIndex+":"+index,
         symbol:market?.symbol??"Market #"+fill.market_id,
         side:ask?"SELL" as const:"BUY" as const,
         isSpot:market?market.kind==="spot":null,
@@ -706,6 +729,49 @@ export default function LighterMarketPreview({
         timestamp:Number.isFinite(ms)&&ms>0?new Date(ms).toLocaleString():"—",
       }];
     });
+  // The Lighter /trades response is account-authenticated. Count ONLY rows whose
+  // ask/bid account ID matches this signer; allTime is still limited by the
+  // endpoint's most recent 50 fills, not the wallet's lifetime.
+  const lighterStats=useMemo(()=>{
+    if(!liveFills)return null;
+    const days=performancePeriod==="day"?1:performancePeriod==="week"?7:
+      performancePeriod==="month"?30:null;
+    const cutoff=days===null?0:Date.now()-days*86400000;
+    const trades=liveFills.trades.flatMap(fill=>{
+      const ask=fill.ask_account_id===liveFills.accountIndex;
+      const bid=fill.bid_account_id===liveFills.accountIndex;
+      if(ask===bid)return [];
+      const market=markets.find(m=>m.id===fill.market_id);
+      if(performanceMarket!=="all" &&
+        (!market||(performanceMarket==="spot")!==(market.kind==="spot")))return [];
+      const t=Number(fill.timestamp);
+      const time=t<1e11?t*1000:t;
+      if(!Number.isFinite(time)||time<=0||time<cutoff)return [];
+      const price=Number(fill.price),size=Number(fill.size),quoted=Number(fill.usd_amount);
+      const amount=fill.usd_amount!=null&&Number.isFinite(quoted)&&quoted>0?quoted:
+        Number.isFinite(price)&&price>0&&Number.isFinite(size)&&size>0?price*size:null;
+      const maker=typeof fill.is_maker_ask==="boolean"?ask===fill.is_maker_ask:null;
+      const rawFee=maker===null?null:maker?fill.maker_fee:fill.taker_fee;
+      const fee=rawFee==null?null:Number(rawFee);
+      const extra=fill as unknown as Record<string,unknown>;
+      const id=ask?extra.ask_id:extra.bid_id;
+      return [{time,volumeUsd:amount,fee:fee===0?0:null,
+        orderId:(typeof id==="number"||typeof id==="string")&&String(id)!==""?String(id):null}];
+    });
+    const completeVolume=trades.every(x=>x.volumeUsd!==null);
+    const completeFees=trades.every(x=>x.fee!==null);
+    const completeOrders=trades.every(x=>x.orderId!==null);
+    return {
+      count:trades.length,
+      volume:completeVolume?trades.reduce((sum,x)=>sum+(x.volumeUsd??0),0):null,
+      fee:completeFees?trades.reduce((sum,x)=>sum+(x.fee??0),0):null,
+      orders:completeOrders?new Set(trades.map(x=>x.orderId)).size:null,
+      chartFills:trades.filter(x=>x.volumeUsd!==null).map(x=>({
+        time:x.time,volumeUsd:x.volumeUsd!,px:1,sz:x.volumeUsd!,
+      })),
+    };
+  },[liveFills,markets,performancePeriod,performanceMarket,accountReload]);
+
   const lighterAccountTabs = (
     <div className="bg-brand-bg border border-brand-border rounded-xl overflow-hidden shadow-xl" id="terminal-dashboard-panel-unified">
       <TradingAccountTabBar
@@ -725,8 +791,6 @@ export default function LighterMarketPreview({
           <div className="space-y-2">
             {accountsLoading && <p className="text-xs text-brand-muted">Checking Lighter positions…</p>}
             {accountError && <p className="text-xs text-rose-400">Unable to verify positions: {accountError}</p>}
-            {publicAccounts !== null && knownPositionCount === 0 &&
-              <p className="text-xs text-brand-muted">No open positions reported by connected Lighter accounts.</p>}
             {knownPositionCount !== undefined && (
               <div className="flex justify-between gap-2 items-center border-b border-brand-border pb-2 text-[10px] sm:text-xs text-brand-muted">
                 <label>Sort By:
@@ -739,12 +803,14 @@ export default function LighterMarketPreview({
                   </select>
                 </label>
                 <div className="flex gap-2">
-                  <button type="button" onClick={() => setExpandedPositions(Object.fromEntries(
-                    (publicAccounts ?? []).flatMap(a => a.positions.map((p,i) => [a.index + ":" + p.symbol + ":" + i, true]))))}
-                    className="text-brand-text">Expand All</button>
-                  <button type="button" onClick={() => setExpandedPositions(Object.fromEntries(
-                    (publicAccounts ?? []).flatMap(a => a.positions.map((p,i) => [a.index + ":" + p.symbol + ":" + i, false]))))}
-                    className="text-brand-sub">Collapse All</button>
+                  <button type="button" onClick={() => {
+                    const keys=(publicAccounts??[]).flatMap(a=>a.positions.map((p,i)=>a.index+":"+p.symbol+":"+i));
+                    const expand=!keys.every(key=>expandedPositions[key]??false);
+                    setExpandedPositions(Object.fromEntries(keys.map(key=>[key,expand])));
+                  }} className="text-brand-text">
+                    {(publicAccounts??[]).flatMap(a=>a.positions.map((p,i)=>a.index+":"+p.symbol+":"+i))
+                      .every(key=>expandedPositions[key]??false)&&knownPositionCount!==0?"Collapse All":"Expand All"}
+                  </button>
                   <button type="button"
                     disabled={tradingBusy||knownPositionCount===0}
                     onClick={()=>{if(!tradingIdentity){setAuthSheetOpen(true);return;}setCloseAllPositionsOpen(true);}}
@@ -833,18 +899,10 @@ export default function LighterMarketPreview({
           />
         </>}
         {accountTab === "TRADE_HISTORY" && <div>
-          {!tradingIdentity&&walletAddress&&<button type="button"
-            onClick={()=>setAuthSheetOpen(true)}
-            className="mb-2 rounded-lg border border-brand-border px-3 py-2 text-xs text-brand-text font-semibold">
-            Enable Trading to load real Lighter fills
-          </button>}
-          {liveFills&&<p className="mb-2 text-[10px] text-brand-muted">
-            Lighter account #{liveFills.accountIndex} · up to 50 recent fills (not lifetime).
-            Unverified nonzero fees show —.
-          </p>}
+
           <HideDexTradeHistory items={lighterFillRows}
             noDataMessage={!walletAddress?"Connect wallet to load Lighter fills.":
-              !tradingIdentity?"Authorize your Lighter signer to view real account fills.":
+              !tradingIdentity?(restoringSavedSigner?"Restoring saved Lighter account history…":"Lighter account history requires an authorized key."):
               fillsError||(fillsLoading?"Loading authenticated Lighter fills…":
               lighterFillRows===null?"Lighter history unavailable.":
               "No recent fills returned for this signer account.")}/>
@@ -1238,9 +1296,9 @@ export default function LighterMarketPreview({
             {([
               {label:"UNREALIZED PNL (LIVE)",value:performanceMarket==="spot" || unrealizedPnl===null ? "—" :
                 (unrealizedPnl<0?"-$":"+$")+formatPrice(Math.abs(unrealizedPnl),2)},
-              {label:"TOTAL VOLUME",value:"—"},
-              {label:"FEES (LOADED FILLS)",value:"—"},
-              {label:"EXECUTED ORDERS",value:"—"},
+              {label:"VOLUME (LOADED FILLS)",value:lighterStats?.volume===null||!lighterStats?"—":"$"+formatPrice(lighterStats.volume,2)},
+              {label:"FEES (LOADED FILLS)",value:lighterStats?.fee===null||!lighterStats?"—":"$"+formatPrice(lighterStats.fee,4)},
+              {label:"EXECUTED ORDERS",value:lighterStats?.orders===null||!lighterStats?"—":String(lighterStats.orders)},
             ]).map(item=><div key={item.label}
               className="rounded-xl border border-brand-border p-3 min-w-0">
               <span className="block text-[10px] text-brand-muted font-bold uppercase truncate">{item.label}</span>
@@ -1250,17 +1308,20 @@ export default function LighterMarketPreview({
           chart={<div className="h-[180px] sm:h-[220px] w-full rounded-xl bg-brand-overlay-subtle/50 border border-brand-border/40 flex flex-col items-center justify-center text-center p-4">
             <TrendingUp className="w-6 h-6 text-brand-muted/60 mb-2"/>
             <span className="text-xs font-semibold text-brand-muted">
-              Lighter fills and historical equity series are not verified for this period. Live unrealized PnL above is a current account snapshot, not historical net PnL.
+              Historical equity series is not available from the verified Lighter feed.
+              Live PnL is a current snapshot; actual loaded-fill volume is displayed below.
             </span>
-            <span className="text-[10px] text-brand-muted mt-1">No historical PnL or trading volume is estimated.</span>
           </div>}
         />
         <DailyFillVolumeBars
-          fills={[]}
+          fills={lighterStats?.chartFills??[]}
           period={performancePeriod}
           walletConnected={Boolean(walletAddress)}
           sensitiveHidden={hideBalance}
-          unavailableMessage="Verified Lighter fills for this wallet are not loaded. No volume is inferred from Hyperliquid or prices."
+          unavailableMessage={!walletAddress?undefined:
+            restoringSavedSigner?"Restoring saved Lighter data…":
+            !tradingIdentity?"Lighter fills need a verified account key (one-time enable trading).":
+            fillsError||(!liveFills?"Loading verified Lighter fills…":undefined)}
         />
       </div>;
     })()}
