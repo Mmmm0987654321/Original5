@@ -15,6 +15,7 @@ interface TopOrderBookViewProps {
   onSelectPrice?: (price: number) => void;
   priceDecimals?: number;
   quoteSymbol?:string;
+  depthVerified?:boolean;
 }
 
 export const TopOrderBookView: React.FC<TopOrderBookViewProps> = React.memo(({
@@ -25,6 +26,7 @@ export const TopOrderBookView: React.FC<TopOrderBookViewProps> = React.memo(({
   onSelectPrice,
   priceDecimals,
   quoteSymbol="USDC",
+  depthVerified=true,
 }) => {
   const isPurr = symbol.toUpperCase() === "PURR";
   const decimals = priceDecimals !== undefined && Number.isInteger(priceDecimals) && priceDecimals >= 0 && priceDecimals <= 12 ? priceDecimals : isPurr ? 4 : 2;
@@ -65,7 +67,7 @@ export const TopOrderBookView: React.FC<TopOrderBookViewProps> = React.memo(({
 
         <div className="flex items-center gap-2">
           <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider">
-            Live Depth
+            {depthVerified?"Live Depth":"Depth unavailable"}
           </span>
         </div>
       </div>
