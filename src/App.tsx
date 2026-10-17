@@ -4263,6 +4263,7 @@ export default function App() {
           ) && (
             <AsterVenueAdapter
               walletAddress={walletConnected?walletAddress:""}
+              getWalletProvider={getTradingSetupProvider}
               onConnectWallet={()=>setShowWalletModal(true)}
               section={
                 activeTab===ActiveTab.Dashboard?"dashboard":
