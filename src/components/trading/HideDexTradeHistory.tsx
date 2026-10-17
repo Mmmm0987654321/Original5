@@ -1,7 +1,7 @@
 import React from "react";
 import { Layers } from "lucide-react";
 export interface HideDexHistoryRow {
- id:string; symbol:string; side:"BUY"|"SELL"; isSpot:boolean;
+ id:string; symbol:string; side:"BUY"|"SELL"; isSpot:boolean|null;
  price:number; size:number; value:number;
  realizedPnl?:number|null; roi?:number|null; fee?:number|null; timestamp:string;
 }
@@ -27,7 +27,7 @@ export default function HideDexTradeHistory({items,noDataMessage}:Props){
        className="bg-brand-card hover:bg-brand-surface border border-brand-border/60 hover:border-brand-primary/30 rounded-xl p-3 flex flex-col gap-2.5 transition-all duration-150 shadow-md text-brand-sub">
        <div className="flex items-center justify-between border-b border-brand-divider/30 pb-2">
          <div className="flex items-center gap-2">
-           <span className="font-bold text-[12px] text-brand-text">{hist.symbol}-{hist.isSpot?"SPOT":"PERP"}</span>
+           <span className="font-bold text-[12px] text-brand-text">{hist.symbol}-{hist.isSpot===null?"UNKNOWN":hist.isSpot?"SPOT":"PERP"}</span>
            <span className={`px-1.5 py-0.2 rounded text-[8px] font-black tracking-wider ${hist.side==="BUY"?
              "bg-brand-profit/10 text-brand-profit border border-brand-profit/20":"bg-brand-loss/10 text-brand-loss border border-brand-loss/20"}`}>{hist.side}</span>
            <span className="text-[8px] text-brand-muted font-bold font-mono">ID: {hist.id.slice(0,6)}</span>
@@ -59,7 +59,7 @@ export default function HideDexTradeHistory({items,noDataMessage}:Props){
        <tbody className="divide-y divide-brand-divider/30 text-brand-sub">
          {rows.map(hist=><tr key={hist.id} className="hover:bg-brand-overlay-subtle transition-colors">
            <td className="py-2.5 text-[10px] text-brand-muted">#{hist.id.slice(0,6)}</td>
-           <td className="py-2.5 font-bold text-brand-text">{hist.symbol}-{hist.isSpot?"SPOT":"PERP"}</td>
+           <td className="py-2.5 font-bold text-brand-text">{hist.symbol}-{hist.isSpot===null?"UNKNOWN":hist.isSpot?"SPOT":"PERP"}</td>
            <td className="py-2.5"><span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${hist.side==="BUY"?"bg-brand-profit/10 text-brand-profit border border-brand-profit/20":"bg-brand-loss/10 text-brand-loss border border-brand-loss/20"}`}>{hist.side}</span></td>
            <td className="py-2.5">{hist.size} {hist.symbol}</td>
            <td className="py-2.5 font-semibold">{price(hist.price)}</td>

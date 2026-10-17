@@ -231,6 +231,16 @@ export async function submitLighterOrder(args: {
   });
 }
 
+/** Authenticated read of genuine trades for only the active Lighter signer account. */
+export async function getLighterSignedTradeHistory(walletAddress: string) {
+  const s=active(walletAddress);
+  if(!(await verifyLighterTradingKey(walletAddress)))
+    throw new Error("Lighter API key must be verified before loading trade history.");
+  if(!(await getLighterAccountIndexes(s.address)).includes(s.signer.accountIndex))
+    throw new Error("Lighter account ownership could not be verified.");
+  return {accountIndex:s.signer.accountIndex, trades:await s.client.rest.getAccountTrades(s.signer,{limit:50})};
+}
+
 export async function getLighterSignedOpenOrders(walletAddress: string): Promise<LighterActiveOrder[]> {
   const s = active(walletAddress);
   if (!(await verifyLighterTradingKey(walletAddress))) throw new Error("Lighter key registration pending.");
