@@ -1,4 +1,5 @@
 import TradingAccountTabBar from "./TradingAccountTabBar";
+import HideDexPositionActionBar from "./HideDexPositionActionBar";
 import HideDexPositionHeader from "./HideDexPositionHeader";
 import HideDexPositionDetails from "./HideDexPositionDetails";
 import HideDexTradeHistory from "./HideDexTradeHistory";
@@ -467,74 +468,18 @@ export default function TradingDashboardTabs({
         </div>
       )}
 
-      {/* Sub-Header Row: Sort by, Expand All, Close All */}
-      {activeBottomTab === "POSITIONS" && (
-        <div className="flex items-center justify-between px-2.5 py-1.5 bg-brand-bg/50 border-b border-brand-border text-[9px] md:text-[10px] text-gray-500 font-bold uppercase tracking-wider relative">
-          <div className="relative shrink-0" ref={sortDropdownRef}>
-            <button 
-              onClick={() => setShowSortDropdown(!showSortDropdown)}
-              className="flex items-center gap-1 hover:text-brand-text transition-colors cursor-pointer"
-            >
-              <span>Sort By: {
-                sortBy === "DEFAULT" ? "Default" :
-                sortBy === "SYMBOL" ? "Symbol" :
-                sortBy === "SIZE" ? "Size" :
-                sortBy === "ROI" ? "ROI" :
-                sortBy === "RISK" ? "Risk Ratio" :
-                "PnL"
-              }</span>
-              <ChevronDown className="w-3 h-3 text-gray-500" />
-            </button>
-            {showSortDropdown && (
-              <div className="absolute left-0 mt-1.5 w-28 bg-brand-bg border border-brand-border rounded-lg shadow-xl z-30 p-0.5">
-                {[
-                  { id: "DEFAULT" as const, name: "Default" },
-                  { id: "SYMBOL" as const, name: "Symbol" },
-                  { id: "SIZE" as const, name: "Size" },
-                  { id: "PNL" as const, name: "PnL" },
-                  { id: "ROI" as const, name: "ROI" },
-                  { id: "RISK" as const, name: "Risk Ratio" }
-                ].map((s) => (
-                  <button
-                    key={s.id}
-                    onClick={() => {
-                      setSortBy(s.id);
-                      setShowSortDropdown(false);
-                    }}
-                    className={`w-full text-left px-2 py-1 text-[9px] rounded transition-colors font-bold ${
-                      sortBy === s.id ? "text-cyan-400 bg-brand-overlay-normal" : "text-gray-400 hover:text-brand-text"
-                    }`}
-                  >
-                    {s.name}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-          <div className="flex items-center gap-3">
-            <button 
-              onClick={() => {
-                const nextVal = !isAllExpanded;
-                setIsAllExpanded(nextVal);
-                const updated: Record<string, boolean> = {};
-                positions.forEach(p => { updated[p.id] = nextVal; });
-                setExpandedPositionIds(updated);
-              }}
-              className="hover:text-brand-text transition-colors cursor-pointer"
-            >
-              {isAllExpanded ? "Collapse All" : "Expand All"}
-            </button>
-            <button 
-              onClick={() => {
-                setShowCloseAllModal(true);
-              }}
-              className="text-rose-400 hover:text-rose-300 transition-colors cursor-pointer"
-            >
-              Close All
-            </button>
-          </div>
-        </div>
-      )}
+      {/* Shared Original4 positions toolbar: venue handlers remain unchanged. */}
+      {activeBottomTab === "POSITIONS" && <HideDexPositionActionBar
+        sort={sortBy}
+        onSort={setSortBy}
+        allExpanded={isAllExpanded}
+        onToggleAll={()=>{
+          const next=!isAllExpanded;
+          setIsAllExpanded(next);
+          setExpandedPositionIds(Object.fromEntries(positions.map(pos=>[pos.id,next])));
+        }}
+        onCloseAll={()=>setShowCloseAllModal(true)}
+      />}
 
       {/* Sub-Header Row: Open Orders - Cancel All */}
       {activeBottomTab === "OPEN_ORDERS" && filteredOrders.length > 0 && (

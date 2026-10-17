@@ -21,6 +21,7 @@ import TopOrderBookView from "./TopOrderBookView";
 import MarketsPanel from "../dashboard/MarketsPanel";
 import GeneralDashboard from "../dashboard/GeneralDashboard";
 import TradingAccountTabBar, { type TradingTabId } from "./TradingAccountTabBar";
+import HideDexPositionActionBar, {type HideDexPositionSort} from "./HideDexPositionActionBar";
 import HideDexPositionHeader from "./HideDexPositionHeader";
 import HideDexPositionDetails from "./HideDexPositionDetails";
 import HideDexTradeHistory, {type HideDexHistoryRow} from "./HideDexTradeHistory";
@@ -103,7 +104,7 @@ export default function LighterMarketPreview({
   const [expandedPositions, setExpandedPositions] = useState<Record<string, boolean>>({});
   const [closeAllPositionsOpen,setCloseAllPositionsOpen]=useState(false);
   const [restoringSavedSigner,setRestoringSavedSigner]=useState(false);
-  const [positionSort, setPositionSort] = useState<"default" | "pnl" | "size">("default");
+  const [positionSort, setPositionSort] = useState<HideDexPositionSort>("DEFAULT");
   const [side, setSide] = useState<"buy" | "sell">("buy");
   const [orderType, setOrderType] = useState<"market" | "limit">("market");
   const [orderTypeOpen, setOrderTypeOpen] = useState(false);
@@ -818,6 +819,22 @@ export default function LighterMarketPreview({
         positionsCount={knownPositionCount}
         ordersCount={liveOrders?.length}
       />
+
+      {accountTab==="POSITIONS" && <HideDexPositionActionBar
+        sort={positionSort}
+        onSort={setPositionSort}
+        supportedSorts={["DEFAULT","SYMBOL","SIZE","PNL"]}
+        allExpanded={Boolean(knownPositionCount) &&
+          (publicAccounts??[]).flatMap(a=>a.positions.map((p,i)=>a.index+":"+p.symbol+":"+i))
+            .every(key=>expandedPositions[key]??false)}
+        onToggleAll={()=>{
+          const keys=(publicAccounts??[]).flatMap(a=>a.positions.map((p,i)=>a.index+":"+p.symbol+":"+i));
+          const expand=!keys.every(key=>expandedPositions[key]??false);
+          setExpandedPositions(Object.fromEntries(keys.map(key=>[key,expand])));
+        }}
+        onCloseAll={()=>{if(!tradingIdentity){setAuthSheetOpen(true);return;}setCloseAllPositionsOpen(true);}}
+        closeDisabled={tradingBusy||knownPositionCount===0}
+      />}
       <div className="p-2 md:p-3 min-h-[110px] overflow-y-auto overflow-x-hidden">
         {accountTab === "BALANCES" && <HideDexBalancesView
           items={publicAccounts?.some(a=>a.assets===null)?null:lighterBalanceRows}
@@ -829,36 +846,10 @@ export default function LighterMarketPreview({
           <div className="space-y-2">
             {accountsLoading && <p className="text-xs text-brand-muted">Checking Lighter positions…</p>}
             {accountError && <p className="text-xs text-rose-400">Unable to verify positions: {accountError}</p>}
-            {knownPositionCount !== undefined && (
-              <div className="flex items-center justify-between px-2.5 py-1.5 bg-brand-bg/50 border-b border-brand-border text-[9px] md:text-[10px] text-gray-500 font-bold uppercase tracking-wider relative">
-                <label>Sort By:
-                  <select aria-label="Sort Lighter positions" value={positionSort}
-                    onChange={e => setPositionSort(e.target.value as "default" | "pnl" | "size")}
-                    className="ml-1 bg-brand-bg text-brand-text">
-                    <option value="default">Default</option>
-                    <option value="pnl">Unrealized PnL</option>
-                    <option value="size">Position Size</option>
-                  </select>
-                </label>
-                <div className="flex gap-2">
-                  <button type="button" onClick={() => {
-                    const keys=(publicAccounts??[]).flatMap(a=>a.positions.map((p,i)=>a.index+":"+p.symbol+":"+i));
-                    const expand=!keys.every(key=>expandedPositions[key]??false);
-                    setExpandedPositions(Object.fromEntries(keys.map(key=>[key,expand])));
-                  }} className="text-brand-text">
-                    {(publicAccounts??[]).flatMap(a=>a.positions.map((p,i)=>a.index+":"+p.symbol+":"+i))
-                      .every(key=>expandedPositions[key]??false)&&knownPositionCount!==0?"Collapse All":"Expand All"}
-                  </button>
-                  <button type="button"
-                    disabled={tradingBusy||knownPositionCount===0}
-                    onClick={()=>{if(!tradingIdentity){setAuthSheetOpen(true);return;}setCloseAllPositionsOpen(true);}}
-                    className="text-rose-400 hover:text-rose-300 disabled:opacity-40">Close All</button>
-                </div>
-              </div>
-            )}
             {(publicAccounts ?? []).flatMap(a => a.positions.map((p,i) => ({a,p,i})))
-              .sort((x,y) => positionSort === "pnl" ? (y.p.unrealizedPnl ?? -Infinity)-(x.p.unrealizedPnl ?? -Infinity)
-                : positionSort === "size" ? Math.abs(y.p.signedSize)-Math.abs(x.p.signedSize) : 0)
+              .sort((x,y) => positionSort === "PNL" ? (y.p.unrealizedPnl ?? -Infinity)-(x.p.unrealizedPnl ?? -Infinity)
+                : positionSort === "SIZE" ? Math.abs(y.p.signedSize)-Math.abs(x.p.signedSize)
+                : positionSort === "SYMBOL" ? x.p.symbol.localeCompare(y.p.symbol) : 0)
               .map(({a,p,i}) => {
                 const key = a.index + ":" + p.symbol + ":" + i;
                 const isExpanded = expandedPositions[key] ?? false;
