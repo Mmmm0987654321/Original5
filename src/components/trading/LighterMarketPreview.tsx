@@ -926,10 +926,14 @@ export default function LighterMarketPreview({
                         hint:p.entryPrice>0 ? "($"+formatPrice(Math.abs(p.signedSize)*p.entryPrice,1)+")" : undefined},
                       {label:"Entry Price",value:p.entryPrice>0?"$"+formatPrice(p.entryPrice):"—"},
                       {label:"Margin Ratio",value:"—",tone:"muted"},
-                      {label:"Liquidation Price",value:"—",tone:"muted"},
+                      {label:"Liquidation Price",
+                        value:p.liquidationPrice!==null&&p.liquidationPrice>0 ?
+                          "$"+formatPrice(p.liquidationPrice,4):"—",tone:"muted"},
                     ]}
                     right={[
-                      {label:"Margin",value:"—",tone:"muted"},
+                      {label:"Margin",
+                        value:p.allocatedMargin!==null&&p.allocatedMargin>=0 ?
+                          "$"+formatPrice(p.allocatedMargin,4):"—",tone:"muted"},
                       {label:"Mark Price",value:"—",tone:"muted"},
                       {label:"TP / SL Target",value:"Not verified",tone:"muted"},
                     ]}
@@ -958,13 +962,23 @@ export default function LighterMarketPreview({
               const market=markets.find(m=>m.id===marketId);
               const index=Number(order.order_index);
               const symbol=market?.symbol??"Unknown";
+              const triggerPx=Number(order.trigger_price);
+              const hasTrigger=order.trigger_price!=null&&Number.isFinite(triggerPx)&&triggerPx>0;
+              const initial=Number(order.initial_base_amount??order.base_amount);
+              const remaining=Number(order.remaining_base_amount);
+              const filledPercent=Number.isFinite(initial)&&initial>0&&
+                Number.isFinite(remaining)&&remaining>=0&&remaining<=initial ?
+                (100*(initial-remaining)/initial).toFixed(1)+"%":"—";
               return {
                 id:marketId+":"+index+":"+i,symbol,isSpot:market?.kind==="spot",
-                side:order.is_ask?"SELL":"BUY",orderType:String(order.order_type??"Limit"),
-                priceLabel:String(order.price??"—"),trigger:false,
+                side:order.is_ask?"SELL":"BUY",
+                orderType:String(order.order_type??order.type??"Limit"),
+                priceLabel:hasTrigger?String(order.trigger_price):String(order.price??"—"),
+                trigger:hasTrigger,
                 sizeLabel:String(order.initial_base_amount??order.base_amount??"—"),
-                filledLabel:"—",remainingLabel:String(order.remaining_base_amount??"—"),
-                status:"Open",timestamp:"—",
+                filledLabel:filledPercent,remainingLabel:String(order.remaining_base_amount??"—"),
+                status:typeof order.status==="string"&&order.status.trim()?order.status:"Open",
+                timestamp:"—",
                 canCancel:!!market && Number.isSafeInteger(index)&&index>=0 && !tradingBusy,
               } satisfies HideDexOpenOrderRow;
             })}

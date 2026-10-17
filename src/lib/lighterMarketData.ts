@@ -198,6 +198,8 @@ export type LighterPublicPosition = {
   signedSize: number;
   entryPrice: number | null;
   unrealizedPnl: number | null;
+  liquidationPrice: number | null;
+  allocatedMargin: number | null;
 };
 export type LighterPublicAsset = {
   symbol: string;
@@ -237,6 +239,8 @@ export async function getLighterPublicAccounts(
         symbol: o.symbol,
         signedSize: Math.abs(size) * (sign < 0 ? -1 : 1),
         entryPrice: entry, unrealizedPnl: pnl,
+        liquidationPrice: finite(o.liquidation_price),
+        allocatedMargin: finite(o.allocated_margin),
       });
     }
     const assets: LighterPublicAsset[] | null = Array.isArray(account.assets)
