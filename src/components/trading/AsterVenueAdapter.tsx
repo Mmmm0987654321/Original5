@@ -199,6 +199,7 @@ export default function AsterVenueAdapter({
  const bookView=token?<TopOrderBookView
   symbol={selected?.baseAsset??"—"} currentToken={token}
   quoteSymbol={selected?.quoteAsset??"USDT"}
+  depthVerified={Boolean(book)&&!bookError}
   asks={asks} bids={bids} priceDecimals={selected?.priceDecimals??undefined}
   onSelectPrice={p=>{setOrderType("LIMIT");setLimitPrice(String(p));}}
  />:<p className="p-4 text-xs text-brand-muted">Aster order book unavailable.</p>;
