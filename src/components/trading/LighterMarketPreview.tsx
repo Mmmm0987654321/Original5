@@ -514,8 +514,9 @@ export default function LighterMarketPreview({
     if (!selected.maxLeverage || chosenLeverage > selected.maxLeverage || chosenLeverage < 1) {
       setMarginStatus("Lighter did not verify this leverage. No update sent."); return;
     }
-    if (!window.confirm("UPDATE REAL LIGHTER MARGIN SETTINGS\n" + selected.symbol +
-      "\n" + marginMode.toUpperCase() + " · " + chosenLeverage + "x\nConfirm on Lighter mainnet?")) return;
+    // The original shared HideDex leverage popup already has an explicit
+    // "Confirm real margin update" button. That button is the sole user approval:
+    // never stack the browser's native OK/Cancel dialog on top of it.
     setMarginBusy(true); setMarginStatus("Submitting signed Lighter margin update…");
     try {
       const tx = await updateLighterPerpMargin({
