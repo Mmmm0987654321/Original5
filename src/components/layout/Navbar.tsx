@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import { useTrustShield } from "../../lib/TrustShieldManager";
 import { TrustShieldValue } from "../common/TrustShieldValue";
 import { applyPreferencesToDOM } from "../trading/TradingPreferencesModal";
@@ -100,6 +101,7 @@ export default function Navbar({
   const [networkDropdownOpen, setNetworkDropdownOpen] = useState(false);
   const [exchangeMenuOpen, setExchangeMenuOpen] = useState(false);
   const exchangeMenuRef = useRef<HTMLDivElement>(null);
+  const exchangePopupRef = useRef<HTMLDivElement>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchFocused, setSearchFocused] = useState(false);
   const currentTheme = userSettings?.theme || "dark";
@@ -111,7 +113,8 @@ export default function Navbar({
   useEffect(() => {
     if (!exchangeMenuOpen) return;
     const outside = (event: MouseEvent) => {
-      if (!exchangeMenuRef.current?.contains(event.target as Node)) setExchangeMenuOpen(false);
+      if (!exchangeMenuRef.current?.contains(event.target as Node) &&
+          !exchangePopupRef.current?.contains(event.target as Node)) setExchangeMenuOpen(false);
     };
     const escape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setExchangeMenuOpen(false);
@@ -430,29 +433,32 @@ export default function Navbar({
               <span className="hidden min-[430px]:inline text-[10px] sm:text-xs font-semibold">{selectedExchange === "lighter" ? "Lighter" : "Hyperliquid"}</span>
               <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${exchangeMenuOpen ? "rotate-180" : ""}`} />
             </button>
-            {exchangeMenuOpen && (
-              <div role="menu" aria-label="Select trading exchange"
-                className="absolute top-full mt-2 right-0 w-[min(250px,calc(100vw-24px))] rounded-xl border border-brand-border bg-brand-surface shadow-2xl p-2 z-[100]">
-                <p className="px-2 py-1.5 text-[10px] text-brand-muted font-semibold uppercase tracking-wider">Select Exchange</p>
-                {([
-                  { id: "hyperliquid", label: "Hyperliquid", hint: "Mainnet", dot: "bg-emerald-400" },
-                  { id: "lighter", label: "Lighter", hint: "Mainnet · Integration preview", dot: "bg-sky-400" },
-                ] as const).map(venue => (
-                  <button type="button" role="menuitemradio"
-                    aria-checked={selectedExchange === venue.id} key={venue.id}
-                    onClick={() => { setExchangeMenuOpen(false); if (venue.id !== selectedExchange) onSelectExchange(venue.id); }}
-                    className={`w-full flex items-center justify-between gap-3 text-left px-3 py-2.5 rounded-lg hover:bg-brand-overlay-normal ${selectedExchange === venue.id ? "bg-brand-overlay-subtle" : ""}`}>
-                    <span className="flex items-center gap-2.5 min-w-0">
-                      <span className={`w-2.5 h-2.5 shrink-0 rounded-full ${venue.dot}`} />
-                      <span className="min-w-0">
-                        <span className="block text-xs font-bold text-brand-text">{venue.label}</span>
-                        <span className="block text-[10px] text-brand-muted">{venue.hint}</span>
+            {exchangeMenuOpen && typeof document !== "undefined" && createPortal(
+              <div className="fixed inset-0 z-[300] flex items-start justify-center px-3 pt-[max(82px,env(safe-area-inset-top))]"
+                data-exchange-picker-portal="true">
+                <button type="button" aria-label="Close exchange selector"
+                  className="absolute inset-0 bg-black/30" onClick={()=>setExchangeMenuOpen(false)}/>
+                <div ref={exchangePopupRef} role="menu" aria-label="Select trading exchange"
+                  className="relative w-full max-w-[280px] rounded-2xl border border-brand-border bg-brand-surface shadow-2xl p-2.5 text-brand-text">
+                  {([
+                    { id: "hyperliquid", label: "Hyperliquid", domain: "hyperliquid.xyz" },
+                    { id: "lighter", label: "Lighter", domain: "lighter.exchange" },
+                  ] as const).map(venue=>(
+                    <button type="button" role="menuitemradio" key={venue.id}
+                      aria-checked={selectedExchange===venue.id}
+                      onClick={()=>{setExchangeMenuOpen(false);if(venue.id!==selectedExchange)onSelectExchange(venue.id);}}
+                      className={`w-full flex items-center justify-between gap-3 rounded-xl px-3 py-3 text-left hover:bg-brand-overlay-normal ${selectedExchange===venue.id?"bg-brand-overlay-subtle":""}`}>
+                      <span className="flex min-w-0 items-center gap-3">
+                        <img src={`https://www.google.com/s2/favicons?domain=${venue.domain}&sz=64`}
+                          alt="" aria-hidden="true" width={30} height={30}
+                          className="w-7 h-7 rounded-md object-contain shrink-0"/>
+                        <span className="text-sm font-bold text-brand-text">{venue.label}</span>
                       </span>
-                    </span>
-                    {selectedExchange === venue.id && <Check className="w-4 h-4 text-accent shrink-0"/>}
-                  </button>
-                ))}
-              </div>
+                      {selectedExchange===venue.id&&<Check className="w-4 h-4 shrink-0 text-accent"/>}
+                    </button>
+                  ))}
+                </div>
+              </div>,document.body
             )}
           </div>
         )}
