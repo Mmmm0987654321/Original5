@@ -404,7 +404,18 @@ export default function LighterMarketPreview({
       setFundingStatus("Lighter accepted a secure Ethereum withdrawal request: " + tx + ". Settlement to your owner wallet is pending; check withdrawal history before retrying.");
       setWithdrawAmount(""); setAccountReload(v => v + 1);
     } catch (e) {
-      setFundingStatus(e instanceof Error ? e.message : "Lighter withdrawal failed.");
+      const message=e instanceof Error?e.message:String(e);
+      if(/collateral|withdrawable|invalid route type/i.test(message)){
+        // A rejected or uncertain withdrawal must not be re-signed
+        // automatically. Refresh only the exchange account state.
+        refreshAfterLighterWrite();
+        try {
+          const [latest]=await getLighterPublicAccounts([tradingIdentity.accountIndex]);
+          if(latest)setPublicAccounts(previous=>previous?.map(a=>
+            a.index===latest.index?latest:a)??[latest]);
+        }catch{/* A failed account read cannot verify a debit or credit. */}
+      }
+      setFundingStatus(message||"Lighter withdrawal is not verified. Check withdrawal history before retrying.");
     } finally { setFundingBusy(false); }
   };
 
@@ -2074,13 +2085,24 @@ export default function LighterMarketPreview({
             <HideDexFundingDestination address={walletAddress}/>
             <HideDexFundingAmount id="lighter-withdraw-amount" amount={withdrawAmount}
               onAmount={setWithdrawAmount} disabled={!tradingIdentity||fundingBusy}
-              balanceLabel="Available Balance"
+              balanceLabel="Perps Trading Available"
               balance={displayTradingAccount?.availableBalance==null?"—":formatPrice(displayTradingAccount.availableBalance,4)+" USDC"}
               minLabel="Minimum secure withdrawal: 1 USDC. Destination: your account owner wallet on Ethereum."/>
-            <p className="text-[10px] text-brand-muted">Destination: {walletAddress || "Connect wallet"}. Secure withdrawal uses your Lighter Perps USDC and settles to its verified owner on Ethereum Mainnet (chain 1), not an arbitrary address. Settlement may require a claim. Fees are not quoted in advance.</p>
+            <p className="text-[10px] text-brand-muted">Destination: {walletAddress || "Connect wallet"}. Secure withdrawal sends Perps USDC to the Ethereum owner wallet, subject to exchange collateral checks. Trading available balance is NOT a guaranteed withdrawal ceiling. Lighter usually claims the Ethereum exit; a manual claim may need ETH gas. No verified secure fee quote is available.</p>
             <HideDexFundingFeeCard deposit={false}
-              fee="Not quoted by Lighter"
-              receive={null}/>
+              fee="No verified secure fee quote"
+              receive={/^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?$/.test(withdrawAmount.trim()) &&
+                Number(withdrawAmount)>=1 &&
+                displayTradingAccount?.availableBalance!==null &&
+                displayTradingAccount?.availableBalance!==undefined &&
+                Number(withdrawAmount)<=displayTradingAccount.availableBalance
+                  ?Number(withdrawAmount).toLocaleString("en-US",{maximumFractionDigits:6})+
+                    " USDC (gross, not net)"
+                  :"—"}/>
+            <p className="text-[10px] text-brand-muted">
+              Gross amount only: final net received and any manual Ethereum claim gas
+              are not quoted here. A withdrawal remains subject to real Lighter collateral rules.
+            </p>
             <HideDexFundingSubmit deposit={false} busy={fundingBusy}
               disabled={!tradingIdentity||!withdrawAmount.trim()||
                 !/^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?$/.test(withdrawAmount.trim())||
