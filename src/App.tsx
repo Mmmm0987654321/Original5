@@ -77,6 +77,7 @@ import { useHyperliquidSpotStateStream } from "./hooks/useHyperliquidSpotStateSt
 import {
   arbitrum,
   mainnet,
+  bsc,
 } from "@reown/appkit/networks";
 import {
   useAppKit,
@@ -841,6 +842,13 @@ export default function App() {
   const getTradingSetupProvider = useCallback(async (): Promise<Eip1193Provider> => {
     return activeWallet.getProvider();
   }, [activeWallet]);
+
+  // Only called by Aster's explicit Enable Trading action. Uses the same
+  // Reown network switcher already used by Hyperliquid, not a separate modal.
+  // Does not alter the default chain or automatic Hyperliquid alignment.
+  const requestAsterBscNetwork = useCallback(async (): Promise<void> => {
+    await switchNetwork(bsc);
+  }, [switchNetwork]);
 
   const HL_SIGNING_CHAIN_ALIGN_TIMEOUT_MS = 6_000;
   const HL_SIGNING_CHAIN_SETTLE_MS = 750;
@@ -4264,6 +4272,7 @@ export default function App() {
             <AsterVenueAdapter
               walletAddress={walletConnected?walletAddress:""}
               getWalletProvider={getTradingSetupProvider}
+              onSwitchToBsc={requestAsterBscNetwork}
               onConnectWallet={()=>setShowWalletModal(true)}
               section={
                 activeTab===ActiveTab.Dashboard?"dashboard":
