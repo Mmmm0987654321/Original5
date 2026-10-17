@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import {formatUnits} from "ethers";
 import { Layers, Wallet, TrendingUp, Unlock, Lock, ArrowUpRight, ArrowDownRight, ChevronRight, ChevronDown, X, ShieldCheck, Copy, Check, Eye, EyeOff, BarChart3, Share2 } from "lucide-react";
 import { TrustShieldValue } from "../common/TrustShieldValue";
 import HideDexFundsOverview from "../dashboard/HideDexFundsOverview";
@@ -66,6 +67,55 @@ import {
   type LighterMarket, type LighterMarketFeed, type LighterPublicAccount,
 } from "../../lib/lighterMarketData";
 import {verifiedLighterLeverage,lighterInitialRequirement,lighterCrossAccountMarginRatio,estimateLighterDraftLiq} from "../../lib/lighterMarginDisplay";
+
+/**
+ * Read-only selected-chain wallet balance. Mirrors the public Arbitrum RPC
+ * reads in App.tsx. Never reports 0 on failure, never switches chain or signs.
+ */
+async function readLighterDepositWalletBalance(
+  wallet:string, network:"arbitrum"|"ethereum",
+  getProvider:()=>Promise<LighterWalletProvider>
+):Promise<string|null>{
+  if(!/^0x[0-9a-fA-F]{40}$/.test(wallet))return null;
+  const expected=network==="arbitrum"?42161:1;
+  const token=network==="arbitrum"
+    ?"0xaf88d065e77c8cC2239327C5EDb3A432268e5831"
+    :"0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+  const rpcUrls=network==="arbitrum"
+    ?["https://arb1.arbitrum.io/rpc","https://arbitrum.llamarpc.com"]
+    :["https://ethereum-rpc.publicnode.com","https://eth.llamarpc.com"];
+  const data="0x70a08231"+wallet.toLowerCase().slice(2).padStart(64,"0");
+  const decode=(hex:unknown):string|null=>
+    typeof hex==="string"&&/^0x[0-9a-fA-F]+$/.test(hex)?
+      formatUnits(BigInt(hex),6):null;
+  for(const endpoint of rpcUrls){
+    const controller=new AbortController();
+    const timer=window.setTimeout(()=>controller.abort(),8000);
+    try{
+      const response=await fetch(endpoint,{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        signal:controller.signal,
+        body:JSON.stringify({jsonrpc:"2.0",id:1,method:"eth_call",
+          params:[{to:token,data},"latest"]}),
+      });
+      if(!response.ok)continue;
+      const raw:unknown=await response.json();
+      const value=raw&&typeof raw==="object"&&!Array.isArray(raw)
+        ?(raw as {result?:unknown}).result:null;
+      const balance=decode(value);
+      if(balance!==null)return balance;
+    }catch{/* Try alternate read-only RPC. */}
+    finally{window.clearTimeout(timer);}
+  }
+  try{
+    const walletProvider=await getProvider();
+    const chain=await walletProvider.request({method:"eth_chainId"});
+    if(Number(BigInt(chain))!==expected)return null;
+    const value=await walletProvider.request({method:"eth_call",
+      params:[{to:token,data},"latest"]});
+    return decode(value);
+  }catch{return null;}
+}
 
 type Section = "dashboard" | "markets" | "trade" | "funds" | "account" | "orders";
 type Kind = "perp" | "spot";
@@ -163,6 +213,8 @@ export default function LighterMarketPreview({
   const [fundsModal, setFundsModal] = useState<"deposit" | "withdraw" | null>(null);
   const [depositAmount, setDepositAmount] = useState("");
   const [depositFeeQuote, setDepositFeeQuote] = useState<string|null>(null);
+  const [depositWalletUsdc,setDepositWalletUsdc]=useState<string|null>(null);
+  const [depositWalletBalanceLoading,setDepositWalletBalanceLoading]=useState(false);
   const [depositNetwork, setDepositNetwork] = useState<"arbitrum" | "ethereum">("arbitrum");
   const [fundingBusy, setFundingBusy] = useState(false);
   const [fundingStatus, setFundingStatus] = useState("");
@@ -967,6 +1019,27 @@ export default function LighterMarketPreview({
       }).finally(()=>{if(!stopped)setPublicAnalyticsLoading(false);});
     return ()=>{stopped=true;controller.abort();};
   },[walletAddress,section,performancePeriod]);
+
+  // Read only selected source-network USDC balance. This isn't the Lighter
+  // Perps collateral balance and must not be reused for withdrawal validation.
+  useEffect(()=>{
+    if(fundsModal!=="deposit"||!walletAddress){
+      setDepositWalletUsdc(null);setDepositWalletBalanceLoading(false);return;
+    }
+    let stopped=false;
+    setDepositWalletUsdc(null);setDepositWalletBalanceLoading(true);
+    const refresh=()=>{
+      readLighterDepositWalletBalance(walletAddress,depositNetwork,getWalletProvider)
+        .then(value=>{if(!stopped)setDepositWalletUsdc(value);})
+        .catch(()=>{if(!stopped)setDepositWalletUsdc(null);})
+        .finally(()=>{if(!stopped)setDepositWalletBalanceLoading(false);});
+    };
+    refresh();
+    window.addEventListener("focus",refresh);
+    const timer=window.setInterval(refresh,30000);
+    return ()=>{stopped=true;window.removeEventListener("focus",refresh);
+      window.clearInterval(timer);};
+  },[fundsModal,walletAddress,depositNetwork,getWalletProvider,accountReload]);
 
   // Fee preview is READ ONLY and conditional on the existing Ethereum
   // allowance. Missing allowance / different network means wallet will quote
@@ -2029,17 +2102,26 @@ export default function LighterMarketPreview({
             <HideDexFundingNetworkAsset
               network={depositNetwork==="arbitrum"?"Arbitrum One":"Ethereum Mainnet"}
               chainId={depositNetwork==="arbitrum"?42161:1}
-              options={[{value:"arbitrum",label:"Arbitrum One"},{value:"ethereum",label:"Ethereum Mainnet"}]}
+              options={[
+                {value:"arbitrum",label:"Arbitrum One",chainId:42161,
+                  description:"Legacy USDC bridge · Minimum 5 USDC"},
+                {value:"ethereum",label:"Ethereum Mainnet",chainId:1,
+                  description:"Direct USDC deposit · Minimum 1 USDC · ETH gas"},
+              ]}
+              pickerStyle="modal"
               value={depositNetwork} disabled={fundingBusy}
               onNetworkChange={v=>{setDepositNetwork(v as "arbitrum"|"ethereum");setFundingStatus("");}}
             />
             <HideDexFundingAmount id="lighter-deposit-amount" amount={depositAmount}
               onAmount={setDepositAmount} disabled={fundingBusy}
+              balanceLabel="Wallet Balance"
+              balance={depositWalletBalanceLoading?"Checking…":
+                depositWalletUsdc===null?"Unavailable":depositWalletUsdc+" USDC"}
               minLabel={`Minimum deposit is ${depositNetwork==="arbitrum"?5:1} USDC.`}/>
             <HideDexFundingFeeCard deposit
               fee={depositNetwork==="ethereum"
-                ?depositFeeQuote??"Wallet quote"
-                :"Gas/CCTP unquoted"}
+                ?depositFeeQuote??"Approval + deposit ETH gas"
+                :"Arbitrum ETH gas (wallet quote)"}
               receive={depositNetwork==="ethereum"&&
                 /^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?$/.test(depositAmount.trim())&&
                 Number(depositAmount)>=1
@@ -2056,17 +2138,33 @@ export default function LighterMarketPreview({
                 if (fundingBusy) return;
                 setFundingBusy(true);
                 setFundingStatus("");
+                let lastDepositStage="";
                 try {
                   const depositFn = depositNetwork === "arbitrum"
                     ? depositLighterUsdcFromArbitrum : depositLighterUsdcOnEthereum;
                   await depositFn({
                     walletAddress, amount: depositAmount, getWalletProvider,
-                    onStage: setFundingStatus,
+                    onStage: status=>{
+                      lastDepositStage=status;
+                      setFundingStatus(
+                        /Confirm an exact-amount USDC allowance/i.test(status)
+                          ?"Step 1/2: Approve USDC spending. ETH gas is charged, but USDC has not moved yet."
+                          : /Confirm your deposit to Lighter/i.test(status)
+                            ?"Step 2/2: Confirm the actual USDC deposit. This needs another Ethereum gas fee."
+                            :status
+                      );
+                    },
                   });
                   setAccountReload(value => value + 1);
                   setDepositAmount("");
                 } catch (error) {
-                  setFundingStatus(error instanceof Error ? error.message : "Deposit failed. Verify wallet transactions.");
+                  const message=error instanceof Error?error.message:String(error);
+                  const walletRejection=/could not coalesce|action_rejected|user rejected|user denied|\b5001\b|\b4001\b/i.test(message);
+                  setFundingStatus(walletRejection?
+                    (/Confirm your deposit to Lighter/i.test(lastDepositStage)?
+                      "The actual deposit was not confirmed. A previous USDC approval may have charged ETH gas; check your wallet transactions before retrying.":
+                      "Wallet confirmation was cancelled or unverified. Check transaction history before retrying; Lighter credit has not been verified."):
+                    message);
                 } finally {
                   setFundingBusy(false);
                 }
