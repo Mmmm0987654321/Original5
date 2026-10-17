@@ -27,10 +27,14 @@ export default function TpSlModal({
   const entryPrice = position.entryPrice;
   const size = position.size;
   const leverage = position.leverage;
+  // Missing venue leverage must not cause division by zero or fabricated ROI.
+  // When unavailable, percentage target refers to the entry-price movement.
+  const targetLeverage = Number.isFinite(leverage) && leverage > 0 ? leverage : 1;
+  const hasVerifiedLeverage = Number.isFinite(leverage) && leverage > 0;
 
   // Unit modes: "PRICE" | "PERCENT" | "PNL"
-  const [tpMode, setTpMode] = useState<"PRICE" | "PERCENT" | "PNL">(priceOnly?"PRICE":"PERCENT");
-  const [slMode, setSlMode] = useState<"PRICE" | "PERCENT" | "PNL">(priceOnly?"PRICE":"PERCENT");
+  const [tpMode, setTpMode] = useState<"PRICE" | "PERCENT" | "PNL">("PERCENT");
+  const [slMode, setSlMode] = useState<"PRICE" | "PERCENT" | "PNL">("PERCENT");
 
   // Input string values
   const [tpInput, setTpInput] = useState<string>("");
@@ -95,7 +99,7 @@ export default function TpSlModal({
   const getTpMetricsForPrice = (priceVal: number) => {
     const diff = isLong ? priceVal - entryPrice : entryPrice - priceVal;
     const pnl = diff * size;
-    const percent = (diff / entryPrice) * 100 * leverage;
+    const percent = (entryPrice > 0 ? diff / entryPrice : 0) * 100 * targetLeverage;
     return { pnl, percent };
   };
 
@@ -103,7 +107,7 @@ export default function TpSlModal({
   const getSlMetricsForPrice = (priceVal: number) => {
     const diff = isLong ? entryPrice - priceVal : priceVal - entryPrice;
     const pnl = diff * size;
-    const percent = (diff / entryPrice) * 100 * leverage;
+    const percent = (entryPrice > 0 ? diff / entryPrice : 0) * 100 * targetLeverage;
     return { pnl, percent };
   };
 
@@ -115,7 +119,7 @@ export default function TpSlModal({
     if (tpMode === "PRICE") {
       return val;
     } else if (tpMode === "PERCENT") {
-      const change = (val / 100) / leverage;
+      const change = (val / 100) / targetLeverage;
       return isLong ? entryPrice * (1 + change) : entryPrice * (1 - change);
     } else { // PNL mode
       const diff = val / size;
@@ -131,7 +135,7 @@ export default function TpSlModal({
     if (slMode === "PRICE") {
       return val;
     } else if (slMode === "PERCENT") {
-      const change = (val / 100) / leverage;
+      const change = (val / 100) / targetLeverage;
       return isLong ? entryPrice * (1 - change) : entryPrice * (1 + change);
     } else { // PNL mode
       const diff = val / size;
@@ -197,6 +201,10 @@ export default function TpSlModal({
     const tpPrice = getCalculatedTpPrice();
     const slPrice = getCalculatedSlPrice();
     if(saving)return;
+    if((tpInput.trim()&&(!Number.isFinite(tpPrice)||!tpPrice||tpPrice<=0))||
+       (slInput.trim()&&(!Number.isFinite(slPrice)||!slPrice||slPrice<=0))){
+      setSaveError("Enter a valid positive trigger price.");return;
+    }
     setSaving(true);setSaveError("");
     try{await onSave(tpPrice,slPrice);}catch(e){
       setSaveError(e instanceof Error?e.message:"Lighter TP/SL was not accepted.");
@@ -252,7 +260,7 @@ export default function TpSlModal({
             <span className={`px-1 py-0.2 rounded text-[8px] font-black tracking-wider ${isLong ? "bg-emerald-500/10 text-brand-profit border border-emerald-500/20" : "bg-rose-500/10 text-brand-loss border border-rose-500/20"}`}>
               {position.type}
             </span>
-            {!priceOnly&&<span>{leverage}x</span>}
+            {hasVerifiedLeverage&&<span>{leverage}x</span>}
           </span>
           <span className="font-semibold">Entry Price: ${entryPrice.toLocaleString(undefined, { minimumFractionDigits: 1 })}</span>
         </div>
@@ -281,7 +289,6 @@ export default function TpSlModal({
               <div className="relative">
                 <button
                   type="button"
-                  disabled={priceOnly}
                   onClick={() => {
                     setShowTpDropdown(!showTpDropdown);
                     setShowSlDropdown(false);
@@ -356,7 +363,6 @@ export default function TpSlModal({
               <div className="relative">
                 <button
                   type="button"
-                  disabled={priceOnly}
                   onClick={() => {
                     setShowSlDropdown(!showSlDropdown);
                     setShowTpDropdown(false);
@@ -476,20 +482,20 @@ export default function TpSlModal({
                 {currentTpPrice ? `$${currentTpPrice.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}` : "Not Set"}
               </span>
             </div>
-            {!priceOnly&&<div className="grid grid-cols-2 gap-2 text-[10px] border-t border-brand-divider/10 pt-1">
+            <div className="grid grid-cols-2 gap-2 text-[10px] border-t border-brand-divider/10 pt-1">
               <div className="flex justify-between">
                 <span className="text-brand-muted">Est. Profit:</span>
                 <span className="text-brand-profit font-bold">
-                  {tpMetrics ? `+$${tpMetrics.pnl.toFixed(2)}` : "--"}
+                  {!priceOnly && tpMetrics ? `+$${tpMetrics.pnl.toFixed(2)}` : "--"}
                 </span>
               </div>
               <div className="flex justify-between border-l border-brand-divider/10 pl-2">
                 <span className="text-brand-muted">ROI:</span>
                 <span className="text-brand-profit font-bold">
-                  {tpMetrics ? `+${tpMetrics.percent.toFixed(1)}%` : "--"}
+                  {!priceOnly && hasVerifiedLeverage && tpMetrics ? `+${tpMetrics.percent.toFixed(1)}%` : "--"}
                 </span>
               </div>
-            </div>}
+            </div>
           </div>
 
           {/* Stop Loss Live Analysis */}
@@ -500,27 +506,27 @@ export default function TpSlModal({
                 {currentSlPrice ? `$${currentSlPrice.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}` : "Not Set"}
               </span>
             </div>
-            {!priceOnly&&<div className="grid grid-cols-2 gap-2 text-[10px] border-t border-brand-divider/10 pt-1">
+            <div className="grid grid-cols-2 gap-2 text-[10px] border-t border-brand-divider/10 pt-1">
               <div className="flex justify-between">
                 <span className="text-brand-muted">Est. Loss:</span>
                 <span className="text-brand-loss font-bold">
-                  {slMetrics ? `-$${Math.abs(slMetrics.pnl).toFixed(2)}` : "--"}
+                  {!priceOnly && slMetrics ? `-$${Math.abs(slMetrics.pnl).toFixed(2)}` : "--"}
                 </span>
               </div>
               <div className="flex justify-between border-l border-brand-divider/10 pl-2">
                 <span className="text-brand-muted">ROI:</span>
                 <span className="text-brand-loss font-bold">
-                  {slMetrics ? `-${Math.abs(slMetrics.percent).toFixed(1)}%` : "--"}
+                  {!priceOnly && hasVerifiedLeverage && slMetrics ? `-${Math.abs(slMetrics.percent).toFixed(1)}%` : "--"}
                 </span>
               </div>
-            </div>}
+            </div>
           </div>
         </div>
 
 
 
         {/* Quick Percent Buttons Side-By-Side Layout (dense styling) */}
-        {!priceOnly&&<div className="grid grid-cols-2 gap-3 border-t border-brand-divider/10 pt-2.5 mt-2.5">
+        <div className="grid grid-cols-2 gap-3 border-t border-brand-divider/10 pt-2.5 mt-2.5">
           {/* TP Presets */}
           <div className="space-y-1">
             <span className="text-[8px] text-brand-muted uppercase font-bold tracking-wider block text-center">TP Presets</span>
@@ -554,7 +560,7 @@ export default function TpSlModal({
               ))}
             </div>
           </div>
-        </div>}
+        </div>
 
         {saveError&&<p role="alert" className="text-xs text-brand-loss mt-2">{saveError}</p>}
         {!tradingEnabled && (

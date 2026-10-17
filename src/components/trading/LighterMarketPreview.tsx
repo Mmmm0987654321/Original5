@@ -427,7 +427,7 @@ export default function LighterMarketPreview({
     } finally { setFundingBusy(false); }
   };
 
-  const closeLighterPosition = async (accountIndex: number, symbol: string, signedSize: number) => {
+  const closeLighterPosition = async (accountIndex: number, symbol: string, signedSize: number, closePercent: number) => {
     // The shared modal calls this only after the user's final approval.
     // If wallet or signer changes while it is open, fail visibly, never close it.
     if (!walletAddress || tradingBusy || !tradingIdentity)
@@ -452,7 +452,17 @@ export default function LighterMarketPreview({
     if(Math.sign(latest.signedSize)!==Math.sign(signedSize)||
        Math.abs(latest.signedSize)>Math.abs(signedSize)+1e-10)
       throw new Error("The position changed since this Close panel opened. Refreshing before another close.");
-    const coinSize = Math.abs(latest.signedSize);
+    // Each percent close uses the latest verified real account size and native
+    // Lighter market size precision; reduce-only prevents a position reversal.
+    if(!Number.isInteger(closePercent)||closePercent<1||closePercent>100)
+      throw new Error("Invalid closing percentage.");
+    const fullSize=Math.abs(latest.signedSize);
+    const step=Math.pow(10,-m.sizeDecimals);
+    const rounded=closePercent===100?fullSize:
+      Math.floor((fullSize*closePercent/100+step*1e-7)/step)*step;
+    const coinSize=Number(rounded.toFixed(Math.min(12,Math.max(0,m.sizeDecimals))));
+    if(!(coinSize>0)||coinSize>fullSize+step*1e-6)
+      throw new Error("Close amount is below the verified Lighter minimum size.");
     setTradingNotice(""); // ClosePositionModal owns the spinner.
     setTradingBusy(true);
     try {
@@ -461,21 +471,27 @@ export default function LighterMarketPreview({
         type:"market", coinSize, referencePrice:m.lastTradePrice, reduceOnly:true,
       });
       // The shared ClosePositionModal spinner remains active until the
-      // real Lighter account confirms that this position has become flat.
+      // real Lighter account confirms the requested reduction (or full flat).
       let verifiedClosed=false;
       for(const delay of [900,1600,2600,3900]){
         await new Promise<void>(resolve=>window.setTimeout(resolve,delay));
         try{
           const [accountAfter]=await getLighterPublicAccounts([accountIndex]);
-          if(accountAfter&&!accountAfter.positions.some(x=>
-            x.symbol===symbol&&Math.abs(x.signedSize)>1e-10)){
-            verifiedClosed=true;break;
+          if(accountAfter){
+            const after=accountAfter.positions.find(x=>x.symbol===symbol);
+            const afterSize=after?Math.abs(after.signedSize):0;
+            const expectedRemaining=Math.max(0,fullSize-coinSize);
+            // Never mistake a flipped or increased position for a successful close.
+            if((!after || Math.sign(after.signedSize)===Math.sign(latest.signedSize)) &&
+               afterSize<=expectedRemaining+step*0.5){
+              verifiedClosed=true;break;
+            }
           }
         }catch{/* Only authoritative reads; never resend a signed close. */}
       }
       refreshAfterLighterWrite();
       if(!verifiedClosed)
-        throw new Error("Close submitted but final Lighter position state is not verified yet. Check Positions before another close.");
+        throw new Error("Close submitted but final Lighter position reduction is not verified yet. Check Positions before another close.");
       setTradingNotice("");
     } catch (e) {
       const message=e instanceof Error?e.message:String(e);
@@ -1249,15 +1265,22 @@ export default function LighterMarketPreview({
       p.signedSize===singleCloseTarget.signedSize);
     if(!p)return null;
     const market=markets.find(m=>m.kind==="perp"&&m.symbol===p.symbol);
-    // Lighter mode hides unverified ROI, leverage, margin and proceeds.
+    const setting=account?.marginSettings.find(m=>m.marketId===market?.id);
+    const rawLeverage=setting&&setting.initialMarginFraction>0?
+      10000/setting.initialMarginFraction:null;
+    const leverage=rawLeverage&&Number.isFinite(rawLeverage)&&rawLeverage>=1&&
+      rawLeverage<=(market?.maxLeverage??0)?rawLeverage:0;
     return {
       id:singleCloseTarget.accountIndex+":"+p.symbol,
       symbol:p.symbol,type:p.signedSize>0?"LONG":"SHORT",
-      size:Math.abs(p.signedSize),leverage:0,
-      entryPrice:p.entryPrice>0?p.entryPrice:0,
-      markPrice:market?.lastTradePrice??0,liqPrice:p.liquidationPrice??0,
+      size:Math.abs(p.signedSize),leverage,
+      entryPrice:p.entryPrice??0,
+      markPrice:market?.markPrice??market?.lastTradePrice??0,
+      liqPrice:p.liquidationPrice??0,
       margin:p.allocatedMargin??0,unrealizedPnl:p.unrealizedPnl??0,
-      unrealizedPnlPercent:0,
+      unrealizedPnlPercent:p.allocatedMargin!==null&&p.allocatedMargin>0&&p.unrealizedPnl!==null?
+        100*p.unrealizedPnl/p.allocatedMargin:0,
+      marginType:setting?.marginMode,
     };
   },[singleCloseTarget,publicAccounts,markets]);
 
@@ -1333,7 +1356,8 @@ export default function LighterMarketPreview({
                       return Number.isInteger(lev)&&lev>=1&&lev<=market.maxLeverage?lev+"x":null;
                     })()}
                     pnl={p.unrealizedPnl}
-                    roi={null}
+                    roi={p.unrealizedPnl!==null&&p.allocatedMargin!==null&&p.allocatedMargin>0
+                      ?100*p.unrealizedPnl/p.allocatedMargin:null}
 
                   />
                   {isExpanded && <HideDexPositionDetails
@@ -1344,23 +1368,28 @@ export default function LighterMarketPreview({
                       {label:"Margin Ratio",value:"—",tone:"muted"},
                       {label:"Liquidation Price",
                         value:p.liquidationPrice!==null&&p.liquidationPrice>0 ?
-                          "$"+formatPrice(p.liquidationPrice,4):"—",tone:"muted"},
+                          "$"+formatPrice(p.liquidationPrice,4):"—",
+                        tone:p.liquidationPrice!==null&&p.liquidationPrice>0?"loss":"muted"},
                     ]}
                     right={[
                       {label:"Margin",
-                        value:p.allocatedMargin!==null&&p.allocatedMargin>0 ?
+                        value:p.allocatedMargin!==null&&Number.isFinite(p.allocatedMargin)&&p.allocatedMargin>=0 ?
                           "$"+formatPrice(p.allocatedMargin,4):"—",tone:"muted"},
-                      {label:"Mark Price",value:(()=>{
+                      {label:(()=>{
                         const m=markets.find(x=>x.kind==="perp"&&x.symbol===p.symbol);
-                        return m?.markPrice&&m.markPrice>0?"$"+formatPrice(m.markPrice,2):"—";
-                      })(),tone:"muted"},
+                        return m?.markPrice&&m.markPrice>0?"Mark Price":"Last Price";
+                      })(),value:(()=>{
+                        const m=markets.find(x=>x.kind==="perp"&&x.symbol===p.symbol);
+                        const px=m?.markPrice&&m.markPrice>0?m.markPrice:m?.lastTradePrice;
+                        return px&&px>0?"$"+formatPrice(px,2):"—";
+                      })()},
                       {label:"TP / SL Target",value:(()=>{
                         const market=markets.find(m=>m.kind==="perp"&&m.symbol===p.symbol);
                         const orders=tradingIdentity?.accountIndex===a.index&&market?
                           liveOrders?.filter(o=>Number(o.market_index??o.market_id)===market.id&&o.reduce_only===true)??[]:[];
                         const tp=orders.some(o=>Number(o.type)===4);
                         const sl=orders.some(o=>Number(o.type)===2);
-                        return tp||sl?(tp?"TP set":"")+(tp&&sl?" · ":"")+(sl?"SL set":""):"Not set";
+                        return !tradingIdentity||liveOrders===null?"—":tp||sl?(tp?"TP set":"")+(tp&&sl?" · ":"")+(sl?"SL set":""):"Not set";
                       })(),tone:"muted"},
                     ]}
                     actions={<HideDexPositionActions
@@ -1954,17 +1983,47 @@ export default function LighterMarketPreview({
       const position=account?.positions.find(p=>p.symbol===tpSlTarget.symbol&&p.signedSize===tpSlTarget.signedSize);
       const market=markets.find(m=>m.kind==="perp"&&m.symbol===tpSlTarget.symbol);
       if(!position||!market)return null;
-      // Price-only original modal until Lighter ROI/leverage calculations
-      // can be independently verified. Never pretend missing data is known.
+      // Use verified per-account margin settings for the original modal.
+      // Unavailable values remain unknown and never become synthetic PnL.
+      const setting=account.marginSettings.find(x=>x.marketId===market.id);
+      const verifiedLev=setting&&setting.initialMarginFraction>0?
+        10000/setting.initialMarginFraction:null;
+      const leverage=verifiedLev&&Number.isFinite(verifiedLev)&&verifiedLev>=1&&
+        verifiedLev<= (market.maxLeverage??0)?verifiedLev:0;
       const modalPosition:Position={
         id:account!.index+":"+position.symbol,symbol:position.symbol,
         type:position.signedSize>0?"LONG":"SHORT",size:Math.abs(position.signedSize),
-        leverage:0,entryPrice:position.entryPrice??0,
-        markPrice:market.lastTradePrice??0,liqPrice:position.liquidationPrice??0,
+        leverage,entryPrice:position.entryPrice??0,
+        markPrice:market.markPrice??market.lastTradePrice??0,
+        liqPrice:position.liquidationPrice??0,
         margin:position.allocatedMargin??0,unrealizedPnl:position.unrealizedPnl??0,
-        unrealizedPnlPercent:0,
+        unrealizedPnlPercent:position.allocatedMargin!==null&&position.allocatedMargin>0&&
+          position.unrealizedPnl!==null?100*position.unrealizedPnl/position.allocatedMargin:0,
+        marginType:setting?.marginMode,
       };
-      return <TpSlModal position={modalPosition} priceOnly openOrders={[]}
+      return <TpSlModal position={modalPosition} priceOnly
+        openOrders={tradingIdentity?.accountIndex===account.index && liveOrders?
+          liveOrders.flatMap(o=>{
+            const orderMarketId=Number(o.market_index??o.market_id);
+            const kind=Number(o.type);
+            const triggerPx=Number(o.trigger_price);
+            const oid=Number(o.order_index);
+            if(orderMarketId!==market.id||o.reduce_only!==true||
+               (kind!==4&&kind!==2)||!Number.isFinite(triggerPx)||triggerPx<=0)
+              return [];
+            return [{
+              id:market.id+":"+oid,symbol:position.symbol,
+              sourceCoin:position.symbol,type:kind===4?"TAKE_PROFIT":"STOP_MARKET",
+              side:position.signedSize>0?"SELL":"BUY",price:triggerPx,
+              size:0,status:"OPEN",timestamp:"—",reduceOnly:true,
+              tpsl:kind===4?"tp":"sl",triggerPrice:triggerPx,
+              ...(Number.isSafeInteger(oid)&&oid>=0?{oid}:{}),
+            } as import("../../types").OpenOrder];
+          }):[]}
+        onCancelOrder={async id=>{
+          const oid=Number(id.split(":").pop());
+          if(Number.isSafeInteger(oid)&&oid>=0)await cancelLighterOrder(market.id,oid);
+        }}
         onClose={()=>setTpSlTarget(null)} tradingEnabled={!!tradingIdentity}
         onSetupRequired={()=>setAuthSheetOpen(true)}
         onSave={async(tp,sl)=>{
@@ -1990,12 +2049,15 @@ export default function LighterMarketPreview({
         ?.find(a=>a.index===singleCloseTarget.accountIndex)?.positions
         .find(p=>p.symbol===singleCloseTarget.symbol&&
           p.signedSize===singleCloseTarget.signedSize)?.unrealizedPnl??null}
+      verifiedMargin={publicAccounts
+        ?.find(a=>a.index===singleCloseTarget.accountIndex)?.positions
+        .find(p=>p.symbol===singleCloseTarget.symbol&&
+          p.signedSize===singleCloseTarget.signedSize)?.allocatedMargin??null}
       onClose={()=>setSingleCloseTarget(null)}
       onConfirmClose={async(_position,closePercent)=>{
         const target=singleCloseTarget;
-        if(!target||closePercent!==100)
-          throw new Error("Only full close is available for Lighter.");
-        await closeLighterPosition(target.accountIndex,target.symbol,target.signedSize);
+        if(!target)throw new Error("Verified position is unavailable.");
+        await closeLighterPosition(target.accountIndex,target.symbol,target.signedSize,closePercent);
       }}
     />}
     {closeAllPositionsOpen&&<CloseAllConfirmationModal action="close_positions"

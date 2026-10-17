@@ -14,6 +14,7 @@ interface ClosePositionModalProps {
   onConfirmClose: (position: Position, closePercent: number) => Promise<void> | void;
   lighterMode?: boolean;
   verifiedUnrealizedPnl?: number | null;
+  verifiedMargin?: number | null;
   /** Exchange-specific errors remain visible through the common top toast. */
   onError?: (message:string)=>void;
 }
@@ -24,13 +25,14 @@ export default function ClosePositionModal({
   onConfirmClose,
   lighterMode=false,
   verifiedUnrealizedPnl=null,
+  verifiedMargin=null,
   onError,
 }: ClosePositionModalProps) {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [closePercent, setClosePercent] = useState<number>(100);
 
-  const safeClosePercent = lighterMode?100:Math.min(100, Math.max(1, closePercent));
+  const safeClosePercent = Math.min(100, Math.max(1, closePercent));
 
   // Proportional market close calculations
   const closeFraction = safeClosePercent / 100;
@@ -38,6 +40,10 @@ export default function ClosePositionModal({
   const estimatedPnl = position.unrealizedPnl * closeFraction;
   const closedMargin = position.margin * closeFraction;
   const estReceive = Math.max(0, closedMargin + estimatedPnl);
+  const hasPnl = !lighterMode || verifiedUnrealizedPnl !== null;
+  const hasMargin = !lighterMode || verifiedMargin !== null;
+  const hasRoi = (!lighterMode || (hasMargin && hasPnl)) &&
+    Number.isFinite(position.unrealizedPnlPercent) && position.leverage > 0;
 
   const cleanSym = (position.symbol || "").replace("-PERP", "").replace("-SPOT", "").replace("-USDC", "").toUpperCase();
   
@@ -67,8 +73,8 @@ export default function ClosePositionModal({
       onClose();
     } catch (err: any) {
       const message=err?.message || "An unexpected error occurred.";
-      if(lighterMode&&onError)onError(message);
-      else setErrorMsg(message);
+      // The original modal owns the one error surface; never raise a second Lighter toast.
+      setErrorMsg(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -128,8 +134,8 @@ export default function ClosePositionModal({
                 {tokenChar}
               </div>
               <span className="font-extrabold text-brand-text text-base tracking-tight">{cleanSym || position.symbol}</span>
-              {!lighterMode&&<span className="bg-brand-overlay-normal border border-brand-border text-brand-sub text-[11px] font-semibold px-2 py-0.5 rounded-md">
-                {marginModeStr} {displayLeverage}
+              {(position.marginType || position.leverage > 0) && <span className="bg-brand-overlay-normal border border-brand-border text-brand-sub text-[11px] font-semibold px-2 py-0.5 rounded-md">
+                {position.marginType ? marginModeStr : "—"} {displayLeverage}
               </span>}
             </div>
 
@@ -142,7 +148,7 @@ export default function ClosePositionModal({
                 {position.type}
               </span>
               <span className={`font-bold text-base font-mono ${position.unrealizedPnl >= 0 ? "text-pnl-profit" : "text-pnl-loss"}`}>
-                {lighterMode?"ROI: —":<>{position.unrealizedPnl >= 0 ? "+" : ""}{position.unrealizedPnlPercent.toFixed(1)}%</>}
+                {hasRoi ? <>{position.unrealizedPnl >= 0 ? "+" : ""}{position.unrealizedPnlPercent.toFixed(1)}%</> : "—"}
               </span>
             </div>
           </div>
@@ -166,7 +172,7 @@ export default function ClosePositionModal({
             <div className="text-right">
               <span className="text-brand-muted block text-[9px] font-bold uppercase tracking-wider">PnL</span>
               <span className={`font-bold text-xs sm:text-[13px] ${position.unrealizedPnl >= 0 ? "text-pnl-profit" : "text-pnl-loss"}`}>
-                {lighterMode&&verifiedUnrealizedPnl===null?"—":<>{position.unrealizedPnl >= 0 ? "+$" : "-$"}{Math.abs(position.unrealizedPnl).toFixed(2)}</>}
+                {hasPnl?<>{position.unrealizedPnl >= 0 ? "+$" : "-$"}{Math.abs(position.unrealizedPnl).toFixed(2)}</>:"—"}
               </span>
             </div>
           </div>
@@ -203,7 +209,7 @@ export default function ClosePositionModal({
             </span>
           </div>
 
-          {!lighterMode&&<>{/* Interactive Range Control */}
+          <>{/* Interactive Range Control */}
           <div className="relative w-full flex items-center">
             <input
               type="range"
@@ -237,7 +243,7 @@ export default function ClosePositionModal({
                 {pct}%
               </button>
             ))}
-          </div></>}
+          </div></>
         </div>
 
         {/* Summary Metric Area */}
@@ -249,12 +255,12 @@ export default function ClosePositionModal({
             </span>
           </div>
 
-          {!lighterMode&&<div className="flex items-center justify-between text-brand-sub">
+          <div className="flex items-center justify-between text-brand-sub">
             <span>Unrealized PnL (estimate)</span>
             <span className={`font-bold ${estimatedPnl >= 0 ? "text-pnl-profit" : "text-pnl-loss"}`}>
-              {estimatedPnl >= 0 ? "+" : ""}${estimatedPnl.toFixed(2)}
+              {hasPnl ? (estimatedPnl >= 0 ? "+" : "")+"$"+estimatedPnl.toFixed(2) : "—"}
             </span>
-          </div>}
+          </div>
 
 
           <div className="flex items-center justify-between text-brand-muted">
@@ -264,19 +270,19 @@ export default function ClosePositionModal({
             <span className="text-brand-muted">Charged at execution</span>
           </div>
 
-          {!lighterMode&&<div className="flex items-center justify-between pt-2 border-t border-brand-divider/30">
+          <div className="flex items-center justify-between pt-2 border-t border-brand-divider/30">
             <span className="text-brand-sub">Est. Proceeds (before fees)</span>
             <span className="font-bold text-brand-profit text-sm">
-              ${estReceive.toFixed(2)} USDC
+              {hasMargin && hasPnl ? "$"+estReceive.toFixed(2)+" USDC" : "—"}
             </span>
-          </div>}
+          </div>
 
         </div>
 
-        <p className="text-[11px] text-brand-muted leading-snug">{lighterMode?"Lighter: full-size reduce-only market close. Final price and fees may vary. No estimated proceeds are shown.":"Estimates use current mark price; final fill price, fees and proceeds can differ."}</p>
+        <p className="text-[11px] text-brand-muted leading-snug">Estimates use current reference price and verified data when available; final fill price, fees and proceeds can differ.</p>
 
         {/* Error Notification */}
-        {!lighterMode && errorMsg && (
+        {errorMsg && (
           <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-xl text-xs flex items-start gap-2 text-left">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
             <span className="leading-snug text-[11px]">{errorMsg}</span>
