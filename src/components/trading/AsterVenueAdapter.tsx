@@ -10,7 +10,11 @@
  * verified Agent+Builder authorization and isolated signed flows are wired.
  */
 import React,{useEffect,useMemo,useState} from "react";
-import type {TokenMetadata} from "../../types";
+import {ActiveTab,type TokenMetadata} from "../../types";
+import {Wallet,TrendingUp,Unlock,Lock} from "lucide-react";
+import GeneralDashboard from "../dashboard/GeneralDashboard";
+import MarketsPanel from "../dashboard/MarketsPanel";
+import HideDexFundsOverview from "../dashboard/HideDexFundsOverview";
 import {getAsterSpotAndPerps,getAsterBook,type AsterMarket,type AsterBook,type AsterMarketKind} from "../../lib/asterMarketData";
 import MarketSelector,{renderAssetLogo} from "./MarketSelector";
 import HideDexUnifiedMarketHeader from "./HideDexUnifiedMarketHeader";
@@ -91,6 +95,8 @@ export default function AsterVenueAdapter({
  const [accountTab,setAccountTab]=useState<TradingTabId>(
   section==="orders"?initialOrdersTab??"OPEN_ORDERS":"POSITIONS");
  const [bookGroup,setBookGroup]=useState("1");
+ const [hideBalances,setHideBalances]=useState(false);
+ const [copiedAddress,setCopiedAddress]=useState(false);
 
  // One read-only official snapshot on mount and on low-frequency refresh.
  // No fallback to Hyperliquid/Lighter and no retry storm.
@@ -263,16 +269,91 @@ export default function AsterVenueAdapter({
     Aster public market data unavailable: {marketError}. Other exchanges are never substituted.
   </p>}
   {catalogLoading&&<p role="status" className="p-2 text-xs text-brand-muted">Loading real Aster Spot / Perp markets…</p>}
-  <p role="status" className="mb-2 text-[10px] font-mono text-brand-muted">
-    Aster V3 public market view · Read-only until verified Agent/Builder trading authorization
-  </p>
-  {header}
-  <HideDexUnifiedTradeCanvas
-    marketView={<HideDexUnifiedMarketView
-      view={view==="chart"?"chart":"orderbook"} chart={chart} orderBook={bookView}/>}
-    orderForm={form}
-    orderBook={bookDisplay}
-    account={account}
-  />
+  {/* Each real navigation section has its original HideDex workspace.
+      NEVER render the trading canvas outside of the Trade tab. */}
+  {section==="dashboard"&&<GeneralDashboard
+    tokens={tokens} balanceUSDC={0} balanceKnown={false}
+    balanceLabel="Aster account (authorization required)"
+    positionsCount={null} nodeConnected={Boolean(markets.length)&&!marketError}
+    walletAddress={walletAddress}
+    setActiveTab={next=>{
+      if(next===ActiveTab.Markets)onSelectSection("markets");
+      else if(next===ActiveTab.Spot)onSelectSection("trade","spot");
+      else if(next===ActiveTab.Perp)onSelectSection("trade","perp");
+    }}
+    onSelectToken={(symbol,marketKind)=>{
+      const market=markets.find(m=>toToken(m).symbol===symbol&&m.kind===marketKind);
+      if(market)choose(market,true);
+    }}
+  />}
+  {section==="markets"&&<MarketsPanel
+    tokens={tokens}
+    selectedSymbol={token?.symbol??""}
+    setSelectedSymbol={symbol=>{
+      const market=markets.find(m=>toToken(m).symbol===symbol);
+      if(market)choose(market,false);
+    }}
+    onSelectToken={(symbol,marketKind)=>{
+      const market=markets.find(m=>toToken(m).symbol===symbol&&m.kind===marketKind);
+      if(market)choose(market,true);
+    }}
+    walletConnected={Boolean(walletAddress)}
+    watchlist={[...watchlist]} onToggleWatchlist={onToggleFavorite}
+    balanceUSDC={0}
+    positions={[]} openOrders={[]} tradeHistory={[]}
+    asterMarket={selected?{kind:selected.kind,symbol:selected.symbol}:undefined}
+    asterBook={book} asterLastPrice={price}
+    asterPriceDecimals={selected?.priceDecimals}
+    asterAccountSummary={account}
+    onSelectOrderBookPrice={(v)=>{setOrderType("LIMIT");setLimitPrice(String(v));}}
+  />}
+  {section==="funds"&&<div id="funds-portfolio-container"
+      className="space-y-3 sm:space-y-4 text-brand-text font-sans bg-brand-bg px-3 pt-2 pb-2 sm:p-4 sm:pb-8 rounded-3xl max-w-4xl mx-auto w-full">
+    <HideDexFundsOverview
+      totalLabel="TOTAL FUNDS" totalValue={hideBalances?"••••":"—"}
+      approximateValue={hideBalances?"≈ ••••":"Aster account valuation unavailable"}
+      accountLabel="Aster Account" accountModeLabel="Aster V3"
+      walletAddress={walletAddress}
+      walletDisplay={walletAddress?walletAddress.slice(0,6)+"…"+walletAddress.slice(-4):"Not connected"}
+      hideBalances={hideBalances} onToggleBalances={()=>setHideBalances(x=>!x)}
+      addressCopied={copiedAddress}
+      onCopyAddress={async()=>{
+        if(!walletAddress)return;
+        try{await navigator.clipboard.writeText(walletAddress);setCopiedAddress(true);}
+        catch{setCopiedAddress(false);}
+      }}
+      accountError="Aster account authorization is not yet connected. Balances are unavailable."
+      depositLabel="Deposit" depositSubtitle="Authorization required"
+      withdrawLabel="Withdrawal" withdrawSubtitle="Authorization required"
+      onDeposit={()=>{}} onWithdraw={()=>{}}
+      depositDisabled withdrawDisabled
+      cards={[
+        {label:"Spot Available",value:hideBalances?"••••":"—",subtitle:"Aster Spot balance unavailable",
+         icon:<Wallet className="w-3.5 h-3.5"/>},
+        {label:"Perpetual Balance",value:hideBalances?"••••":"—",subtitle:"Aster Perpetual collateral unavailable",
+         icon:<TrendingUp className="w-3.5 h-3.5"/>},
+        {label:"Available for Trade",value:hideBalances?"••••":"—",subtitle:"Requires verified Aster account",
+         icon:<Unlock className="w-3.5 h-3.5"/>},
+        {label:"Margin in Trade",value:hideBalances?"••••":"—",subtitle:"No authenticated margin data",
+         icon:<Lock className="w-3.5 h-3.5"/>},
+      ]}
+    />
+  </div>}
+  {section==="orders"&&<div className="rounded-xl border border-brand-border bg-brand-bg p-3">
+    {account}
+  </div>}
+  {section==="trade"&&<>
+    <p role="status" className="mb-2 text-[10px] font-mono text-brand-muted">
+      Aster V3 public market view · Read-only until verified Agent/Builder trading authorization
+    </p>
+    {header}
+    <HideDexUnifiedTradeCanvas
+      marketView={<HideDexUnifiedMarketView
+        view={view==="chart"?"chart":"orderbook"} chart={chart} orderBook={bookView}/>}
+      orderForm={form}
+      orderBook={bookDisplay}
+      account={account}
+    />
+  </>}
  </div>;
 }
