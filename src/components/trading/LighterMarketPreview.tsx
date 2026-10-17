@@ -2023,10 +2023,9 @@ export default function LighterMarketPreview({
       <HideDexFundsDialogShell deposit={fundsModal==="deposit"}
         busy={fundingBusy} onClose={()=>setFundsModal(null)}
         subtitle={fundsModal==="deposit"
-          ?"Add real USDC to your Lighter account directly from HideDex."
-          :"Withdraw verified Lighter USDC to your original connected wallet."}>
+          ?"Add funds to your HideDex trading account."
+          :"Withdraw your assets to your connected wallet."}>
           {fundsModal === "deposit" ? <>
-            <p className="text-xs text-brand-muted">Real USDC → Lighter Perps. Your connected wallet signs on HideDex; no external exchange page.</p>
             <HideDexFundingNetworkAsset
               network={depositNetwork==="arbitrum"?"Arbitrum One":"Ethereum Mainnet"}
               chainId={depositNetwork==="arbitrum"?42161:1}
@@ -2036,21 +2035,16 @@ export default function LighterMarketPreview({
             />
             <HideDexFundingAmount id="lighter-deposit-amount" amount={depositAmount}
               onAmount={setDepositAmount} disabled={fundingBusy}
-              minLabel={`Minimum deposit: ${depositNetwork==="arbitrum"?5:1} USDC`}/>
-            <p className="text-[11px] text-brand-muted">
-              {depositNetwork === "arbitrum"
-                ? "Requires Arbitrum native USDC and ETH gas. The official CCTP bridge may credit Lighter after 15–20 minutes."
-                : "Requires Ethereum-mainnet USDC and ETH gas. An exact-amount USDC approval may be required."}
-            </p>
+              minLabel={`Minimum deposit is ${depositNetwork==="arbitrum"?5:1} USDC.`}/>
             <HideDexFundingFeeCard deposit
               fee={depositNetwork==="ethereum"
-                ?depositFeeQuote??"Wallet quotes ETH gas at confirmation"
-                :"Wallet quotes Arbitrum gas; CCTP fee not quoted"}
+                ?depositFeeQuote??"Wallet quote"
+                :"Gas/CCTP unquoted"}
               receive={depositNetwork==="ethereum"&&
                 /^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?$/.test(depositAmount.trim())&&
                 Number(depositAmount)>=1
                   ?Number(depositAmount).toLocaleString("en-US",{maximumFractionDigits:6})+
-                    " USDC (direct credit, gas separate)"
+                    " USDC"
                   :"—"}
             />
             <HideDexFundingSubmit deposit busy={fundingBusy}
@@ -2078,7 +2072,6 @@ export default function LighterMarketPreview({
                 }
               }} />
           </> : <>
-            <p className="text-xs text-brand-muted">Secure STANDARD USDC withdrawal to the L1 wallet that owns this Lighter account. No external website and no arbitrary recipient. Wallet and Lighter ownership are verified before submission.</p>
             {!tradingIdentity && <button type="button" onClick={() => setAuthSheetOpen(true)}
               className="text-xs font-bold text-accent underline">Enable Lighter trading to withdraw</button>}
             <HideDexFundingNetworkAsset network="Ethereum Mainnet · Secure Withdrawal" chainId={1} />
@@ -2087,22 +2080,30 @@ export default function LighterMarketPreview({
               onAmount={setWithdrawAmount} disabled={!tradingIdentity||fundingBusy}
               balanceLabel="Perps Trading Available"
               balance={displayTradingAccount?.availableBalance==null?"—":formatPrice(displayTradingAccount.availableBalance,4)+" USDC"}
-              minLabel="Minimum secure withdrawal: 1 USDC. Destination: your account owner wallet on Ethereum."/>
-            <p className="text-[10px] text-brand-muted">Destination: {walletAddress || "Connect wallet"}. Secure withdrawal sends Perps USDC to the Ethereum owner wallet, subject to exchange collateral checks. Trading available balance is NOT a guaranteed withdrawal ceiling. Lighter usually claims the Ethereum exit; a manual claim may need ETH gas. No verified secure fee quote is available.</p>
+              minLabel="Minimum withdrawal is 1 USDC."/>
+            <HideDexFundingPresets
+              available={displayTradingAccount?.availableBalance??null}
+              disabled={!tradingIdentity||fundingBusy}
+              onPercent={percent=>{
+                // Amount shortcut only. Exchange validates withdrawable collateral.
+                const available=displayTradingAccount?.availableBalance;
+                if(available===null||available===undefined||!Number.isFinite(available)||available<=0)return;
+                const units=Math.floor(available*percent/100*1e6);
+                const value=(Math.max(0,units)/1e6).toFixed(6).replace(/0+$/,"").replace(/\.$/,"");
+                setWithdrawAmount(value);
+                setFundingStatus("");
+              }}
+            />
             <HideDexFundingFeeCard deposit={false}
-              fee="No verified secure fee quote"
+              receiveLabel="Gross Amount"
+              fee="Not quoted"
               receive={/^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?$/.test(withdrawAmount.trim()) &&
                 Number(withdrawAmount)>=1 &&
                 displayTradingAccount?.availableBalance!==null &&
                 displayTradingAccount?.availableBalance!==undefined &&
                 Number(withdrawAmount)<=displayTradingAccount.availableBalance
-                  ?Number(withdrawAmount).toLocaleString("en-US",{maximumFractionDigits:6})+
-                    " USDC (gross, not net)"
+                  ?Number(withdrawAmount).toLocaleString("en-US",{maximumFractionDigits:6})+" USDC"
                   :"—"}/>
-            <p className="text-[10px] text-brand-muted">
-              Gross amount only: final net received and any manual Ethereum claim gas
-              are not quoted here. A withdrawal remains subject to real Lighter collateral rules.
-            </p>
             <HideDexFundingSubmit deposit={false} busy={fundingBusy}
               disabled={!tradingIdentity||!withdrawAmount.trim()||
                 !/^(?:0|[1-9][0-9]*)(?:\.[0-9]{1,6})?$/.test(withdrawAmount.trim())||
