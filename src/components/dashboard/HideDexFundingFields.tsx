@@ -1,19 +1,35 @@
 import React from "react";
-import {Network,Wallet,Coins,Info,ArrowRight,ArrowDownRight,ArrowUpRight,Loader2} from "lucide-react";
-export type FundingNetworkOption={value:string;label:string};
+import {createPortal} from "react-dom";
+import {Network,Wallet,Coins,Info,ArrowRight,ArrowDownRight,ArrowUpRight,Loader2,ChevronDown,Check,X} from "lucide-react";
+export type FundingNetworkOption={value:string;label:string;description?:string;chainId?:number};
 export function HideDexFundingNetworkAsset({
- network,chainId,options,value,onNetworkChange,disabled=false
+ network,chainId,options,value,onNetworkChange,disabled=false,pickerStyle="native"
 }:{
  network:string;chainId?:string|number;
  options?:readonly FundingNetworkOption[];value?:string;onNetworkChange?:(v:string)=>void;disabled?:boolean;
+ pickerStyle?:"native"|"modal";
 }){
+ const [pickerOpen,setPickerOpen]=React.useState(false);
+ React.useEffect(()=>{
+   if(!pickerOpen)return;
+   const onKey=(event:KeyboardEvent)=>{if(event.key==="Escape")setPickerOpen(false);};
+   window.addEventListener("keydown",onKey);
+   return ()=>window.removeEventListener("keydown",onKey);
+ },[pickerOpen]);
  return <div className="space-y-4">
    <div className="space-y-1.5">
      <label className="text-[11px] font-semibold text-brand-sub uppercase tracking-wider block" htmlFor={options?"hidedex-funds-network":undefined}>Network</label>
      <div className="rounded-xl border border-brand-border bg-brand-overlay-subtle p-3 flex items-center justify-between gap-2">
        <div className="flex items-center gap-2.5 min-w-0">
          <div className="w-8 h-8 rounded-lg bg-brand-overlay-normal border border-brand-border/60 flex items-center justify-center text-accent shrink-0"><Network className="w-4 h-4"/></div>
-         {options && onNetworkChange ?
+         {options && onNetworkChange && pickerStyle==="modal" ?
+           <button type="button" id="hidedex-funds-network"
+             aria-label="Choose deposit network" aria-haspopup="dialog" aria-expanded={pickerOpen}
+             disabled={disabled} onClick={()=>setPickerOpen(true)}
+             className="inline-flex min-w-0 items-center gap-1.5 text-left font-bold text-sm text-brand-text disabled:opacity-50">
+             <span className="truncate">{network}</span><ChevronDown className="w-4 h-4 shrink-0 text-brand-sub"/>
+           </button>
+           : options && onNetworkChange ?
            <select id="hidedex-funds-network" aria-label="Deposit network"
              disabled={disabled} value={value} onChange={e=>onNetworkChange(e.target.value)}
              className="min-w-0 max-w-full bg-transparent font-bold text-sm text-brand-text outline-none cursor-pointer disabled:opacity-50">
@@ -24,6 +40,41 @@ export function HideDexFundingNetworkAsset({
        {chainId != null && <span className="text-[11px] font-mono text-brand-sub shrink-0">Chain ID: <strong className="text-brand-text">{chainId}</strong></span>}
      </div>
    </div>
+   {pickerStyle==="modal"&&pickerOpen&&options&&onNetworkChange&&typeof document!=="undefined"&&
+     createPortal(
+       <div className="fixed inset-0 z-[350] flex items-center justify-center p-4" data-hidedex-funds-network-picker>
+         <button type="button" className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+           aria-label="Close network selection" onClick={()=>setPickerOpen(false)}/>
+         <div role="dialog" aria-modal="true" aria-labelledby="hidedex-funds-network-title"
+           className="relative w-full max-w-[24rem] max-h-[80dvh] overflow-y-auto rounded-2xl border border-brand-border bg-brand-surface shadow-2xl p-4 text-brand-text space-y-3">
+           <div className="flex items-center justify-between gap-3 pb-1">
+             <div>
+               <h3 id="hidedex-funds-network-title" className="font-bold text-lg">Select Network</h3>
+               <p className="text-xs text-brand-muted mt-0.5">Choose where your USDC is held</p>
+             </div>
+             <button type="button" aria-label="Close" onClick={()=>setPickerOpen(false)}
+               className="rounded-lg border border-brand-border p-2 text-brand-sub hover:text-brand-text">
+               <X className="w-4 h-4"/>
+             </button>
+           </div>
+           {options.map(option=>{
+             const selected=value===option.value;
+             const emblem=option.value==="ethereum"?"ETH":option.value==="arbitrum"?"ARB":"NET";
+             return <button type="button" key={option.value} aria-pressed={selected}
+               onClick={()=>{onNetworkChange(option.value);setPickerOpen(false);}}
+               className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors ${selected?"border-accent bg-brand-overlay-normal":"border-brand-border bg-brand-overlay-subtle hover:bg-brand-overlay-normal"}`}>
+               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-overlay-normal font-bold text-xs text-accent">{emblem}</span>
+               <span className="flex-1 min-w-0">
+                 <span className="block text-sm font-bold">{option.label}</span>
+                 {option.description&&<span className="block text-xs text-brand-muted mt-1">{option.description}</span>}
+                 {option.chainId&&<span className="block text-[10px] text-brand-sub font-mono mt-1">Chain ID: {option.chainId}</span>}
+               </span>
+               {selected&&<Check className="w-5 h-5 shrink-0 text-accent"/>}
+             </button>;
+           })}
+         </div>
+       </div>,document.body
+     )}
    <div className="space-y-1.5">
      <span className="text-[11px] font-semibold text-brand-sub uppercase tracking-wider block">Asset Token</span>
      <div className="rounded-xl border border-brand-border bg-brand-overlay-subtle p-3 flex items-center justify-between">
