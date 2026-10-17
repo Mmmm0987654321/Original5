@@ -34,7 +34,7 @@ export default function HideDexTradeHistory({items,noDataMessage}:Props){
          </div>
          {hist.realizedPnl!=null && hist.realizedPnl!==0 && <div className="text-right font-mono">
            <span className={`text-[11px] font-bold block ${hist.realizedPnl>=0?"text-pnl-profit":"text-pnl-loss"}`}>{pnl(hist.realizedPnl)}</span>
-           <span className="text-[8px] font-bold block text-brand-sub">ROI: {roi(hist.roi)}</span>
+           <span className={`text-[8px] font-bold block ${hist.roi!=null&&hist.roi>=0?"text-pnl-profit":"text-pnl-loss"}`}>ROI: {roi(hist.roi)}</span>
          </div>}
        </div>
        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[10px] text-brand-sub font-mono">
@@ -45,7 +45,7 @@ export default function HideDexTradeHistory({items,noDataMessage}:Props){
            ["Executed At",hist.timestamp],
          ].map(([title,value])=><div key={title}>
            <span className="text-brand-muted block text-[8px] font-bold uppercase tracking-wider">{title}</span>
-           <span className="font-semibold text-brand-text">{value}</span>
+           <span className={`font-semibold ${title==="Fees Paid"?"text-brand-loss/80":title==="Executed At"?"text-brand-sub":"text-brand-text"}`}>{title==="Fees Paid"&&value!=="—"?value+" USDC":value}</span>
          </div>)}
        </div>
      </div>)}
@@ -60,13 +60,13 @@ export default function HideDexTradeHistory({items,noDataMessage}:Props){
          {rows.map(hist=><tr key={hist.id} className="hover:bg-brand-overlay-subtle transition-colors">
            <td className="py-2.5 text-[10px] text-brand-muted">#{hist.id.slice(0,6)}</td>
            <td className="py-2.5 font-bold text-brand-text">{hist.symbol}-{hist.isSpot?"SPOT":"PERP"}</td>
-           <td className="py-2.5">{hist.side}</td>
+           <td className="py-2.5"><span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${hist.side==="BUY"?"bg-brand-profit/10 text-brand-profit border border-brand-profit/20":"bg-brand-loss/10 text-brand-loss border border-brand-loss/20"}`}>{hist.side}</span></td>
            <td className="py-2.5">{hist.size} {hist.symbol}</td>
            <td className="py-2.5 font-semibold">{price(hist.price)}</td>
            <td className="py-2.5">{price(hist.value)}</td>
-           <td className="py-2.5 font-bold">{pnl(hist.realizedPnl)}</td>
-           <td className="py-2.5 font-bold">{roi(hist.roi)}</td>
-           <td className="py-2.5">{fee(hist.fee)}</td>
+           <td className={`py-2.5 font-bold ${hist.realizedPnl!=null&&hist.realizedPnl>0?"text-pnl-profit":hist.realizedPnl!=null&&hist.realizedPnl<0?"text-pnl-loss":"text-brand-muted"}`}>{pnl(hist.realizedPnl)}</td>
+           <td className={`py-2.5 font-bold ${hist.roi!=null&&hist.roi>0?"text-pnl-profit":hist.roi!=null&&hist.roi<0?"text-pnl-loss":"text-brand-muted"}`}>{roi(hist.roi)}</td>
+           <td className="py-2.5 text-brand-loss/80">{fee(hist.fee)}</td>
            <td className="py-2.5 text-right text-brand-muted">{hist.timestamp}</td>
          </tr>)}
        </tbody>
