@@ -22,13 +22,14 @@ export interface HideDexTradeSelectorsProps {
  leverage?: number;
  maxLeverage?: number | null;
  onLeverage?: (next:number) => void;
+ onLeverageCommit?: (next:number) => void;
  leverageDisabled?: boolean;
  onApplySettings?:()=>void; settingsBusy?:boolean; settingsMessage?:string;
 }
 export default function HideDexTradeSelectors({
  isPerp,orderType,onOrderType,availableOrderTypes,
  marginMode = "CROSS",onMarginMode,disabledMarginModes=[],
- leverage=1,maxLeverage,onLeverage,leverageDisabled=false,
+ leverage=1,maxLeverage,onLeverage,onLeverageCommit,leverageDisabled=false,
  onApplySettings,settingsBusy=false,settingsMessage,
 }: HideDexTradeSelectorsProps) {
  const [popup,setPopup] = useState<"order"|"margin"|"leverage"|null>(null);
@@ -104,12 +105,14 @@ export default function HideDexTradeSelectors({
        </div>
        <input type="range" min="1" max={cap} value={Math.min(cap,Math.max(1,leverage))}
          onChange={e=>onLeverage?.(Number(e.target.value))}
+         onPointerUp={e=>onLeverageCommit?.(Number(e.currentTarget.value))}
+         onKeyUp={e=>{if(["ArrowLeft","ArrowRight","ArrowUp","ArrowDown","Home","End"].includes(e.key))onLeverageCommit?.(Number(e.currentTarget.value));}}
          className="w-full h-1 bg-brand-overlay-normal rounded cursor-pointer accent-accent"/>
        <div className="flex justify-between text-[8px] text-gray-500 font-mono"><span>1x</span><span>{cap}x Max</span></div>
        <div className="grid grid-cols-4 gap-1">
          {[2,5,10,cap].filter((v,i,arr)=>v<=cap && arr.indexOf(v)===i).map(v=>
            <button type="button" key={v}
-             onClick={()=>{onLeverage?.(v);if(!onApplySettings)setPopup(null);}}
+             onClick={()=>{onLeverage?.(v);onLeverageCommit?.(v);if(!onApplySettings)setPopup(null);}}
              className={`py-0.5 rounded text-[8px] text-center font-bold border ${leverage===v?"bg-accent/10 border-accent text-accent":"bg-brand-overlay-subtle border-brand-border text-gray-400 hover:text-brand-text"}`}>{v===cap?"Max":v+"x"}</button>)}
        </div>
        {applyAction}

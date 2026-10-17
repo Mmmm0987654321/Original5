@@ -128,8 +128,14 @@ export default function LighterMarketPreview({
   const [marginMode, setMarginMode] = useState<"cross" | "isolated">("cross");
   const [chosenLeverage, setChosenLeverage] = useState(1);
   const [marginBusy, setMarginBusy] = useState(false);
-  const [marginStatus, setMarginStatus] = useState("");
-  const [marginUpdateMarketId, setMarginUpdateMarketId] = useState<number | null>(null);
+  const [, setMarginStatus] = useState("");
+  const acknowledgedMarginRef=useRef<string|null>(null);
+  const latestMarginRequestRef=useRef<string|null>(null);
+  const marginFlightRef=useRef<Promise<boolean>|null>(null);
+  const marginRetryUntilRef=useRef(0);
+  const [marginIntent,setMarginIntent]=useState<{
+    key:string;marketId:number;leverage:number;mode:"cross"|"isolated";attempt:number;
+  }|null>(null);
   const [amount, setAmount] = useState("");
   const [sizeUnit, setSizeUnit] = useState<"USD" | "COIN">("USD");
   const [hideBalance, setHideBalance] = useState(false);
@@ -309,10 +315,14 @@ export default function LighterMarketPreview({
     }
     // A slider change is only a draft; do not send a leveraged-sized order
     // when its requested on-chain margin setting was rejected or not applied.
-    if(kind==="perp"&&chosenLeverage>1&&marginUpdateMarketId!==selected.id){
-      setTradingNotice("Confirm the real Lighter margin update before placing an order sized at "+
-        chosenLeverage+"x. Your selected leverage is only a draft.");
-      return;
+    if(kind==="perp"&&(chosenLeverage>1||latestMarginRequestRef.current!==null)){
+      const request={key:marginKey(selected.id,chosenLeverage,marginMode),
+        marketId:selected.id,leverage:chosenLeverage,mode:marginMode,attempt:0};
+      if(!await applyLighterMargin(request)){
+        setTradingNotice("Lighter has not accepted the requested leverage. No order sent. "+
+          (marginRetryUntilRef.current>Date.now()?"Wait for the API rate-limit cooldown.":"Check your Lighter account settings."));
+        return;
+      }
     }
     // Place LONG/SHORT is already an explicit user action, exactly like
     // Hyperliquid's original terminal. Do not open Android's native dialog.
@@ -518,30 +528,72 @@ export default function LighterMarketPreview({
     return raw.replace(/\\n/g,"\n").trim()||"Lighter rejected leverage update.";
   };
 
-  const submitMarginSettings = async () => {
-    if (!walletAddress || !selected || kind !== "perp" || marginBusy) return;
-    if (!tradingIdentity) {
-      setAuthSheetOpen(true); return;
+
+  const marginKey=(marketId:number,leverage:number,mode:"cross"|"isolated")=>
+    walletAddress.toLowerCase()+":"+String(tradingIdentity?.accountIndex??"unknown")+
+    ":"+marketId+":"+leverage+":"+mode;
+
+  const queueMarginUpdate=(leverage:number,mode:"cross"|"isolated")=>{
+    if(kind!=="perp"||!selected||!selected.maxLeverage||
+      !Number.isSafeInteger(leverage)||leverage<1||leverage>selected.maxLeverage)return;
+    const request={key:marginKey(selected.id,leverage,mode),
+      marketId:selected.id,leverage,mode,attempt:0};
+    latestMarginRequestRef.current=request.key;
+    setMarginIntent(request);
+    setMarginStatus("");
+  };
+
+  // A single Lighter mainnet signed update, using the already-authorized
+  // memory signer (restored from locally encrypted IndexedDB on refresh).
+  const applyLighterMargin=async(request:{
+    key:string;marketId:number;leverage:number;mode:"cross"|"isolated";attempt:number;
+  }):Promise<boolean>=>{
+    if(acknowledgedMarginRef.current===request.key)return true;
+    if(marginFlightRef.current){
+      await marginFlightRef.current;
+      if(acknowledgedMarginRef.current===request.key)return true;
     }
-    if (!selected.maxLeverage || chosenLeverage > selected.maxLeverage || chosenLeverage < 1) {
-      setMarginStatus("Lighter did not verify this leverage. No update sent."); return;
+    if(!walletAddress||!tradingIdentity||restoringSavedSigner){
+      if(!restoringSavedSigner)setAuthSheetOpen(true);
+      return false;
     }
-    // The original shared HideDex leverage popup already has an explicit
-    // "Confirm real margin update" button. That button is the sole user approval:
-    // never stack the browser's native OK/Cancel dialog on top of it.
-    setMarginBusy(true); setMarginStatus("Submitting signed Lighter margin update…");
-    try {
-      const tx = await updateLighterPerpMargin({
-        walletAddress, market: selected, leverage: chosenLeverage, marginMode,
-      });
-      setMarginUpdateMarketId(selected.id);
-      setMarginStatus("Lighter accepted settings transaction " + tx +
-        ". Execution must be confirmed on Lighter; the displayed choice is not a verified active setting.");
-      setAccountReload(v => v + 1);
-    } catch(e) {
-      setMarginUpdateMarketId(null);
-      setMarginStatus(readableMarginError(e));
-    } finally { setMarginBusy(false); }
+    const market=markets.find(m=>m.kind==="perp"&&m.id===request.marketId);
+    if(!market||selected?.id!==market.id||
+      request.key!==marginKey(market.id,request.leverage,request.mode)||
+      !market.maxLeverage||request.leverage>market.maxLeverage)return false;
+    if(Date.now()<marginRetryUntilRef.current)return false;
+    const task=(async()=>{
+      setMarginBusy(true);
+      try{
+        await updateLighterPerpMargin({
+          walletAddress,market,leverage:request.leverage,marginMode:request.mode,
+        });
+        // Transaction ACK is NOT proof of on-chain completion. Never claim a
+        // rejected/stale request applied the new market settings.
+        if(latestMarginRequestRef.current===request.key||
+           (latestMarginRequestRef.current===null&&
+            selected?.id===request.marketId&&chosenLeverage===request.leverage&&
+            marginMode===request.mode)){
+          acknowledgedMarginRef.current=request.key;
+          setMarginStatus("Lighter accepted the leverage transaction. Final settings are controlled by Lighter.");
+        }
+        setAccountReload(v=>v+1);
+        return true;
+      }catch(error){
+        const text=error instanceof Error?error.message:String(error);
+        if(/rate.?limit|ratelimit|volume quota|429|too many requests/i.test(text))
+          marginRetryUntilRef.current=Date.now()+60000;
+        if(latestMarginRequestRef.current===request.key){
+          const message=readableMarginError(error);
+          setMarginStatus(message);
+          setTradingNotice(message);
+        }
+        return false;
+      }finally{setMarginBusy(false);}
+    })();
+    marginFlightRef.current=task;
+    try{return await task;}
+    finally{if(marginFlightRef.current===task)marginFlightRef.current=null;}
   };
 
   const authorizationPanel = (
@@ -683,6 +735,34 @@ export default function LighterMarketPreview({
     return subscribeLighterBook(selected.id, next => setFeed(next));
   }, [selected?.id, section]);
 
+  // No per-pixel network writes. Slider release/quick chip or margin-mode
+  // selection triggers one debounced signed request; retry a single 429 after
+  // cooldown, never hide a server rejection or silently place an order.
+  useEffect(()=>{
+    if(!marginIntent||kind!=="perp"||!selected||
+       marginIntent.marketId!==selected.id)return;
+    const wait=Math.max(650,marginRetryUntilRef.current-Date.now());
+    const timer=window.setTimeout(async()=>{
+      const req=marginIntent;
+      if(latestMarginRequestRef.current!==req.key)return;
+      const ok=await applyLighterMargin(req);
+      if(latestMarginRequestRef.current!==req.key)return;
+      if(ok){setMarginIntent(null);return;}
+      if(marginRetryUntilRef.current>Date.now()&&req.attempt===0)
+        setMarginIntent({...req,attempt:1});
+      else setMarginIntent(null);
+    },wait);
+    return ()=>window.clearTimeout(timer);
+  },[marginIntent?.key,marginIntent?.attempt,selected?.id,kind,
+     tradingIdentity?.accountIndex,walletAddress,restoringSavedSigner]);
+
+  useEffect(()=>{
+    latestMarginRequestRef.current=null;
+    acknowledgedMarginRef.current=null;
+    setMarginIntent(null);
+    setMarginStatus("");
+  },[selectedMarketId,kind,walletAddress,tradingIdentity?.accountIndex]);
+
   const multiplier = selected?.multiplier && selected.multiplier > 0 ? selected.multiplier : 1;
   const displayPrice = (raw: string) => {
     const n = Number(raw) / multiplier;
@@ -729,7 +809,9 @@ export default function LighterMarketPreview({
     setLimitPrice("");
     setBookGroup(1);
     setReduceOnly(false);
-    setMarginUpdateMarketId(null);
+    latestMarginRequestRef.current=null;
+    acknowledgedMarginRef.current=null;
+    setMarginIntent(null);
     setMarginStatus("");
     setOrderTypeOpen(false);
     if (navigate) onSelectSection("trade", m.kind);
@@ -759,7 +841,9 @@ export default function LighterMarketPreview({
     setAmount("");
     setLimitPrice("");
     setReduceOnly(false);
-    setMarginUpdateMarketId(null);
+    latestMarginRequestRef.current=null;
+    acknowledgedMarginRef.current=null;
+    setMarginIntent(null);
     setOrderTypeOpen(false);
     if (!nextMarket) setMarketSelectorOpen(true);
     if (section === "trade") onSelectSection("trade", next);
@@ -1295,13 +1379,15 @@ export default function LighterMarketPreview({
             availableOrderTypes={["MARKET","LIMIT"]}
             onOrderType={next => {if(next === "MARKET" || next === "LIMIT") setOrderType(next.toLowerCase() as "market"|"limit");}}
             marginMode={marginMode.toUpperCase() as "CROSS"|"ISOLATED"}
-            onMarginMode={next => {setMarginMode(next.toLowerCase() as "cross"|"isolated");setMarginUpdateMarketId(null);setMarginStatus("");}}
+            onMarginMode={next => {
+              const mode=next.toLowerCase() as "cross"|"isolated";
+              setMarginMode(mode);
+              queueMarginUpdate(chosenLeverage,mode);
+            }}
             leverage={chosenLeverage}
             maxLeverage={selected?.maxLeverage ?? null}
-            onLeverage={next => {setChosenLeverage(next);setMarginUpdateMarketId(null);setMarginStatus("");}}
-            onApplySettings={submitMarginSettings}
-            settingsBusy={marginBusy}
-            settingsMessage={marginStatus}
+            onLeverage={next => setChosenLeverage(next)}
+            onLeverageCommit={next=>queueMarginUpdate(next,marginMode)}
             leverageDisabled={!selected?.maxLeverage}
           />
           <HideDexSideAndAvailability
