@@ -268,22 +268,34 @@ export async function setLighterPositionTriggers(args:{
     // Do not stack duplicate native triggers against one open position.
     // Existing orders must be cancelled explicitly by the user first.
     const existing=await s.client.getOpenOrders();
-    const duplicate=(orderType:number)=>existing.some(o=>
-      Number(o.market_index??o.market_id)===market.id&&
-      Number(o.type)===orderType&&o.reduce_only!==false);
-    if((args.takeProfit!==null&&duplicate(LighterConstant.ORDER_TYPE.TAKE_PROFIT))||
-       (args.stopLoss!==null&&duplicate(LighterConstant.ORDER_TYPE.STOP_LOSS)))
+    const duplicate=(kind:"tp"|"sl")=>existing.some(o=>
+      matchesLighterPositionTrigger(o,market.id,closeSell)&&
+      lighterPositionTriggerKind(o)===kind);
+    if((args.takeProfit!==null&&duplicate("tp"))||
+       (args.stopLoss!==null&&duplicate("sl")))
       throw new Error("Existing Lighter TP/SL trigger detected. Manage or cancel the old trigger in Open Orders before setting another.");
     // A Lighter SDK response can carry the volume-quota note even when a
     // signed trigger reached the exchange. Reconcile by authenticated READ,
     // never by repeating a signed transaction.
-    const confirmActiveTrigger=async(type:number):Promise<boolean>=>{
-      for(const delay of [600,1500,2800]){
+    const beforeOrderIds=new Set(existing.map(o=>String(o.order_index)));
+    const confirmActiveTrigger=async(kind:"tp"|"sl",target:number):Promise<boolean>=>{
+      const nativeTarget=rawOrder(market,Math.abs(position.signedSize),target).price;
+      const tick=Math.pow(10,-Math.max(0,market.priceDecimals));
+      for(const delay of [900,2300,4200]){
         await new Promise<void>(resolve=>setTimeout(resolve,delay));
         try{
           const rows=await s.client.getOpenOrders();
-          if(rows.some(o=>Number(o.market_index??o.market_id)===market.id&&
-            Number(o.type)===type&&o.reduce_only!==false))return true;
+          if(rows.some(o=>{
+            if(!matchesLighterPositionTrigger(o,market.id,closeSell)||
+               lighterPositionTriggerKind(o)!==kind||
+               !Number.isSafeInteger(Number(o.order_index))||
+               beforeOrderIds.has(String(o.order_index)))return false;
+            const price=Number(o.trigger_price);
+            return Number.isFinite(price)&&(
+              Math.abs(price-target)<=Math.max(tick*2,target*1e-7)||
+              Math.abs(price-nativeTarget)<=1
+            );
+          }))return true;
         }catch{/* A failed read cannot prove either success or failure. */}
       }
       return false;
@@ -308,7 +320,7 @@ export async function setLighterPositionTriggers(args:{
         const note=e instanceof Error?e.message:String(e);
         // No matching order of this type existed before the signed attempt,
         // so a new signer-owned market/type/reduce-only order is real evidence.
-        if(await confirmActiveTrigger(orderKind)){
+        if(await confirmActiveTrigger(label==="TP"?"tp":"sl",trigger)){
           out.push("VERIFIED_ACTIVE_"+label);
           continue;
         }
@@ -334,6 +346,27 @@ export async function getLighterSignedTradeHistory(walletAddress: string) {
   return {accountIndex:s.signer.accountIndex, trades:await s.client.rest.getAccountTrades(s.signer,{limit:50})};
 }
 
+/** Lighter's /accountActiveOrders reports order type as e.g. "take-profit",
+ * while SDK versions may also use 4/2. This is read-only classification.
+ * Never assume a native trigger is reduce-only solely from its type.
+ */
+export function lighterPositionTriggerKind(order: LighterActiveOrder): "tp" | "sl" | null {
+  const labels=[order.type,order.order_type].map(value=>
+    String(value??"").trim().toLowerCase().replace(/[\s_]+/g,"-"));
+  if(labels.some(value=>value==="4"||value==="takeprofit"||value.startsWith("take-profit")))
+    return "tp";
+  if(labels.some(value=>value==="2"||value==="stoploss"||value.startsWith("stop-loss")))
+    return "sl";
+  return null;
+}
+export function matchesLighterPositionTrigger(
+  order:LighterActiveOrder, marketId:number, closeIsAsk:boolean
+):boolean {
+  return Number(order.market_index??order.market_id)===marketId &&
+    order.is_ask===closeIsAsk && lighterPositionTriggerKind(order)!==null &&
+    Number(order.trigger_price)>0;
+}
+
 export async function getLighterSignedOpenOrders(walletAddress: string): Promise<LighterActiveOrder[]> {
   const s = active(walletAddress);
   if (!(await verifyLighterTradingKey(walletAddress))) throw new Error("Lighter key registration pending.");
@@ -355,10 +388,27 @@ export async function cancelLighterSignedOrder(args: {
     const target = activeOrders.find(o => Number(o.order_index) === args.orderIndex &&
       Number(o.market_index ?? o.market_id) === args.market.id);
     if (!target) throw new Error("This order is no longer open on your Lighter account.");
-    const tx = await s.client.rest.cancelOrder(s.signer, {
-      marketIndex: args.market.id, orderIndex: args.orderIndex,
-    });
-    return accepted(tx);
+    try {
+      const tx = await s.client.rest.cancelOrder(s.signer, {
+        marketIndex: args.market.id, orderIndex: args.orderIndex,
+      });
+      return accepted(tx);
+    } catch (error) {
+      const note=error instanceof Error?error.message:String(error);
+      // A quota note is not proof that a signed cancellation failed.
+      // Only READ the signer-owned account; never submit the cancel again.
+      if(!/didn['’]t use volume quota|ratelimit/i.test(note))throw error;
+      for(const delay of [900,2300,4200]){
+        await new Promise<void>(resolve=>setTimeout(resolve,delay));
+        try {
+          const rows=await s.client.getOpenOrders();
+          if(!rows.some(o=>Number(o.order_index)===args.orderIndex &&
+            Number(o.market_index??o.market_id)===args.market.id))
+            return "VERIFIED_NO_LONGER_OPEN"; // Could have filled; do not claim cancellation.
+        }catch{/* No status conclusion can be drawn from a failed read. */}
+      }
+      throw new Error("Lighter cancellation is not yet verified. Checking Open Orders automatically; do not repeat it until status is known.");
+    }
   });
 }
 
