@@ -153,6 +153,23 @@ export default function LighterMarketPreview({
     () => getActiveLighterSigner(walletAddress));
   const [tradingBusy, setTradingBusy] = useState(false);
   const [tradingNotice, setTradingNotice] = useState("");
+  const [noticeKind,setNoticeKind]=useState<"success"|"error"|"pending">("success");
+  const [uncertainPosition,setUncertainPosition]=useState<{
+    accountIndex:number;symbol:string;previousSize:number;
+  }|null>(null);
+  // State reconciliation uses read-only Lighter endpoints. No signed order is
+  // ever re-sent by a timeout or a refresh.
+  const refreshTimersRef=useRef<number[]>([]);
+  const loadedAccountWalletRef=useRef("");
+  const refreshAfterLighterWrite=()=>{
+    refreshTimersRef.current.forEach(id=>window.clearTimeout(id));
+    refreshTimersRef.current=[];
+    setAccountReload(v=>v+1);
+    for(const wait of [1700,4300,9000]){
+      refreshTimersRef.current.push(window.setTimeout(()=>setAccountReload(v=>v+1),wait));
+    }
+  };
+  useEffect(()=>()=>refreshTimersRef.current.forEach(id=>window.clearTimeout(id)),[]);
   const [singleCloseTarget,setSingleCloseTarget]=useState<{
     accountIndex:number;symbol:string;signedSize:number;
   }|null>(null);
@@ -301,6 +318,11 @@ export default function LighterMarketPreview({
   };
   const submitTrade = async () => {
     if (!walletAddress || !selected || tradingBusy) return;
+    if(uncertainPosition){
+      setNoticeKind("pending");
+      setTradingNotice("Previous Lighter order is still being verified. Avoid duplicate trades; check Positions/Orders.");
+      return;
+    }
     if (!marketPrice || feed.status !== "live" || !(sizeInCoin > 0) ||
         (reduceOnly && !hasReduciblePosition) ||
         (attachTpSl && (!takeProfit.trim() && !stopLoss.trim())) ||
@@ -329,7 +351,10 @@ export default function LighterMarketPreview({
     }
     // Place LONG/SHORT is already an explicit user action, exactly like
     // Hyperliquid's original terminal. Do not open Android's native dialog.
-    setTradingBusy(true); setTradingNotice("Signing and submitting real Lighter mainnet order…");
+    const previousSize=publicAccounts?.find(a=>a.index===tradingIdentity.accountIndex)
+      ?.positions.find(p=>p.symbol===selected.symbol)?.signedSize??0;
+    setTradingBusy(true);setNoticeKind("pending");
+    setTradingNotice("Submitting signed Lighter order…");
     try {
       const tx = await submitLighterOrder({
         walletAddress, market: selected, side, type: orderType,
@@ -338,11 +363,24 @@ export default function LighterMarketPreview({
         takeProfit:attachTpSl && takeProfit.trim() ? Number(takeProfit) : undefined,
         stopLoss:attachTpSl && stopLoss.trim() ? Number(stopLoss) : undefined,
       });
-      setTradingNotice("Lighter accepted order. Transaction: " + tx + ". Confirm fills in Positions/Orders.");
+      setNoticeKind("success");
+      setTradingNotice("Lighter accepted transaction "+tx+". Checking the live position and fills.");
       setAmount("");
-      setAccountReload(v => v + 1);
+      refreshAfterLighterWrite();
     } catch (e) {
-      setTradingNotice(e instanceof Error ? e.message : "Lighter rejected order.");
+      const message=e instanceof Error?e.message:String(e);
+      if(/didn['’]t use volume quota/i.test(message)){
+        // An ambiguous sendTx response is NOT proof of a rejected order:
+        // reconcile Lighter's actual position before another manual order.
+        setUncertainPosition({accountIndex:tradingIdentity.accountIndex,
+          symbol:selected.symbol,previousSize});
+        setNoticeKind("pending");
+        setTradingNotice("Lighter transaction response is inconclusive. Checking live account state; do not repeat this order until verified.");
+        refreshAfterLighterWrite();
+      }else{
+        setNoticeKind("error");
+        setTradingNotice(message||"Lighter rejected order.");
+      }
     } finally { setTradingBusy(false); }
   };
   const submitWithdrawal = async () => {
@@ -372,19 +410,43 @@ export default function LighterMarketPreview({
     if (!m || !Number.isFinite(signedSize) || signedSize === 0 ||
         !(m.lastTradePrice && m.lastTradePrice > 0))
       throw new Error("Cannot verify a live Lighter market and size for this close.");
-    // Called only from the shared HideDex single-position confirmation modal.
-    const coinSize = Math.abs(signedSize);
-    setTradingBusy(true); setTradingNotice("Checking actual position and sending reduce-only close…");
+    // Re-read the REAL signer account before closing. Never send an obsolete
+    // full-close size from a stale card or a second close for a flat position.
+    const [latestAccount]=await getLighterPublicAccounts([accountIndex]);
+    const latest=latestAccount?.positions.find(p=>p.symbol===symbol);
+    if(!latest){
+      setNoticeKind("success");
+      setTradingNotice("This position is already closed on Lighter. Updating the screen.");
+      refreshAfterLighterWrite();
+      return;
+    }
+    if(Math.sign(latest.signedSize)!==Math.sign(signedSize)||
+       Math.abs(latest.signedSize)>Math.abs(signedSize)+1e-10)
+      throw new Error("The position changed since this Close panel opened. Refreshing before another close.");
+    const coinSize = Math.abs(latest.signedSize);
+    setTradingBusy(true);setNoticeKind("pending");
+    setTradingNotice("Sending signed reduce-only position close…");
     try {
       const tx = await submitLighterOrder({
         walletAddress, market:m, side:signedSize > 0 ? "sell":"buy",
         type:"market", coinSize, referencePrice:m.lastTradePrice, reduceOnly:true,
       });
-      setTradingNotice("Lighter accepted close order: " + tx + ". Await position refresh.");
-      setAccountReload(v => v + 1);
+      setNoticeKind("success");
+      setTradingNotice("Lighter accepted close transaction "+tx+". Verifying the live position.");
+      refreshAfterLighterWrite();
     } catch (e) {
-      setTradingNotice(e instanceof Error ? e.message : "Lighter close rejected.");
-      throw e; // Preserve the shared confirmation with error for retry.
+      const message=e instanceof Error?e.message:String(e);
+      if(/didn['’]t use volume quota/i.test(message)){
+        setNoticeKind("pending");
+        setUncertainPosition({accountIndex,symbol,previousSize:latest.signedSize});
+        setTradingNotice("Lighter close response is inconclusive. Checking positions; do not submit another close yet.");
+        refreshAfterLighterWrite();
+        throw new Error("Close status pending verification. Do not repeat: waiting for live Lighter positions.");
+      }
+      setNoticeKind("error");
+      setTradingNotice(message||"Lighter close rejected.");
+      refreshAfterLighterWrite();
+      throw e;
     } finally { setTradingBusy(false); }
   };
 
@@ -423,7 +485,7 @@ export default function LighterMarketPreview({
     }catch(e){
       throw new Error((accepted?accepted+" orders already accepted. ":"")+
         (e instanceof Error?e.message:"Close All failed."));
-    }finally{setAccountReload(v=>v+1);setTradingBusy(false);}
+    }finally{refreshAfterLighterWrite();setTradingBusy(false);}
   };
 
   /** Confirmed user action; cancel only orders belonging to the verified
@@ -459,7 +521,7 @@ export default function LighterMarketPreview({
       throw new Error((acceptedCount?acceptedCount+" cancellations already accepted. ":"")+
         (e instanceof Error?e.message:"Cancel All failed."));
     }finally{
-      setAccountReload(value=>value+1);
+      refreshAfterLighterWrite();
       setTradingBusy(false);
     }
   };
@@ -486,8 +548,9 @@ export default function LighterMarketPreview({
     setTradingBusy(true); setOpenOrdersError("");
     try {
       const tx = await cancelLighterSignedOrder({walletAddress,market:m,orderIndex});
-      setTradingNotice("Lighter accepted cancel: " + tx);
-      setAccountReload(v => v + 1);
+      setNoticeKind("success");
+      setTradingNotice("Lighter accepted cancellation "+tx+". Checking active orders.");
+      refreshAfterLighterWrite();
     } catch(e) {setOpenOrdersError(e instanceof Error ? e.message:"Cancel rejected.");}
     finally {setTradingBusy(false);}
   };
@@ -728,14 +791,19 @@ export default function LighterMarketPreview({
 
   useEffect(() => {
     const ac = new AbortController();
-    setPublicAccounts(null);
-    setAccountError(null);
+    // Background polling must keep the previous verified account snapshot
+    // visible. Clear only when the connected wallet actually changes.
+    const normalizedWallet=walletAddress.toLowerCase();
+    if(loadedAccountWalletRef.current!==normalizedWallet){
+      loadedAccountWalletRef.current=normalizedWallet;
+      setPublicAccounts(null);
+      setAccountsLoading(true);
+    }else if(publicAccounts===null)setAccountsLoading(true);
     if (!walletAddress) { setAccountsLoading(false); return () => ac.abort(); }
-    setAccountsLoading(true);
     getLighterAccountIndexes(walletAddress, ac.signal).then(indexes =>
       getLighterPublicAccounts(indexes, ac.signal)
     ).then(items => {
-      if (!ac.signal.aborted) setPublicAccounts(items);
+      if(!ac.signal.aborted){setPublicAccounts(items);setAccountError(null);}
     }).catch(error => {
       if (!ac.signal.aborted) setAccountError(error instanceof Error ? error.message : "Lighter account unavailable");
     }).finally(() => { if (!ac.signal.aborted) setAccountsLoading(false); });
@@ -766,9 +834,32 @@ export default function LighterMarketPreview({
   // user makes a transaction outside HideDex. Read-only refresh; no signing.
   useEffect(() => {
     if (!walletAddress) return;
-    const interval = window.setInterval(() => setAccountReload(n => n + 1), 30_000);
+    // Controlled live read-only refresh; no frequent writes or reloads.
+    const interval = window.setInterval(() => setAccountReload(n => n + 1), 12_000);
     return () => window.clearInterval(interval);
   }, [walletAddress]);
+
+  useEffect(()=>{
+    if(!uncertainPosition||!publicAccounts)return;
+    const account=publicAccounts.find(a=>a.index===uncertainPosition.accountIndex);
+    if(!account)return;
+    const current=account.positions.find(p=>p.symbol===uncertainPosition.symbol)?.signedSize??0;
+    if(Math.abs(current-uncertainPosition.previousSize)>1e-10){
+      setUncertainPosition(null);
+      setNoticeKind("success");
+      setTradingNotice("Lighter account position changed. Verify final fill details in Trade History.");
+    }
+  },[publicAccounts,uncertainPosition]);
+
+  useEffect(()=>{
+    if(!uncertainPosition)return;
+    const id=window.setTimeout(()=>{
+      setUncertainPosition(null);
+      setNoticeKind("pending");
+      setTradingNotice("Lighter has not confirmed a position change yet. Check Trade History/Open Orders before placing the same order again.");
+    },30000);
+    return ()=>window.clearTimeout(id);
+  },[uncertainPosition]);
 
   const available = useMemo(() => markets.filter(market => market.kind === kind), [markets, kind]);
   const selected = useMemo(
@@ -1234,7 +1325,7 @@ export default function LighterMarketPreview({
     {tradingNotice && !authSheetOpen && <HideDexTradingToast
       type={tradingBusy||fundingBusy||marginBusy?"pending":
         /(?:fail|reject|error|invalid|unavailable|rate.?limit|cannot|unable|not verified|not confirmed|did not|does not match|mismatch|not accepted|no order sent|not permitted|no orders sent|not authorized|insufficient|too many requests|expired)/i.test(tradingNotice)
-          ?"error":"success"}
+          ?"error":noticeKind}
       title="Lighter"
       message={tradingNotice}
       onClose={()=>setTradingNotice("")}
