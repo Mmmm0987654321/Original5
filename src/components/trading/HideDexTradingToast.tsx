@@ -12,7 +12,7 @@ type Props={
  * The venue determines truth/acceptance; this component performs no execution.
  */
 export default function HideDexTradingToast({type,title,message,onClose}:Props){
- return <div className="fixed top-4 left-3 right-3 sm:left-auto sm:right-4 z-[180] pointer-events-auto w-auto sm:w-[380px] max-w-[calc(100vw-24px)] shadow-2xl animate-in fade-in slide-in-from-top-4 duration-200"
+ return <div className="fixed top-4 left-3 right-3 sm:left-auto sm:right-4 z-[240] pointer-events-auto w-auto sm:w-[380px] max-w-[calc(100vw-24px)] shadow-2xl animate-in fade-in slide-in-from-top-4 duration-200"
    id="terminal-order-toast" role="status" aria-live="polite" aria-busy={type==="pending"}>
    <div className="p-3.5 sm:p-4 rounded-2xl border border-brand-border bg-brand-card text-brand-text flex items-start gap-3 shadow-[0_12px_32px_rgba(0,0,0,0.24)]">
      <span className={`mt-0.5 p-1.5 shrink-0 rounded-full ${type==="pending"?"bg-brand-primary/10 text-brand-primary":type==="success"?"bg-brand-profit/10 text-brand-profit":"bg-brand-loss/10 text-brand-loss"}`}>

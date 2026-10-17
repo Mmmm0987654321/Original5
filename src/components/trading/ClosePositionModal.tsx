@@ -14,6 +14,8 @@ interface ClosePositionModalProps {
   onConfirmClose: (position: Position, closePercent: number) => Promise<void> | void;
   lighterMode?: boolean;
   verifiedUnrealizedPnl?: number | null;
+  /** Exchange-specific errors remain visible through the common top toast. */
+  onError?: (message:string)=>void;
 }
 
 export default function ClosePositionModal({
@@ -22,6 +24,7 @@ export default function ClosePositionModal({
   onConfirmClose,
   lighterMode=false,
   verifiedUnrealizedPnl=null,
+  onError,
 }: ClosePositionModalProps) {
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -63,7 +66,9 @@ export default function ClosePositionModal({
       await onConfirmClose(position, safeClosePercent);
       onClose();
     } catch (err: any) {
-      setErrorMsg(err?.message || "An unexpected error occurred.");
+      const message=err?.message || "An unexpected error occurred.";
+      if(lighterMode&&onError)onError(message);
+      else setErrorMsg(message);
     } finally {
       setIsSubmitting(false);
     }
@@ -271,7 +276,7 @@ export default function ClosePositionModal({
         <p className="text-[11px] text-brand-muted leading-snug">{lighterMode?"Lighter: full-size reduce-only market close. Final price and fees may vary. No estimated proceeds are shown.":"Estimates use current mark price; final fill price, fees and proceeds can differ."}</p>
 
         {/* Error Notification */}
-        {errorMsg && (
+        {!lighterMode && errorMsg && (
           <div className="p-3 bg-rose-500/10 border border-rose-500/20 text-rose-400 rounded-xl text-xs flex items-start gap-2 text-left">
             <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
             <span className="leading-snug text-[11px]">{errorMsg}</span>

@@ -2,6 +2,7 @@ import TradingAccountTabBar from "./TradingAccountTabBar";
 import HideDexPositionActionBar from "./HideDexPositionActionBar";
 import HideDexCancelAllOrdersBar from "./HideDexCancelAllOrdersBar";
 import HideDexPositionHeader from "./HideDexPositionHeader";
+import HideDexPositionCard from "./HideDexPositionCard";
 import HideDexPositionDetails from "./HideDexPositionDetails";
 import HideDexTradeHistory from "./HideDexTradeHistory";
 import HideDexOpenOrders, {type HideDexOpenOrderRow} from "./HideDexOpenOrders";
@@ -530,11 +531,7 @@ export default function TradingDashboardTabs({
                 else if (pos.symbol === "SOL") logoColor = "#9945ff";
 
                 return (
-                  <div 
-                    key={pos.id}
-                    className="bg-brand-card hover:bg-brand-surface border border-brand-border/60 hover:border-brand-primary/30 rounded-xl p-3 md:p-4 transition-all duration-150 shadow-md flex flex-col gap-2.5 w-full text-xs font-mono text-brand-sub"
-                    id={`pos-card-${pos.id}`}
-                  >
+                  <HideDexPositionCard key={pos.id} id={`pos-card-${pos.id}`}>
                     <HideDexPositionHeader
                       symbol={pos.symbol}
                       side={pos.type}
@@ -617,7 +614,7 @@ export default function TradingDashboardTabs({
                         </>}
                       />
                     )}
-                  </div>
+                  </HideDexPositionCard>
                 );
               })}
             </div>
