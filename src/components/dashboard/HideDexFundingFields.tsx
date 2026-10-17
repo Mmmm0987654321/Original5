@@ -1,6 +1,9 @@
 import React from "react";
 import {createPortal} from "react-dom";
 import {Network,Wallet,Coins,Info,ArrowRight,ArrowDownRight,ArrowUpRight,Loader2,ChevronDown,Check,X} from "lucide-react";
+// USDC logo asset identified by the Ethereum mainnet USDC token contract,
+// verified in the Trust Wallet token asset repository (Circle's USD Coin).
+const USDC_LOGO_URL="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png";
 // Official network marks distributed through Trust Wallet's chain assets.
 const getFundingChainLogo=(chainId:string|number|undefined):string|null=>{
   switch(String(chainId??"")){
@@ -11,11 +14,11 @@ const getFundingChainLogo=(chainId:string|number|undefined):string|null=>{
 };
 export type FundingNetworkOption={value:string;label:string;description?:string;chainId?:number};
 export function HideDexFundingNetworkAsset({
- network,chainId,options,value,onNetworkChange,disabled=false,pickerStyle="native",showChainLogo=false
+ network,chainId,options,value,onNetworkChange,disabled=false,pickerStyle="native",showChainLogo=false,showUsdcLogo=false
 }:{
  network:string;chainId?:string|number;
  options?:readonly FundingNetworkOption[];value?:string;onNetworkChange?:(v:string)=>void;disabled?:boolean;
- pickerStyle?:"native"|"modal";showChainLogo?:boolean;
+ pickerStyle?:"native"|"modal";showChainLogo?:boolean;showUsdcLogo?:boolean;
 }){
  const [pickerOpen,setPickerOpen]=React.useState(false);
  React.useEffect(()=>{
@@ -97,7 +100,10 @@ export function HideDexFundingNetworkAsset({
      <span className="text-[11px] font-semibold text-brand-sub uppercase tracking-wider block">Asset Token</span>
      <div className="rounded-xl border border-brand-border bg-brand-overlay-subtle p-3 flex items-center justify-between">
        <div className="flex items-center gap-2.5">
-         <div className="w-8 h-8 rounded-full bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400 font-bold font-mono text-xs">$</div>
+         {showUsdcLogo
+           ?<img src={USDC_LOGO_URL} alt="USDC" width={32} height={32}
+              decoding="async" className="w-8 h-8 rounded-full object-contain shrink-0"/>
+           :<div className="w-8 h-8 rounded-full bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400 font-bold font-mono text-xs">$</div>}
          <div><span className="font-bold text-sm text-brand-text">USDC</span>
            <span className="text-xs text-brand-muted font-normal ml-1.5 hidden sm:inline">USD Coin</span></div>
        </div>
