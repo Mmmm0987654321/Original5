@@ -41,7 +41,7 @@ export interface AsterAgentSetupPayload {
  message:string;
  eip712:{
    domain:typeof SIGN_DOMAIN;
-   types:{Message:readonly [{readonly name:"msg";readonly type:"string"}]};
+   types:{Message:Array<{name:string;type:string}>};
    primaryType:"Message";
    message:{msg:string};
  };
