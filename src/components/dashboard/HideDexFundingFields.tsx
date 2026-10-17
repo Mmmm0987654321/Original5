@@ -1,13 +1,21 @@
 import React from "react";
 import {createPortal} from "react-dom";
 import {Network,Wallet,Coins,Info,ArrowRight,ArrowDownRight,ArrowUpRight,Loader2,ChevronDown,Check,X} from "lucide-react";
+// Official network marks distributed through Trust Wallet's chain assets.
+const getFundingChainLogo=(chainId:string|number|undefined):string|null=>{
+  switch(String(chainId??"")){
+    case "1":return "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png";
+    case "42161":return "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/arbitrum/info/logo.png";
+    default:return null;
+  }
+};
 export type FundingNetworkOption={value:string;label:string;description?:string;chainId?:number};
 export function HideDexFundingNetworkAsset({
- network,chainId,options,value,onNetworkChange,disabled=false,pickerStyle="native"
+ network,chainId,options,value,onNetworkChange,disabled=false,pickerStyle="native",showChainLogo=false
 }:{
  network:string;chainId?:string|number;
  options?:readonly FundingNetworkOption[];value?:string;onNetworkChange?:(v:string)=>void;disabled?:boolean;
- pickerStyle?:"native"|"modal";
+ pickerStyle?:"native"|"modal";showChainLogo?:boolean;
 }){
  const [pickerOpen,setPickerOpen]=React.useState(false);
  React.useEffect(()=>{
@@ -21,7 +29,12 @@ export function HideDexFundingNetworkAsset({
      <label className="text-[11px] font-semibold text-brand-sub uppercase tracking-wider block" htmlFor={options?"hidedex-funds-network":undefined}>Network</label>
      <div className="rounded-xl border border-brand-border bg-brand-overlay-subtle p-3 flex items-center justify-between gap-2">
        <div className="flex items-center gap-2.5 min-w-0">
-         <div className="w-8 h-8 rounded-lg bg-brand-overlay-normal border border-brand-border/60 flex items-center justify-center text-accent shrink-0"><Network className="w-4 h-4"/></div>
+         <div className="w-8 h-8 rounded-lg bg-brand-overlay-normal border border-brand-border/60 flex items-center justify-center text-accent shrink-0">
+           {showChainLogo&&getFundingChainLogo(chainId)
+             ?<img src={getFundingChainLogo(chainId)!} alt="" aria-hidden="true"
+                width={28} height={28} className="h-7 w-7 object-contain" decoding="async"/>
+             :<Network className="w-4 h-4"/>}
+         </div>
          {options && onNetworkChange && pickerStyle==="modal" ?
            <button type="button" id="hidedex-funds-network"
              aria-label="Choose deposit network" aria-haspopup="dialog" aria-expanded={pickerOpen}
@@ -60,10 +73,15 @@ export function HideDexFundingNetworkAsset({
            {options.map(option=>{
              const selected=value===option.value;
              const emblem=option.value==="ethereum"?"ETH":option.value==="arbitrum"?"ARB":"NET";
+             const chainLogo=getFundingChainLogo(option.chainId);
              return <button type="button" key={option.value} aria-pressed={selected}
                onClick={()=>{onNetworkChange(option.value);setPickerOpen(false);}}
                className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors ${selected?"border-accent bg-brand-overlay-normal":"border-brand-border bg-brand-overlay-subtle hover:bg-brand-overlay-normal"}`}>
-               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-overlay-normal font-bold text-xs text-accent">{emblem}</span>
+               <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-brand-overlay-normal font-bold text-xs text-accent">
+                 {showChainLogo&&chainLogo?
+                   <img src={chainLogo} alt="" aria-hidden="true" width={34} height={34}
+                     className="h-[34px] w-[34px] object-contain" decoding="async"/>:emblem}
+               </span>
                <span className="flex-1 min-w-0">
                  <span className="block text-sm font-bold">{option.label}</span>
                  {option.description&&<span className="block text-xs text-brand-muted mt-1">{option.description}</span>}
