@@ -6,8 +6,8 @@ import HideDexAssetAllocation from "../dashboard/HideDexAssetAllocation";
 import HideDexFundsPerformance, {type HideDexPerformancePeriod, type HideDexPerformanceMarket} from "../dashboard/HideDexFundsPerformance";
 import HideDexFundsModalHeader from "../dashboard/HideDexFundsModalHeader";
 import {HideDexFundingNetworkAsset,HideDexFundingDestination,HideDexFundingAmount,HideDexFundingPresets,HideDexFundingSubmit,HideDexFundingFeeCard} from "../dashboard/HideDexFundingFields";
-import { DailyFillVolumeBars } from "../dashboard/AnalyticsPanel";
-import {ResponsiveContainer,LineChart,Line,XAxis,YAxis,Tooltip} from "recharts";
+import AnalyticsPanel, { DailyFillVolumeBars } from "../dashboard/AnalyticsPanel";
+import HideDexPerformanceAreaChart from "../dashboard/HideDexPerformanceAreaChart";
 import {getLighterPublicAnalytics,type LighterPublicAnalytics} from "../../lib/lighterPublicAnalytics";
 import {
   registerLighterTradingKey, reconnectLighterTradingKey, getActiveLighterSigner,
@@ -1318,48 +1318,46 @@ export default function LighterMarketPreview({
           onPeriod={setPerformancePeriod}
           market={performanceMarket}
           onMarket={setPerformanceMarket}
-          summary={<div className="grid grid-cols-2 gap-2 sm:gap-3">
-            {([
-              {label:"UNREALIZED PNL (LIVE)",value:performanceMarket==="spot" || unrealizedPnl===null ? "—" :
-                (unrealizedPnl<0?"-$":"+$")+formatPrice(Math.abs(unrealizedPnl),2)},
-              {label:performanceMarket==="all"?"TOTAL VOLUME":"VOLUME (LOADED FILLS)",
-                value:performanceMarket==="all" && publicAnalytics ?
-                  "$"+formatPrice(publicAnalytics.volumeUsd,2):
-                  lighterStats?.volume===null||!lighterStats?"—":"$"+formatPrice(lighterStats.volume,2)},
-              {label:"FEES (LOADED FILLS)",value:lighterStats?.fee===null||!lighterStats?"—":"$"+formatPrice(lighterStats.fee,4)},
-              {label:"EXECUTED ORDERS",value:lighterStats?.orders===null||!lighterStats?"—":String(lighterStats.orders)},
-            ]).map(item=><div key={item.label}
-              className="rounded-xl border border-brand-border p-3 min-w-0">
-              <span className="block text-[10px] text-brand-muted font-bold uppercase truncate">{item.label}</span>
-              <strong className="block text-lg font-mono mt-2">{hideBalance?"••••":item.value}</strong>
-            </div>)}
-          </div>}
-          chart={<div className="h-[180px] sm:h-[220px] w-full rounded-xl bg-brand-overlay-subtle/50 border border-brand-border/40 p-3">
-            {performanceMarket==="all" && publicAnalytics && publicAnalytics.tradePnlSeries.length>=2
-              ? <div className="h-full w-full flex flex-col">
-                  <span className="text-[10px] font-bold text-brand-muted mb-2">Cumulative Trading PnL · Lighter (USDC)</span>
-                  <div className="flex-1 min-h-0">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={publicAnalytics.tradePnlSeries} margin={{top:5,right:4,left:-20,bottom:3}}>
-                        <XAxis dataKey="time" type="number" domain={["dataMin","dataMax"]}
-                          tickFormatter={t=>new Date(Number(t)).toLocaleDateString()} tick={{fontSize:9}}/>
-                        <YAxis tick={{fontSize:9}} width={46}/>
-                        <Tooltip labelFormatter={v=>new Date(Number(v)).toLocaleString()}
-                          formatter={v=>["$"+formatPrice(Number(v),2),"Trading PnL"]}/>
-                        <Line dataKey="value" type="monotone" stroke="#18c29c" strokeWidth={2}
-                          dot={false} activeDot={{r:3}} isAnimationActive={false}/>
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              : <div className="h-full flex flex-col items-center justify-center text-center gap-2">
-                  <TrendingUp className="w-6 h-6 text-brand-muted/60"/>
-                  <span className="text-xs font-semibold text-brand-muted">
-                    {publicAnalyticsLoading?"Loading Lighter PnL…":
-                      publicAnalyticsError||"Lighter did not return a complete trading PnL series for this period."}
-                  </span>
-                </div>}
-          </div>}
+          summary={<AnalyticsPanel
+            period={performancePeriod}
+            market={performanceMarket}
+            walletConnected={Boolean(walletAddress)}
+            walletAddress={walletAddress}
+            fills={[]}
+            loading={publicAnalyticsLoading || fillsLoading}
+            failed={Boolean(publicAnalyticsError || fillsError)}
+            sensitiveHidden={hideBalance}
+            venueStats={{
+              // Lighter publishes cumulative trading PnL observations, not a
+              // verified equity series. Show their selected-window change ONLY.
+              pnl:performanceMarket==="all" && publicAnalytics &&
+                publicAnalytics.tradePnlSeries.length >= 2 ?
+                publicAnalytics.tradePnlSeries[publicAnalytics.tradePnlSeries.length-1].value -
+                publicAnalytics.tradePnlSeries[0].value : null,
+              volume:performanceMarket==="all"
+                ? (publicAnalytics?.volumeUsd ?? null)
+                : (lighterStats?.volume ?? null),
+              fees:lighterStats?.fee ?? null,
+              orders:lighterStats?.orders ?? null,
+              pnlLabel:"Trading PnL (Lighter)",
+              volumeLabel:performanceMarket==="all"?"Total Volume":"Volume (loaded fills)",
+              feesLabel:"Fees (USDC · loaded)",
+              ordersLabel:"Executed orders (loaded)",
+            }}
+          />}
+          chart={<HideDexPerformanceAreaChart
+            period={performancePeriod}
+            data={performanceMarket==="all" && publicAnalytics ?
+              publicAnalytics.tradePnlSeries.map(point=>({
+                timestamp:point.time,value:point.value,
+              })) : []}
+            label="Trading PnL"
+            hidden={hideBalance}
+            loading={publicAnalyticsLoading}
+            emptyMessage={performanceMarket!=="all"?
+              "Spot/Perps historical breakdown is not verified for Lighter.":
+              publicAnalyticsError || "No verified Lighter trading PnL history for this period."}
+          />}
         />
         <DailyFillVolumeBars
           fills={performanceMarket==="all" && publicAnalytics ?

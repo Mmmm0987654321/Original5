@@ -15,6 +15,18 @@ interface Props {
   loading: boolean;
   failed: boolean;
   sensitiveHidden?: boolean;
+  /** Optional venue-specific, already verified aggregates. The visual summary
+   * is identical for Hyperliquid and Lighter; neither exchange reads the other's data. */
+  venueStats?: {
+    pnl: number | null;
+    volume: number | null;
+    fees: number | null;
+    orders: number | null;
+    pnlLabel?: string;
+    volumeLabel?: string;
+    feesLabel?: string;
+    ordersLabel?: string;
+  };
 }
 const usd = (value: number) => "$" + Math.abs(value).toLocaleString(undefined, {
   minimumFractionDigits: 2, maximumFractionDigits: 2
@@ -23,7 +35,8 @@ const signedUsd = (value: number) => (value < 0 ? "-" : value > 0 ? "+" : "") + 
 
 export default function AnalyticsPanel({
   period, market, pnlTimeseries = null, portfolioPnl = null,
-  walletConnected, walletAddress, fills, loading, failed, sensitiveHidden = false
+  walletConnected, walletAddress, fills, loading, failed, sensitiveHidden = false,
+  venueStats
 }: Props) {
   const rawCombinedVolume = pnlTimeseries?.[period]?.vlm;
   const parsedCombinedVolume = rawCombinedVolume == null ? NaN : Number(rawCombinedVolume);
@@ -84,7 +97,12 @@ export default function AnalyticsPanel({
   const combined = market === "all";
   const displayVolume = combined ? combinedVolume : stats.volume;
   const displayPnl = combined ? combinedPnl : market === "perps" ? stats.pnl : null;
-  const cards = [
+  const cards = venueStats ? [
+    { title: venueStats.pnlLabel ?? "Trading PnL", value: venueStats.pnl === null ? "--" : signedUsd(venueStats.pnl), Icon: TrendingUp },
+    { title: venueStats.volumeLabel ?? "Total Volume", value: venueStats.volume === null ? "--" : usd(venueStats.volume), Icon: BarChart3 },
+    { title: venueStats.feesLabel ?? "Fees (USDC · loaded)", value: venueStats.fees === null ? "--" : usd(venueStats.fees), Icon: ReceiptText },
+    { title: venueStats.ordersLabel ?? "Executed orders (loaded)", value: venueStats.orders === null ? "--" : venueStats.orders.toLocaleString(), Icon: Activity }
+  ] : [
     { title: combined ? "Net PnL" : market === "spot" ? "Spot PnL (unavailable)" : "Closed PnL (loaded)",
       value: displayPnl === null ? "--" : signedUsd(displayPnl), Icon: TrendingUp },
     { title: combined ? "Total Volume" : "Volume (loaded)",
