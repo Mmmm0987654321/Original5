@@ -529,6 +529,27 @@ export default function LighterMarketPreview({
   };
 
 
+  /** Only server-reported per-market leverage for the current signed account.
+   * Account API fraction can appear as percent (5.00 => 20x) or bps
+   * (500 => 20x). Validate against venue market cap; unknown stays unknown.
+   */
+  const verifiedMarketMargin=(marketId:number):{
+    leverage:number;mode:"cross"|"isolated";
+  }|null=>{
+    if(!tradingIdentity)return null;
+    const account=publicAccounts?.find(a=>a.index===tradingIdentity.accountIndex);
+    const setting=account?.marginSettings.find(m=>m.marketId===marketId);
+    const market=markets.find(m=>m.kind==="perp"&&m.id===marketId);
+    if(!setting||!market?.maxLeverage)return null;
+    const fraction=setting.initialMarginFraction;
+    const rawLeverage=(fraction<=100?100:10000)/fraction;
+    const candidate=Math.round(rawLeverage);
+    if(!Number.isFinite(rawLeverage)||candidate<1||
+      candidate>market.maxLeverage||Math.abs(rawLeverage-candidate)>0.01)
+      return null;
+    return {leverage:candidate,mode:setting.marginMode};
+  };
+
   const marginKey=(marketId:number,leverage:number,mode:"cross"|"isolated")=>
     walletAddress.toLowerCase()+":"+String(tradingIdentity?.accountIndex??"unknown")+
     ":"+marketId+":"+leverage+":"+mode;
@@ -550,8 +571,19 @@ export default function LighterMarketPreview({
   }):Promise<boolean>=>{
     if(acknowledgedMarginRef.current===request.key)return true;
     if(marginFlightRef.current){
+      // A different margin update is already signed and in flight.
+      // Never launch an overlapping nonce write or use a stale snapshot.
       await marginFlightRef.current;
-      if(acknowledgedMarginRef.current===request.key)return true;
+      return acknowledgedMarginRef.current===request.key;
+    }
+    const current=verifiedMarketMargin(request.marketId);
+    if(current?.leverage===request.leverage&&current.mode===request.mode){
+      // Active setting belongs to this exact wallet/account/market.
+      // Do not waste a transaction or block a normal order after reload.
+      acknowledgedMarginRef.current=request.key;
+      latestMarginRequestRef.current=request.key;
+      setMarginStatus("");
+      return true;
     }
     if(!walletAddress||!tradingIdentity||restoringSavedSigner){
       if(!restoringSavedSigner)setAuthSheetOpen(true);
@@ -762,6 +794,17 @@ export default function LighterMarketPreview({
     setMarginIntent(null);
     setMarginStatus("");
   },[selectedMarketId,kind,walletAddress,tradingIdentity?.accountIndex]);
+
+  // Display exchange-side settings instead of resetting to an unrelated
+  // local slider default on refresh/market switch. Respect pending user edits.
+  useEffect(()=>{
+    if(kind!=="perp"||!selected||!tradingIdentity||
+      latestMarginRequestRef.current!==null||marginFlightRef.current)return;
+    const current=verifiedMarketMargin(selected.id);
+    if(!current)return;
+    setChosenLeverage(current.leverage);
+    setMarginMode(current.mode);
+  },[publicAccounts,selected?.id,kind,tradingIdentity?.accountIndex]);
 
   const multiplier = selected?.multiplier && selected.multiplier > 0 ? selected.multiplier : 1;
   const displayPrice = (raw: string) => {

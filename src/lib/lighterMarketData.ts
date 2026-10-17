@@ -207,11 +207,18 @@ export type LighterPublicAsset = {
   lockedBalance: number | null;
   marginBalance: number | null;
 };
+/** Real per-market settings from /account, even when a position is flat. */
+export type LighterPublicMarginSetting = {
+  marketId:number;
+  initialMarginFraction:number;
+  marginMode:"cross"|"isolated";
+};
 export type LighterPublicAccount = {
   index: number;
   availableBalance: number | null;
   collateral: number | null;
   positions: LighterPublicPosition[];
+  marginSettings: LighterPublicMarginSetting[];
   assets: LighterPublicAsset[] | null;
 };
 
@@ -229,8 +236,20 @@ export async function getLighterPublicAccounts(
     const account = entries.map(record).find(a => finite(a?.index ?? a?.account_index) === index);
     if (!account) throw new Error(`Missing public Lighter account ${index}`);
     const positions: LighterPublicPosition[] = [];
+    const marginSettings: LighterPublicMarginSetting[] = [];
     for (const raw of list(account.positions)) {
       const o = record(raw); if (!o || typeof o.symbol !== "string") continue;
+      const marketId=finite(o.market_id ?? o.market_index);
+      const fraction=finite(o.initial_margin_fraction);
+      const marginMode=finite(o.margin_mode);
+      // Keep the exchange's margin configuration even for zero-size rows;
+      // do not invent an open position or a leverage from missing values.
+      if(marketId!==null&&Number.isSafeInteger(marketId)&&marketId>=0&&
+         fraction!==null&&fraction>0&&
+         (marginMode===0||marginMode===1)){
+        marginSettings.push({marketId,initialMarginFraction:fraction,
+          marginMode:marginMode===0?"cross":"isolated"});
+      }
       const size = finite(o.position);
       const sign = finite(o.sign);
       if (size === null || sign === null || size === 0 || sign === 0) continue;
@@ -260,7 +279,7 @@ export async function getLighterPublicAccounts(
       index,
       availableBalance: finite(account.available_balance),
       collateral: finite(account.collateral),
-      positions, assets,
+      positions, marginSettings, assets,
     };
   }));
   return responses;
