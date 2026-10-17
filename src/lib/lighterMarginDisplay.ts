@@ -48,3 +48,63 @@ export function lighterCrossAccountMarginRatio(account: LighterPublicAccount): n
   const ratio = requirement / equity * 100;
   return Number.isFinite(ratio) && ratio >= 0 ? ratio : null;
 }
+
+/**
+ * Display-only liquidation scenario for an UNFILLED Lighter market order.
+ * NOT Lighter's liquidation engine: ignores execution/slippage fees, tier
+ * changes, funding, other markets' price movement and future collateral moves.
+ * Returns null unless exchange-maintenance data and account/margin state are
+ * available. Never use this for order signing, margin or close decisions.
+ */
+export function estimateLighterDraftLiq(input:{
+  side:"buy"|"sell";
+  marketSymbol:string;
+  price:number|null;
+  notionalUsd:number|null;
+  marginMode:"cross"|"isolated";
+  confirmedLeverage:number|null;
+  maintenanceFractionBps:number|null;
+  account:LighterPublicAccount|null;
+}):number|null{
+  const {side,marketSymbol,price,notionalUsd,marginMode,
+    confirmedLeverage,maintenanceFractionBps,account}=input;
+  if(!price||!Number.isFinite(price)||price<=0||
+     !notionalUsd||!Number.isFinite(notionalUsd)||notionalUsd<=0||
+     !confirmedLeverage||!Number.isFinite(confirmedLeverage)||confirmedLeverage<1||
+     maintenanceFractionBps===null||maintenanceFractionBps<=0||
+     !Number.isFinite(maintenanceFractionBps)||!account)return null;
+  const mmr=maintenanceFractionBps/10000;
+  if(mmr<=0||mmr>=0.5)return null;
+  // Same-market merges/reversals require a native portfolio engine, not
+  // a newly opened independent-position estimate.
+  if(account.positions.some(p=>p.symbol===marketSymbol))return null;
+  const size=notionalUsd/price;
+  const initialMargin=notionalUsd/confirmedLeverage;
+  if(!(size>0)||!Number.isFinite(size)||
+     account.availableBalance===null||
+     !Number.isFinite(account.availableBalance)||
+     initialMargin>account.availableBalance+1e-8)return null;
+  let result:number;
+  if(marginMode==="isolated"){
+    // Isolated assumption: only initial-margin USD is committed, and
+    // liquidation occurs at this market's current maintenance fraction.
+    result=side==="buy"?(notionalUsd-initialMargin)/(size*(1-mmr)):
+      (notionalUsd+initialMargin)/(size*(1+mmr));
+  }else{
+    const equity=account.crossAssetValue;
+    const maintenance=account.crossMaintenanceMarginRequirement;
+    if(equity===null||maintenance===null||
+       !Number.isFinite(equity)||!Number.isFinite(maintenance)||
+       equity<=0||maintenance<0||
+       equity<=maintenance+mmr*notionalUsd)return null;
+    // Scenario ONLY: all *other* market prices stay constant; the new
+    // position adds price-dependent maintenance on its single market.
+    result=side==="buy"?
+      (maintenance-equity+notionalUsd)/(size*(1-mmr)):
+      (equity+notionalUsd-maintenance)/(size*(1+mmr));
+  }
+  // Don't present impossible or already-breached prices as actionable.
+  if(!Number.isFinite(result)||result<=0||
+     (side==="buy"&&result>=price)||(side==="sell"&&result<=price))return null;
+  return result;
+}
