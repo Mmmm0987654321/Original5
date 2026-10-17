@@ -71,6 +71,7 @@ import { useTrustShield } from "../../lib/TrustShieldManager";
 import { useLanguage } from "../../lib/LanguageContext";
 import TradingDashboardTabs from "./TradingDashboardTabs";
 import HideDexTradingToast from "./HideDexTradingToast";
+import HideDexPlaceOrderButton from "./HideDexPlaceOrderButton";
 import HideDexTradeSelectors, { type TradeOrderType } from "./HideDexTradeSelectors";
 import HideDexOrderBookPanel from "./HideDexOrderBookPanel";
 import {HideDexTradeGrid,HideDexOrderForm,HideDexTopMarketPane} from "./HideDexTradeLayout";
@@ -4929,7 +4930,7 @@ export default function RedesignedTerminal({
             </div>
 
             {/* Action Placement Button */}
-            <button
+            <HideDexPlaceOrderButton
               type="submit"
               onClick={showOrderButtonTap}
               disabled={(() => {
@@ -4967,11 +4968,9 @@ export default function RedesignedTerminal({
                   return false;
                 }
               })()}
-              className={`w-full py-2 rounded-lg text-[10px] md:text-xs font-display font-black uppercase tracking-wider transition-all duration-150 cursor-pointer ${orderButtonTapped ? "scale-[0.98] brightness-[0.92] ring-2 ring-inset ring-white/50" : ""} ${isPlacingOrder ? "disabled:opacity-100 disabled:cursor-default" : "disabled:opacity-50 disabled:cursor-not-allowed"} ${
-                orderSide === "BUY"
-                  ? "bg-[#18c29c] hover:bg-[#15b390] text-[#030610] shadow-md shadow-[#18c29c]/10"
-                  : "bg-[#f25c5c] hover:bg-[#e05252] text-brand-text shadow-md shadow-[#f25c5c]/10"
-              }`}
+              side={orderSide}
+              busy={isPlacingOrder}
+              tapped={orderButtonTapped}
             >
               {isPlacingOrder
                 ? `Place ${orderSide === "BUY" ? (isPerp ? "Long" : "Buy") : (isPerp ? "Short" : "Sell")}`
@@ -4994,7 +4993,7 @@ export default function RedesignedTerminal({
                 : !isPerp && (orderValue !== null && orderValue > 0 && orderValue < 10)
                 ? "Min Order $10"
                 : `Place ${orderSide === "BUY" ? (isPerp ? "Long" : "Buy") : (isPerp ? "Short" : "Sell")}`}
-            </button>
+            </HideDexPlaceOrderButton>
           </form>
         </HideDexOrderForm>
 

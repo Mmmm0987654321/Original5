@@ -4270,15 +4270,6 @@ export default function App() {
             />
           )}
 
-          {selectedExchange === "lighter" && activeTab === ActiveTab.Profile && (
-            <AccountSettingsPanel
-              walletConnected={walletConnected}
-              onDisconnectWallet={handleDisconnectWallet}
-              initialSlippage={slippageTolerance}
-              onApplySlippage={(value) => setSlippageTolerance(value)}
-            />
-          )}
-
           {/* ORDERS MANAGER PAGE */}
           {selectedExchange === "hyperliquid" && activeTab === ActiveTab.Orders && (
             walletConnected ? (

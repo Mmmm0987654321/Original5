@@ -7,7 +7,8 @@ import React, { useState, useMemo, useEffect } from "react";
 import HideDexFundsOverview from "./HideDexFundsOverview";
 import HideDexAssetAllocation from "./HideDexAssetAllocation";
 import HideDexFundsPerformance from "./HideDexFundsPerformance";
-import HideDexFundsModalHeader from "./HideDexFundsModalHeader";
+import HideDexFundsDialogShell from "./HideDexFundsDialogShell";
+import HideDexPerformanceAreaChart from "./HideDexPerformanceAreaChart";
 import {HideDexFundingNetworkAsset,HideDexFundingDestination,HideDexFundingAmount,HideDexFundingPresets,HideDexFundingSubmit,HideDexFundingFeeCard} from "./HideDexFundingFields";
 import { 
   Wallet, 
@@ -1029,122 +1030,13 @@ export default function PortfolioPanel({
                 market={performanceMarket}
                 sensitiveHidden={shouldHideBalances}
               /></>}
-              chart={<>{shouldHideBalances ? (
-                  <div className="h-[180px] sm:h-[220px] w-full rounded-xl bg-brand-overlay-subtle/50 border border-brand-border/40 flex flex-col items-center justify-center text-center p-4">
-                    <EyeOff className="w-6 h-6 text-brand-muted mb-2" />
-                    <span className="text-xs font-semibold text-brand-muted">
-                      Performance hidden
-                    </span>
-                  </div>
-                ) : !pnlTimeseries || equityChartData.length === 0 ? (
-                  <div className="h-[180px] sm:h-[220px] w-full rounded-xl bg-brand-overlay-subtle/50 border border-brand-border/40 flex flex-col items-center justify-center text-center p-4">
-                    <TrendingUp className="w-6 h-6 text-brand-muted/60 mb-2" />
-                    <span className="text-xs font-semibold text-brand-muted">
-                      No performance history yet
-                    </span>
-                  </div>
-                ) : (
-                  <div className="h-[180px] sm:h-[220px] w-full select-none funds-performance-chart" style={{ WebkitTapHighlightColor: "transparent" }}>
-                    <style>{`
-                      #performance-section .funds-performance-chart .recharts-wrapper:focus,
-                      #performance-section .funds-performance-chart .recharts-surface:focus,
-                      #performance-section .funds-performance-chart .recharts-wrapper *:focus {
-                        outline: none !important;
-                        -webkit-tap-highlight-color: transparent;
-                      }
-                    `}</style>
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart
-                        accessibilityLayer={false}
-                        data={equityChartData}
-                        margin={{ top: 10, right: 10, left: -20, bottom: 0 }}
-                      >
-                        <XAxis
-                          dataKey="timestamp"
-                          tickFormatter={(ts: number) => {
-                            try {
-                              const d = new Date(ts);
-                              if (performancePeriod === "day") {
-                                return d.toLocaleTimeString(undefined, {
-                                  hour: "2-digit",
-                                  minute: "2-digit",
-                                  hour12: false,
-                                });
-                              }
-                              if (performancePeriod === "week" || performancePeriod === "month") {
-                                return d.toLocaleDateString(undefined, {
-                                  month: "short",
-                                  day: "numeric",
-                                });
-                              }
-                              return d.toLocaleDateString(undefined, {
-                                month: "short",
-                                year: "2-digit",
-                              });
-                            } catch {
-                              return "";
-                            }
-                          }}
-                          tick={{ fontSize: 9, fill: "var(--text-muted)" }}
-                          tickLine={false}
-                          axisLine={{ stroke: "var(--divider-brand)" }}
-                          minTickGap={25}
-                        />
-                        <YAxis
-                          domain={["auto", "auto"]}
-                          tickFormatter={(val: number) => {
-                            if (val >= 1_000_000) return `$${(val / 1_000_000).toFixed(1)}M`;
-                            if (val >= 1_000) return `$${(val / 1_000).toFixed(1)}k`;
-                            return `$${val.toFixed(0)}`;
-                          }}
-                          tick={{ fontSize: 9, fill: "var(--text-muted)" }}
-                          tickLine={false}
-                          axisLine={false}
-                          width={50}
-                        />
-                        <Tooltip
-                          content={({ active, payload }: any) => {
-                            if (!active || !payload || !payload.length) return null;
-                            const data = payload[0]?.payload;
-                            if (!data) return null;
-                            const d = new Date(data.timestamp);
-                            return (
-                              <div className="bg-brand-surface/95 border border-brand-border/80 backdrop-blur-md rounded-xl p-2.5 shadow-xl text-xs space-y-1">
-                                <div className="text-[10px] text-brand-muted font-mono">
-                                  {d.toLocaleString(undefined, {
-                                    month: "short",
-                                    day: "numeric",
-                                    year: "numeric",
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  })}
-                                </div>
-                                <div className="flex items-center gap-1.5">
-                                  <span className="text-brand-sub text-[11px]">Equity:</span>
-                                  <span className="font-mono font-bold text-brand-text text-xs">
-                                    ${Number(data.value).toLocaleString(undefined, {
-                                      minimumFractionDigits: 2,
-                                      maximumFractionDigits: 2,
-                                    })}
-                                  </span>
-                                </div>
-                              </div>
-                            );
-                          }}
-                        />
-                        <Area
-                          type="monotone"
-                          dataKey="value"
-                          stroke="var(--accent-primary)"
-                          strokeWidth={2}
-                          fill="var(--accent-primary)"
-                          fillOpacity={0.12}
-                          isAnimationActive={false}
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                )}</>}
+              chart={<HideDexPerformanceAreaChart
+                period={performancePeriod}
+                data={pnlTimeseries ? equityChartData : []}
+                label="Equity"
+                hidden={shouldHideBalances}
+                emptyMessage="No performance history yet"
+              />}
             />
 
             {/* Last Funds section: visual daily executed trading volume, replacing Holdings. */}
@@ -1308,28 +1200,7 @@ export default function PortfolioPanel({
                 : 0;
 
             return (
-              <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-black/70 backdrop-blur-xs">
-                {/* Backdrop */}
-                <motion.div 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="absolute inset-0" 
-                  onClick={() => setActiveModal(null)} 
-                />
-
-                {/* Dialog Panel: Mobile Full Screen + Desktop Centered Modal */}
-                <motion.div 
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: 20 }}
-                  transition={{ type: "spring", duration: 0.25 }}
-                  className="relative bg-brand-surface border-0 sm:border border-brand-border rounded-none sm:rounded-[24px] w-screen sm:w-full h-[100dvh] sm:h-auto sm:max-h-[90dvh] sm:max-w-[32rem] shadow-2xl flex flex-col overflow-hidden pt-safe pb-safe"
-                >
-                  <HideDexFundsModalHeader deposit={isDeposit} onClose={()=>setActiveModal(null)}/>
-
-                  {/* Scrollable Content Container */}
-                  <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4 sm:px-6 pb-[max(env(safe-area-inset-bottom),1.25rem)] space-y-4">
+              <HideDexFundsDialogShell deposit={isDeposit} onClose={()=>setActiveModal(null)}>
                     {/* Disconnected Notice if applicable */}
                     {(!walletConnected || !walletAddress) && (
                       <div className="bg-amber-500/10 border border-amber-500/30 text-amber-400 text-xs p-3 rounded-xl flex items-center gap-2 font-mono">
@@ -1398,9 +1269,7 @@ export default function PortfolioPanel({
                             Number(amount)<MIN_WITHDRAWAL_USDC||Number(amount)>withdrawableUsd+0.01}/>
                       </form>
                     )}
-                  </div>
-                </motion.div>
-              </div>
+              </HideDexFundsDialogShell>
             );
           }
 
