@@ -65,7 +65,7 @@ import {
   subscribeLighterBook,
   type LighterMarket, type LighterMarketFeed, type LighterPublicAccount,
 } from "../../lib/lighterMarketData";
-import {verifiedLighterLeverage,lighterInitialRequirement,lighterCrossAccountMarginRatio} from "../../lib/lighterMarginDisplay";
+import {verifiedLighterLeverage,lighterInitialRequirement,lighterCrossAccountMarginRatio,estimateLighterDraftLiq} from "../../lib/lighterMarginDisplay";
 
 type Section = "dashboard" | "markets" | "trade" | "funds" | "account" | "orders";
 type Kind = "perp" | "spot";
@@ -549,7 +549,8 @@ export default function LighterMarketPreview({
         await cancelLighterSignedOrder({walletAddress,market,orderIndex});
         acceptedCount++;
       }
-      setTradingNotice(acceptedCount+" Lighter cancellation requests processed. Open Orders will update automatically from the exchange.");
+      // The live Open Orders count/list confirms the result without a toast.
+      setTradingNotice("");
     }catch(e){
       throw new Error((acceptedCount?acceptedCount+" cancellations already accepted. ":"")+
         (e instanceof Error?e.message:"Cancel All failed."));
@@ -580,11 +581,9 @@ export default function LighterMarketPreview({
     // The row's explicit Cancel button uses the original HideDex action.
     setTradingBusy(true); setOpenOrdersError("");
     try {
-      const tx = await cancelLighterSignedOrder({walletAddress,market:m,orderIndex});
-      setNoticeKind("success");
-      setTradingNotice(tx==="VERIFIED_NO_LONGER_OPEN"?
-        "This Lighter order is no longer active. The exchange may have cancelled or filled it.":
-        "Lighter accepted the cancellation request. Checking live Open Orders.");
+      // Cancellation status belongs in the Orders list, never a success toast.
+      await cancelLighterSignedOrder({walletAddress,market:m,orderIndex});
+      setTradingNotice("");
       setOpenOrdersError("");
     } catch(e) {
       const message=e instanceof Error?e.message:String(e);
@@ -974,6 +973,13 @@ export default function LighterMarketPreview({
     setMarginMode(current.mode);
   },[publicAccounts,selected?.id,kind,tradingIdentity?.accountIndex]);
 
+  // Never inherit a 50x draft from BTC when selecting an unrelated market,
+  // and never retain a slider choice above an updated market risk cap.
+  useEffect(()=>{
+    if(kind!=="perp"||!selected?.maxLeverage)return;
+    setChosenLeverage(v=>Math.max(1,Math.min(v,selected.maxLeverage!)));
+  },[kind,selected?.id,selected?.maxLeverage]);
+
   const multiplier = selected?.multiplier && selected.multiplier > 0 ? selected.multiplier : 1;
   const displayPrice = (raw: string) => {
     const n = Number(raw) / multiplier;
@@ -997,6 +1003,7 @@ export default function LighterMarketPreview({
       high24h: m.high24h,
       low24h: m.low24h,
       openInterest: m.kind === "perp" ? null : undefined,
+      maxLeverage:m.kind==="perp"&&m.maxLeverage!==null?m.maxLeverage:undefined,
       isSpotOnly: m.kind === "spot",
       hasSpot: m.kind === "spot",
       spotSymbol: m.kind === "spot" ? m.symbol : undefined,
@@ -1016,6 +1023,9 @@ export default function LighterMarketPreview({
     if (m.kind === "spot") setLastSpotMarketId(m.id);
     else setLastPerpMarketId(m.id);
     setMarketSelectorOpen(false);
+    const saved=verifiedMarketMargin(m.id);
+    setChosenLeverage(saved?.leverage??1);
+    setMarginMode(saved?.mode??"cross");
     setAmount("");
     setLimitPrice("");
     setBookGroup(1);
@@ -1049,6 +1059,9 @@ export default function LighterMarketPreview({
     const nextMarket = matching ?? markets.find(m => m.kind === next && m.id === remembered);
     setKind(next);
     setSelectedMarketId(nextMarket?.id ?? null);
+    const currentSetting=nextMarket?.kind==="perp"?verifiedMarketMargin(nextMarket.id):null;
+    setChosenLeverage(currentSetting?.leverage??1);
+    setMarginMode(currentSetting?.mode??"cross");
     setAmount("");
     setLimitPrice("");
     setReduceOnly(false);
@@ -1106,6 +1119,18 @@ export default function LighterMarketPreview({
       lighterInitialRequirement(orderValueUsd,chosenLeverage):null;
   const previewMarginConfirmed = activeMargin?.leverage===chosenLeverage &&
     activeMargin.mode===marginMode;
+  // Calculations are indicative, not exchange liquidation guarantees.
+  // Only market orders with an exchange-verified active margin setting and
+  // risk/account inputs can produce a scenario; no future limit-order guess.
+  const draftLiqPrice=kind==="perp"&&orderType==="market"&&selected&&
+    previewMarginConfirmed&&!reduceOnly?
+    estimateLighterDraftLiq({
+      side,marketSymbol:selected.symbol,price:marketPrice,
+      notionalUsd:orderValueUsd,marginMode,
+      confirmedLeverage:activeMargin?.leverage??null,
+      maintenanceFractionBps:selected.maintenanceMarginFractionBps,
+      account:signedAccount,
+    }):null;
   const hasReduciblePosition = Boolean(selected && tradingIdentity && publicAccounts?.some(a =>
     a.index === tradingIdentity.accountIndex && a.positions.some(p =>
       p.symbol === selected.symbol && (side === "sell" ? p.signedSize > 0 : p.signedSize < 0))));
@@ -1331,7 +1356,7 @@ export default function LighterMarketPreview({
                           "Account Margin Ratio":"Margin Ratio",
                         value:accountCrossMarginRatio!==null?
                           formatPrice(accountCrossMarginRatio,2)+"%":"—",
-                        tone:accountCrossMarginRatio!==null?"normal":"muted"},
+                        tone:accountCrossMarginRatio!==null?"profit":"muted"},
                       {label:"Liquidation Price",
                         value:p.liquidationPrice!==null&&p.liquidationPrice>0 ?
                           "$"+formatPrice(p.liquidationPrice,4):"—",
@@ -1696,10 +1721,10 @@ export default function LighterMarketPreview({
           }}
           summary={{
             isPerp:kind==="perp",
-            // Cross liquidation depends on complete account equity, other
-            // positions and the *new* fill. Existing-position liq is not it.
+            // The estimate is a live scenario, NOT an exact liquidation or
+            // an existing position's liq. Unknown data stays unavailable.
             liquidationLabel:"New Order Liq. (est.)",
-            liquidation:"—",
+            liquidation:draftLiqPrice!==null?"≈$"+formatPrice(draftLiqPrice,4):"—",
             orderValue:orderValueUsd!==null?"$"+formatPrice(orderValueUsd,2):"—",
             margin:previewMargin!==null?
               "≈$"+formatPrice(previewMargin,4)+(previewMarginConfirmed?" est.":" draft est."):"—",
