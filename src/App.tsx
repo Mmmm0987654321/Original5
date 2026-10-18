@@ -492,7 +492,9 @@ export default function App() {
       return;
     }
     setRestoreGraceElapsed(false);
-    const timer = window.setTimeout(() => setRestoreGraceElapsed(true), 9000);
+    // Absolute five-second cap: an indefinitely connecting WalletConnect
+    // session or stalled Early Access lookup must never blank the website.
+    const timer = window.setTimeout(() => setRestoreGraceElapsed(true), 5000);
     return () => window.clearTimeout(timer);
   }, [lastTradingWallet, refreshTradingWallet]);
   const hasTradingAccess = walletConnected
@@ -594,11 +596,12 @@ export default function App() {
   // Only a valid hasTradingAccess session may show app screens.
   const restoringSavedWallet =
     !!refreshTradingWallet && refreshTradingWallet === lastTradingWallet && !hasTradingAccess &&
+    !restoreGraceElapsed &&
     ((!walletConnected &&
-      (!restoreGraceElapsed ||
-       appKitStatus === "connecting" ||
+      (appKitStatus === "connecting" ||
        appKitConnected ||
-       appKitAddress?.toLowerCase() === lastTradingWallet)) ||
+       appKitAddress?.toLowerCase() === lastTradingWallet ||
+       !walletConnected)) ||
      (walletConnected && walletAddress.trim().toLowerCase() === lastTradingWallet &&
        (accessLookupState === "idle" ||
         accessLookupState === "checking" ||
@@ -3957,9 +3960,14 @@ export default function App() {
           
           {/* LANDING / HOME DASHBOARD PAGE */}
           {activeTab === ActiveTab.Landing && resumingTradingSession && (
-            <div className="min-h-[85dvh] w-full bg-brand-bg" role="status" aria-label="Checking saved wallet session">
-              <div className="h-[2px] w-full bg-brand-border/30 overflow-hidden">
-                <div className="h-full w-1/3 bg-brand-primary animate-pulse" />
+            <div className="min-h-[85dvh] w-full bg-brand-bg text-brand-text flex items-center justify-center p-6" role="status" aria-live="polite" aria-label="Checking saved wallet session">
+              <div className="w-full max-w-xs text-center space-y-5">
+                <div className="font-display text-2xl font-black tracking-[0.16em]">HIDEDEX</div>
+                <p className="text-sm text-brand-sub">Restoring your trading session…</p>
+                <div className="h-[3px] w-full rounded-full bg-brand-border/60 overflow-hidden">
+                  <div className="h-full w-1/3 rounded-full bg-brand-primary animate-pulse" />
+                </div>
+                <p className="text-xs text-brand-muted">The homepage will open automatically if your wallet takes longer than 5 seconds.</p>
               </div>
             </div>
           )}
