@@ -149,9 +149,9 @@ export default function AsterVenueAdapter({
   setFuturesBalances(null);setBalanceError("");
   if(!walletAddress||!agentIdentity||
      (section!=="trade"&&section!=="funds"&&section!=="orders"&&section!=="markets"))return;
-  const controller=new AbortController();let running=false;
+  const controller=new AbortController();let running=false;let invalidSignature=false;
   const refresh=async()=>{
-   if(running||controller.signal.aborted)return;
+   if(running||invalidSignature||controller.signal.aborted)return;
    running=true;setBalanceLoading(true);
    try{
     const balances=await getAsterFuturesBalances(walletAddress,controller.signal);
@@ -159,7 +159,12 @@ export default function AsterVenueAdapter({
    }catch(error){
     if(!controller.signal.aborted){
      setFuturesBalances(null);
-     setBalanceError(error instanceof Error?error.message:"Aster signed balance query failed");
+     const message=error instanceof Error?error.message:"Aster signed balance query failed";
+     // Never spam signed account requests after the exchange rejects a
+     // signature. A new session/reload or another code fix is required.
+     if(/Aster error -1000.*signature check failed/i.test(message))
+      invalidSignature=true;
+     setBalanceError(message);
     }
    }finally{running=false;if(!controller.signal.aborted)setBalanceLoading(false);}
   };
@@ -353,7 +358,7 @@ export default function AsterVenueAdapter({
     type:"button",disabled:!walletAddress||agentRestoring||authBusy,side,
     label:agentRestoring?"RESTORING ASTER WALLET…":"ENABLE TRADING",
     onClick:()=>{if(walletAddress)setAuthSheetOpen(true);}
-  }:{type:"button",disabled:true,side,label:"ASTER TRADING NOT YET ENABLED"}}
+  }:{type:"button",disabled:true,side,label:"ASTER AGENT AUTHORIZED · ORDERS UNAVAILABLE"}}
  />;
  const account=<HideDexUnifiedAccountPanel
   tabs={<TradingAccountTabBar activeTab={accountTab} onSelect={setAccountTab}/>}
@@ -467,8 +472,8 @@ export default function AsterVenueAdapter({
       }}
       accountError={!agentIdentity?"Aster trading authorization required for account balances":
         balanceError||(!futuresBalances?"Signed Aster balance data unavailable":undefined)}
-      depositLabel="Deposit" depositSubtitle="Authorization required"
-      withdrawLabel="Withdrawal" withdrawSubtitle="Authorization required"
+      depositLabel="Deposit" depositSubtitle="Not connected to Aster funding API"
+      withdrawLabel="Withdrawal" withdrawSubtitle="Not connected to Aster funding API"
       onDeposit={()=>{}} onWithdraw={()=>{}}
       depositDisabled withdrawDisabled
       cards={[

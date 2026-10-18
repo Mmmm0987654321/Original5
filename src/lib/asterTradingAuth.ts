@@ -22,6 +22,28 @@ function nonce():string{
  lastNonce=n;
  return String(n);
 }
+/** Build the authenticated V3 Futures query exactly as Aster's official
+ * demo/aster-code.py: business fields, asterChain=Mainnet, user, signer, nonce.
+ * Sign the UNCHANGED encoded query using the agent's EIP-712 domain 1666,
+ * and only append signature after signing. This never places an order.
+ */
+async function signAsterFuturesRead(
+ signed:SavedAsterAgent,fields:Record<string,string>={}
+):Promise<URLSearchParams>{
+ const query=new URLSearchParams({
+  ...fields,asterChain:"Mainnet",user:signed.user,signer:signed.agent,nonce:nonce(),
+ });
+ const wallet=new Wallet(signed.privateKey);
+ if(getAddress(wallet.address)!==getAddress(signed.agent))
+  throw new Error("Local Aster agent signing key does not match approved agent.");
+ const signature=await wallet.signTypedData(TRADE_DOMAIN,RECORD_TYPE,{msg:query.toString()});
+ if(getAddress(verifyTypedData(
+   TRADE_DOMAIN,RECORD_TYPE,{msg:query.toString()},signature
+ ))!==getAddress(signed.agent))
+  throw new Error("Local Aster EIP-712 signer verification failed.");
+ query.set("signature",signature);
+ return query;
+}
 function parseRecord(x:unknown):Record<string,unknown>|null{
  return !!x&&typeof x==="object"&&!Array.isArray(x)?x as Record<string,unknown>:null;
 }
@@ -213,13 +235,7 @@ export async function registerAsterTradingAgent(args:{
  */
 export async function getAsterFuturesBalances(wallet:string,signal?:AbortSignal):Promise<AsterAccountBalance[]>{
  const signed=active(wallet);
- const body=new URLSearchParams({
-  user:signed.user,signer:signed.agent,nonce:nonce(),
- });
- const sig=await new Wallet(signed.privateKey).signTypedData(
-  TRADE_DOMAIN,RECORD_TYPE,{msg:body.toString()}
- );
- body.set("signature",sig);
+ const body=await signAsterFuturesRead(signed);
  const res=await fetch(ASTER_FUTURES_MAINNET+"/fapi/v3/balance?"+body.toString(),{
   method:"GET",headers:{Accept:"application/json"},cache:"no-store",signal
  });
@@ -251,13 +267,7 @@ export async function getAsterVerifiedLeverageBrackets(
 ):Promise<AsterVerifiedLeverage>{
  if(!/^[A-Z0-9_]{2,50}$/.test(symbol))throw new Error("Invalid Aster market");
  const signed=active(wallet);
- const query=new URLSearchParams({
-  symbol,user:signed.user,signer:signed.agent,nonce:nonce(),
- });
- const signature=await new Wallet(signed.privateKey).signTypedData(
-  TRADE_DOMAIN,RECORD_TYPE,{msg:query.toString()}
- );
- query.set("signature",signature);
+ const query=await signAsterFuturesRead(signed,{symbol});
  const res=await fetch(ASTER_FUTURES_MAINNET+"/fapi/v3/leverageBrackets?"+query.toString(),{
   method:"GET",headers:{Accept:"application/json"},signal,cache:"no-store"
  });
@@ -297,13 +307,7 @@ export async function getAsterAllVerifiedLeverageBrackets(
  wallet:string,signal?:AbortSignal
 ):Promise<Record<string,AsterVerifiedLeverage>>{
  const signed=active(wallet);
- const query=new URLSearchParams({
-  user:signed.user,signer:signed.agent,nonce:nonce(),
- });
- const signature=await new Wallet(signed.privateKey).signTypedData(
-  TRADE_DOMAIN,RECORD_TYPE,{msg:query.toString()}
- );
- query.set("signature",signature);
+ const query=await signAsterFuturesRead(signed);
  const res=await fetch(ASTER_FUTURES_MAINNET+"/fapi/v3/leverageBrackets?"+query.toString(),{
   method:"GET",headers:{Accept:"application/json"},signal,cache:"no-store"
  });
