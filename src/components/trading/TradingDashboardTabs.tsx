@@ -451,7 +451,7 @@ export default function TradingDashboardTabs({
       tabs={<>      <TradingAccountTabBar
         activeTab={activeBottomTab}
         onSelect={setActiveBottomTab}
-        showFundingHistory={true}
+        showFundingHistory={false}
         positionsCount={filteredPositions.length}
         ordersCount={filteredOrders.length}
         isFieldHidden={isFieldHidden}

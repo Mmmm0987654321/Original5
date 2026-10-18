@@ -381,7 +381,7 @@ export default function AsterVenueAdapter({
       <p>Withdrawals are <strong>not authorized</strong>. No deposit or order is placed.
         The trading key stays encrypted on this device.</p>
       <p>Aster may require an initial deposit before authenticated account APIs work.</p>
-    </div>
+    </div>}
   >
     {authStatus&&<p role="status" className="my-2 text-xs text-amber-500 break-words">{authStatus}</p>}
   </HideDexTradingAuthorizationSheet>}

@@ -1478,7 +1478,7 @@ export default function LighterMarketPreview({
       tabs={<>      <TradingAccountTabBar
         activeTab={accountTab}
         onSelect={setAccountTab}
-        showFundingHistory={true}
+        showFundingHistory={false}
         positionsCount={knownPositionCount}
         ordersCount={liveOrders?.length}
       />
