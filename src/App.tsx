@@ -293,6 +293,13 @@ export default function App() {
 
   // Unified Active Ethereum Wallet Hook
   const activeWallet = useActiveEthereumWallet();
+  // WalletConnect/Reown can replace its provider during an awaited chain
+  // switch. Async Aster registration must read the CURRENT provider, not the
+  // closure captured when the user first tapped Enable Trading.
+  const latestActiveWalletRef = useRef(activeWallet);
+  latestActiveWalletRef.current = activeWallet;
+  const latestReownChainIdRef = useRef<unknown>(appKitChainId);
+  latestReownChainIdRef.current = appKitChainId;
 
   const [walletConnectPending, setWalletConnectPending] = useState(false);
   const connectInFlightRef = useRef(false);
@@ -840,8 +847,21 @@ export default function App() {
   }, []);
 
   const getTradingSetupProvider = useCallback(async (): Promise<Eip1193Provider> => {
-    return activeWallet.getProvider();
-  }, [activeWallet]);
+    return latestActiveWalletRef.current.getProvider();
+  }, []);
+
+  // Secondary chain signal from the active Reown EVM session. Unlike an old
+  // walletProvider closure, this value reflects post-switch hook updates.
+  // Never use it alone to approve an agent: the wallet must separately sign
+  // the exact Aster chain-56 EIP-712 payload and match the owner address.
+  const getAsterReownChainId = useCallback((): number | null => {
+    const raw = latestReownChainIdRef.current;
+    const value = typeof raw === "string"
+      ? raw.trim().replace(/^eip155:/i, "") : raw;
+    const parsed = typeof value === "number" || typeof value === "string"
+      ? Number(value) : NaN;
+    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
+  }, []);
 
   // Only called by Aster's explicit Enable Trading action. Uses the same
   // Reown network switcher already used by Hyperliquid, not a separate modal.
@@ -4273,6 +4293,7 @@ export default function App() {
               walletAddress={walletConnected?walletAddress:""}
               getWalletProvider={getTradingSetupProvider}
               onSwitchToBsc={requestAsterBscNetwork}
+              getReownChainId={getAsterReownChainId}
               onConnectWallet={()=>setShowWalletModal(true)}
               section={
                 activeTab===ActiveTab.Dashboard?"dashboard":

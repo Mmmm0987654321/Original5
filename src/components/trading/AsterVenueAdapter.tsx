@@ -39,6 +39,7 @@ type Props={
  walletAddress:string;
  getWalletProvider:()=>Promise<AsterWalletProvider>;
  onSwitchToBsc:()=>Promise<void>;
+ getReownChainId:()=>number|null;
  onConnectWallet:()=>void;
  section:Section;
  initialKind:Kind;
@@ -82,7 +83,7 @@ function formatPrice(value:number|null):string{
  return value.toLocaleString("en-US",{maximumFractionDigits:8});
 }
 export default function AsterVenueAdapter({
- walletAddress,getWalletProvider,onSwitchToBsc,onConnectWallet,section,initialKind,onSelectSection,
+ walletAddress,getWalletProvider,onSwitchToBsc,getReownChainId,onConnectWallet,section,initialKind,onSelectSection,
  onMarketCatalog,watchlist=[],onToggleFavorite,sidebarMarketRequest,initialOrdersTab,
 }:Props){
  const [markets,setMarkets]=useState<AsterMarket[]>([]);
@@ -136,7 +137,7 @@ export default function AsterVenueAdapter({
   if(authBusy||agentIdentity||agentRestoring)return;
   setAuthBusy(true);setAuthStatus("");
   try{
-   const identity=await registerAsterTradingAgent({walletAddress,getWalletProvider,onSwitchToBsc});
+   const identity=await registerAsterTradingAgent({walletAddress,getWalletProvider,onSwitchToBsc,getReownChainId});
    setAgentIdentity(identity);setAuthSheetOpen(false);
    setAuthStatus("Aster authorized Spot/Perp trading agent. Withdrawal permission was NOT granted. Signed account verification in progress; orders remain disabled.");
   }catch(error){

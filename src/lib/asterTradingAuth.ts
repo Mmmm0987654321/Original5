@@ -4,7 +4,7 @@
  * Exact official EIP-712 registration from Aster V3 futures docs.
  * Aster private key only in memory or encrypted IndexedDB, never sent to API.
  */
-import {BrowserProvider,Wallet,getAddress,verifyTypedData} from "ethers";
+import {Wallet,getAddress,verifyTypedData} from "ethers";
 import {prepareAsterTradingAgentAuthorization,isAsterInitialDepositRequired} from "./asterAgentAuthorization";
 import {rememberAsterAgent,readRememberedAsterAgent,type SavedAsterAgent} from "./asterDeviceKey";
 import {ASTER_FUTURES_MAINNET} from "./asterMarketData";
@@ -99,6 +99,7 @@ async function verifiedWalletChainId(wallet:AsterWalletProvider,tries=1):Promise
 export async function registerAsterTradingAgent(args:{
  walletAddress:string;getWalletProvider:()=>Promise<AsterWalletProvider>;
  onSwitchToBsc:()=>Promise<void>;
+ getReownChainId:()=>number|null;
 }):Promise<AsterIdentity>{
  if(busy)throw new Error("Wait for the current Aster authorization");
  busy=true;
@@ -109,53 +110,80 @@ export async function registerAsterTradingAgent(args:{
   if(saved?.approved)throw new Error("Existing Aster agent found. Reconnect it rather than registering another.");
   if(saved&&!saved.approved)throw new Error("Previous Aster authorization status is uncertain. Do not register another agent automatically; review agents in Aster.");
   let native=await args.getWalletProvider();
-  // Network is switched via Reown (which must have BSC registered in
-  // appKitConfig). Direct EIP-1193 switching alone is not reliable with
-  // WalletConnect because its active chain is managed by Reown.
-  let connectedChain=await verifiedWalletChainId(native);
-  if(connectedChain!==56){
+  // Check the real wallet provider AND Reown's active EVM session. Some
+  // WalletConnect mobile connectors keep eth_chainId on an older provider
+  // even after Reown's approved switch. Neither signal alone authorizes
+  // an agent: we also require a verified chain-56 owner EIP-712 signature.
+  let providerChain=await verifiedWalletChainId(native);
+  let reownChain=args.getReownChainId();
+  if(providerChain!==56&&reownChain!==56){
     try{
       await args.onSwitchToBsc();
     }catch(error){
-      // Respect an explicit wallet rejection. Never prompt again automatically.
       const reason=error instanceof Error?error.message:String(error);
       const code=parseRecord(error)?.code;
       if(code===4001||/rejected|denied|cancelled|canceled/i.test(reason))
         throw new Error("BNB Smart Chain network switch was declined. No Aster signature was requested.");
-      throw new Error("Unable to switch to BNB Smart Chain through your connected wallet. Select BNB Smart Chain (56) in the wallet and retry.");
+      throw new Error("Unable to switch to BNB Smart Chain through your wallet. Select BNB Smart Chain (56) in the wallet and retry. No agent was registered.");
     }
-    // Reown may replace the EIP-1193 provider after an approved switch.
-    // Refetch it, do not validate the stale pre-switch provider instance.
-    for(let i=0;i<6;i++){
-      await new Promise<void>(resolve=>setTimeout(resolve,350));
+    // A mobile wallet can suspend the browser while confirming the switch.
+    // Re-read the live provider AND latest Reown chain after returning.
+    for(let i=0;i<16;i++){
+      await new Promise<void>(resolve=>setTimeout(resolve,650));
       try{
         native=await args.getWalletProvider();
-        connectedChain=await verifiedWalletChainId(native);
-        if(connectedChain===56)break;
-      }catch{/* WalletConnect provider may reconnect after switching. */}
+        providerChain=await verifiedWalletChainId(native);
+      }catch{/* WalletConnect may reconnect its provider after network switch. */}
+      reownChain=args.getReownChainId();
+      if(providerChain===56||reownChain===56)break;
     }
-    if(connectedChain!==56)
-      throw new Error("BNB Smart Chain switch was requested but chain 56 could not be confirmed. Check the selected network in your wallet and retry; no agent was registered.");
   }
-  const browser=new BrowserProvider(native as any);
-  const ownerSigner=await browser.getSigner();
-  if(getAddress(await ownerSigner.getAddress())!==user)
-   throw new Error("Connected wallet changed. No agent registered.");
+  if(providerChain!==56&&reownChain!==56)
+    throw new Error("BNB Smart Chain (56) was not confirmed in your wallet or Reown session. Open your wallet, select BNB Smart Chain and retry. No Aster signature or registration was sent.");
+
+  // Account ownership is checked on the CURRENT provider both before and
+  // after consent; no chain-switch result can impersonate an owner.
+  const checkWalletOwner=async()=>{
+    const accounts:unknown=await native.request({method:"eth_accounts"});
+    if(!Array.isArray(accounts)||typeof accounts[0]!=="string"||
+       getAddress(accounts[0])!==user)
+      throw new Error("Connected wallet account changed. No Aster agent registered.");
+  };
+  await checkWalletOwner();
   const agent=Wallet.createRandom();
   const expiresAtMs=Date.now()+30*24*60*60*1000;
   const auth=prepareAsterTradingAgentAuthorization({
    userAddress:user,agentAddress:agent.address,
    expiresAtMs,nowMs:Date.now(),agentName:"HideDex"
   });
-  // The owner signs the exact registration message per the official docs.
-  const signature=await ownerSigner.signTypedData(
-    auth.eip712.domain,auth.eip712.types,auth.eip712.message
-  );
+  // Request EIP-712 v4 directly on the connected EIP-1193 provider, avoiding
+  // ethers BrowserProvider network cache if Reown has just switched chains.
+  // Aster's exact domain.chainId remains 56; mismatched wallets can refuse.
+  const typedData={
+    domain:auth.eip712.domain,
+    types:{
+      EIP712Domain:[
+        {name:"name",type:"string"},
+        {name:"version",type:"string"},
+        {name:"chainId",type:"uint256"},
+        {name:"verifyingContract",type:"address"}
+      ],
+      ...auth.eip712.types
+    },
+    primaryType:auth.eip712.primaryType,
+    message:auth.eip712.message
+  };
+  const signature:unknown=await native.request({
+    method:"eth_signTypedData_v4",params:[user,JSON.stringify(typedData)]
+  });
+  if(typeof signature!=="string"||!/^0x[0-9a-f]+$/i.test(signature))
+    throw new Error("Wallet did not return a valid Aster EIP-712 signature.");
   const recovered=getAddress(verifyTypedData(
     auth.eip712.domain,auth.eip712.types,auth.eip712.message,signature
   ));
-  if(recovered!==user||getAddress(await ownerSigner.getAddress())!==user)
-   throw new Error("Owner signature does not match the connected wallet");
+  await checkWalletOwner();
+  if(recovered!==user)
+    throw new Error("Aster owner signature did not match the connected wallet.");
   // Save a PENDING encrypted record before sending any API write.
   // On an uncertain response never create a second agent automatically.
   const draft:SavedAsterAgent={user,agent:agent.address,
