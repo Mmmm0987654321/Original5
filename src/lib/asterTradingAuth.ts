@@ -27,10 +27,10 @@ function nonce():string{
  * owning master-wallet "user" AND the authorized agent "signer". Domain B
  * (chainId 1666) signs the read; chainId 56 is only for owner authorization.
  *
- * For Futures signed reads, use the explicit order from the official
- * V3 send_by_url example and hypurrquant/perp-cli: business params, nonce,
- * user, signer. Do not include timestamp or sorted-key serialization. The
- * URL-encoded request is exactly the EIP-712 message being signed.
+ * For Futures signed reads, follow Aster's v3 authentication guidance:
+ * canonical ASCII-key sorted string parameters (no unsigned extras).
+ * The URL-encoded request is exactly the EIP-712 message being signed.
+ * No timestamp or management signatureChainId is added.
  * asterChain is a management parameter, not part of these USER_DATA reads.
  * No new agent, signature prompt, order, or transfer is created here.
  */
@@ -40,9 +40,11 @@ async function signAsterFuturesRead(
  const params:Record<string,string>={
   ...fields,nonce:nonce(),user:signed.user,signer:signed.agent,
  };
- // Insertion order is significant: it matches Python urlencode(my_dict)
- // from Aster V3's own send_by_url example. No timestamp/sort extra fields.
- const query=new URLSearchParams(params);
+ // Canonical order is ASCII-key sorted, per official Aster v3 auth skill.
+ // Reuse this exact string for BOTH the EIP-712 digest and HTTP query.
+ const query=new URLSearchParams(
+  Object.entries(params).sort(([a],[b])=>a<b?-1:a>b?1:0)
+ );
  const wallet=new Wallet(signed.privateKey);
  if(getAddress(wallet.address)!==getAddress(signed.agent))
   throw new Error("Local Aster agent signing key does not match approved agent.");
@@ -390,7 +392,7 @@ export async function diagnoseAsterBalanceRead(
    getAddress(verifyTypedData(TRADE_DOMAIN,RECORD_TYPE,{msg:unsigned.toString()},signature!))===
     getAddress(saved.agent);
   if(!result.nonceValid||!result.signerVerified||
-     keys.join(",")!=="nonce,user,signer"||
+     keys.join(",")!=="nonce,signer,user"||
      unsigned.get("user")!==saved.user||unsigned.get("signer")!==saved.agent){
    result.exchangeMessage="Local signing or nonce validation failed; request not sent";
    return result;
