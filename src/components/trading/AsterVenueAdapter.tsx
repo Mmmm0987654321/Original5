@@ -9,7 +9,7 @@
  * from public V3 APIs. Real order/withdraw commands remain disabled until
  * verified Agent+Builder authorization and isolated signed flows are wired.
  */
-import React,{useEffect,useMemo,useState} from "react";
+import React,{useEffect,useMemo,useRef,useState} from "react";
 import {ActiveTab,type TokenMetadata} from "../../types";
 import {Wallet,TrendingUp,Unlock,Lock} from "lucide-react";
 import GeneralDashboard from "../dashboard/GeneralDashboard";
@@ -29,9 +29,9 @@ import TVChart from "./TVChart";
 import HideDexTradingAuthorizationSheet from "./HideDexTradingAuthorizationSheet";
 import HideDexBalancesView,{type HideDexBalanceItem} from "./HideDexBalancesView";
 import {reconnectAsterAgent,registerAsterTradingAgent,getAsterFuturesBalances,
-  getAsterAllVerifiedLeverageBrackets,
+  getAsterAllVerifiedLeverageBrackets,diagnoseAsterBalanceRead,
   clearAsterSession,type AsterWalletProvider,type AsterIdentity,type AsterAccountBalance,
-  type AsterVerifiedLeverage} from "../../lib/asterTradingAuth";
+  type AsterVerifiedLeverage,type AsterReadDiagnostic} from "../../lib/asterTradingAuth";
 
 type Kind=AsterMarketKind;
 type Section="dashboard"|"markets"|"trade"|"funds"|"account"|"orders";
@@ -115,6 +115,9 @@ export default function AsterVenueAdapter({
  const [balanceError,setBalanceError]=useState("");
  const [balanceLoading,setBalanceLoading]=useState(false);
  const [balanceAttempted,setBalanceAttempted]=useState(false);
+ const [diagnostic,setDiagnostic]=useState<AsterReadDiagnostic|null>(null);
+ const [diagnosticBusy,setDiagnosticBusy]=useState(false);
+ const diagnosticAbort=useRef<AbortController|null>(null);
  const [leverageLimits,setLeverageLimits]=useState<Record<string,AsterVerifiedLeverage>>({});
  const [leverageStatus,setLeverageStatus]=useState("");
  // Agent is owner-scoped; navigating or disconnecting never reuses another wallet's key.
@@ -123,6 +126,8 @@ export default function AsterVenueAdapter({
   clearAsterSession();
   setAgentIdentity(null);setFuturesBalances(null);setBalanceError("");
   setBalanceAttempted(false);
+  diagnosticAbort.current?.abort();diagnosticAbort.current=null;
+  setDiagnostic(null);setDiagnosticBusy(false);
   setLeverageLimits({});setLeverageStatus("");
   setAuthStatus("");setAuthSheetOpen(false);
   if(!walletAddress){setAgentRestoring(false);return ()=>{alive=false;};}
@@ -134,6 +139,37 @@ export default function AsterVenueAdapter({
   }).finally(()=>{if(alive)setAgentRestoring(false);});
   return ()=>{alive=false;};
  },[walletAddress]);
+ const runDiagnostic=async()=>{
+  if(!walletAddress||!agentIdentity||diagnosticBusy)return;
+  const controller=new AbortController();
+  diagnosticAbort.current?.abort();diagnosticAbort.current=controller;
+  setDiagnostic(null);setDiagnosticBusy(true);
+  try{
+   const result=await diagnoseAsterBalanceRead(walletAddress,controller.signal);
+   if(!controller.signal.aborted)setDiagnostic(result);
+  }catch{/* Aborted on account change; never display a stale report. */}
+  finally{
+   if(diagnosticAbort.current===controller){
+    diagnosticAbort.current=null;setDiagnosticBusy(false);
+   }
+  }
+ };
+ const safeDiagnosticText=diagnostic?[
+  "HideDex Aster V3 read-only diagnostic",
+  "Result: "+diagnostic.outcome,
+  "Endpoint: "+diagnostic.endpoint,
+  "Agent: "+diagnostic.agentMasked,
+  "EIP-712 chain: 1666 (agent)",
+  "Parameter order: "+diagnostic.fieldOrder,
+  "Nonce age (seconds): "+(diagnostic.nonceAgeSeconds??"unknown"),
+  "Nonce within 60s: "+diagnostic.nonceValid,
+  "Local signer verified: "+diagnostic.signerVerified,
+  "HTTP: "+(diagnostic.httpStatus??"not received"),
+  "Aster code: "+(diagnostic.exchangeCode??"none"),
+  "Aster message: "+(diagnostic.exchangeMessage??"none"),
+  "Server clock difference (seconds): "+(diagnostic.clockSkewSeconds??"not exposed"),
+  "No key, signature or complete signed URL included."
+ ].join("\n"):"";
  const enableTrading=async()=>{
   if(!walletAddress){onConnectWallet();return;}
   if(authBusy||agentIdentity||agentRestoring)return;
@@ -502,6 +538,22 @@ export default function AsterVenueAdapter({
          icon:<Lock className="w-3.5 h-3.5"/>},
       ]}
     />
+    {agentIdentity&&balanceError&&<div className="rounded-xl border border-brand-border bg-brand-surface p-3 text-xs text-brand-sub space-y-2" role="region" aria-label="Aster account read diagnostic">
+      <div className="flex items-center justify-between gap-2">
+        <span className="font-semibold text-brand-text">Aster API connection check</span>
+        <button type="button" onClick={()=>{void runDiagnostic();}}
+          disabled={diagnosticBusy||agentRestoring}
+          className="shrink-0 px-3 py-2 rounded-lg border border-brand-border bg-brand-overlay-normal font-semibold text-brand-text disabled:opacity-50">
+          {diagnosticBusy?"Checking…":"Check read API"}
+        </button>
+      </div>
+      <p>One read-only signed balance request. No trades, new Agent, wallet prompts or withdrawals.</p>
+      {diagnostic&&<div className="space-y-2">
+        <pre className="rounded-lg border border-brand-border bg-brand-bg p-2 whitespace-pre-wrap break-words font-mono text-[10px] text-brand-text select-text">{safeDiagnosticText}</pre>
+        <button type="button" onClick={()=>{void navigator.clipboard.writeText(safeDiagnosticText).catch(()=>{});}}
+          className="px-3 py-2 rounded-lg border border-brand-border font-semibold text-brand-text">Copy safe report</button>
+      </div>}
+    </div>}
   </div></>}
   {section==="orders"&&<div className="rounded-xl border border-brand-border bg-brand-bg p-3">
     {account}

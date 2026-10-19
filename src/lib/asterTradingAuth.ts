@@ -348,3 +348,97 @@ export async function getAsterAllVerifiedLeverageBrackets(
  if(!Object.keys(result).length)throw new Error("No valid Aster leverage brackets were returned");
  return result;
 }
+
+/** Exactly one user-triggered read-only request. The report intentionally
+ * excludes the private key, signature, signed message and complete URL.
+ * Uses the SAME production signing helper as getAsterFuturesBalances.
+ */
+export type AsterReadDiagnostic={
+ outcome:"accepted"|"rejected"|"invalid-response"|"network-error"|"local-error";
+ endpoint:string;agentMasked:string;fieldOrder:string;
+ nonceAgeSeconds:number|null;nonceValid:boolean;signerVerified:boolean;
+ httpStatus:number|null;exchangeCode:string|null;exchangeMessage:string|null;
+ clockSkewSeconds:number|null;
+};
+export async function diagnoseAsterBalanceRead(
+ owner:string,signal?:AbortSignal
+):Promise<AsterReadDiagnostic>{
+ const result:AsterReadDiagnostic={
+  outcome:"local-error",endpoint:"GET "+ASTER_FUTURES_MAINNET+"/fapi/v3/balance",
+  agentMasked:"unverified",fieldOrder:"unavailable",nonceAgeSeconds:null,
+  nonceValid:false,signerVerified:false,httpStatus:null,
+  exchangeCode:null,exchangeMessage:null,clockSkewSeconds:null
+ };
+ try{
+  const saved=active(owner);
+  result.agentMasked=saved.agent.slice(0,6)+"…"+saved.agent.slice(-4);
+  const signed=await signAsterFuturesRead(saved);
+  const signature=signed.get("signature");
+  const unsigned=new URLSearchParams(signed);
+  unsigned.delete("signature");
+  const keys=Array.from(unsigned.keys());
+  result.fieldOrder=keys.join(" → ");
+  const n=unsigned.get("nonce")??"";
+  if(/^\d{15,17}$/.test(n)){
+   const delta=(Date.now()*1000-Number(n))/1_000_000;
+   if(Number.isFinite(delta)){
+    result.nonceAgeSeconds=Math.round(delta*10)/10;
+    result.nonceValid=Math.abs(delta)<=60;
+   }
+  }
+  result.signerVerified=Boolean(signature)&&
+   getAddress(verifyTypedData(TRADE_DOMAIN,RECORD_TYPE,{msg:unsigned.toString()},signature!))===
+    getAddress(saved.agent);
+  if(!result.nonceValid||!result.signerVerified||
+     keys.join(",")!=="nonce,user,signer"||
+     unsigned.get("user")!==saved.user||unsigned.get("signer")!==saved.agent){
+   result.exchangeMessage="Local signing or nonce validation failed; request not sent";
+   return result;
+  }
+  // Only ONE GET. Not a signing-format experiment, and never an order.
+  const response=await fetch(ASTER_FUTURES_MAINNET+"/fapi/v3/balance?"+signed.toString(),{
+   method:"GET",signal,headers:{Accept:"application/json"},cache:"no-store"
+  });
+  result.httpStatus=response.status;
+  const serverDate=response.headers.get("date");
+  if(serverDate){
+   const time=Date.parse(serverDate);
+   if(Number.isFinite(time))
+    result.clockSkewSeconds=Math.round((Date.now()-time)/1000);
+  }
+  let json:unknown;
+  try{json=await response.json();}
+  catch{
+   result.outcome="invalid-response";
+   result.exchangeMessage="API returned non-JSON response";
+   return result;
+  }
+  const error=parseRecord(json);
+  if(typeof error?.code==="string"||typeof error?.code==="number")
+   result.exchangeCode=String(error.code).slice(0,22);
+  // Never echo unknown raw server text: it might include a URL or signature.
+  if(typeof error?.msg==="string"){
+   const msg=error.msg.trim().slice(0,130);
+   result.exchangeMessage=/^[a-zA-Z0-9 _.,:()'-]+$/.test(msg)?msg:
+    "Exchange message omitted for privacy";
+  }
+  if(response.ok&&Array.isArray(json)){
+   result.outcome="accepted";
+   result.exchangeMessage="Signed balance read accepted";
+  }else if(!response.ok||result.exchangeCode!==null){
+   result.outcome="rejected";
+   if(!result.exchangeMessage)result.exchangeMessage="Exchange rejected request";
+  }else{
+   result.outcome="invalid-response";
+   result.exchangeMessage="Unexpected response shape";
+  }
+ }catch(err){
+  if(signal?.aborted)throw err;
+  // Exceptions can contain signed URLs; never display exception.message.
+  result.outcome=result.signerVerified?"network-error":"local-error";
+  result.exchangeMessage=result.signerVerified?
+   "Browser blocked or could not read the request (network/CORS)":
+   "Local signature check failed; no request sent";
+ }
+ return result;
+}
