@@ -143,12 +143,18 @@ export default function AsterVenueAdapter(p:{
    marginRatio:accountMarginRatio??undefined,
   };
  };
- const verifiedSpotUsdt=spotBalances===null?null:num(spotBalances.find(r=>r.asset==="USDT")?.free);
+ // Aster Spot and Futures are separate signed ledgers. The Funds chart
+ // must never reference an undefined total or assume unknown Spot = zero.
+ const spotUsdtRow=spotBalances?.find(r=>r.asset==="USDT");
+ const verifiedSpotUsdt=spotBalances===null?null:spotUsdtRow?num(spotUsdtRow.free):0;
+ const spotLockedUsdt=spotBalances===null?null:spotUsdtRow?num(spotUsdtRow.locked):0;
+ const totalSpotUsdt=verifiedSpotUsdt!==null&&spotLockedUsdt!==null
+  ?verifiedSpotUsdt+spotLockedUsdt:null;
  const futuresTotalUsdt=num(available?.balance);
  const spotOtherHoldings=spotBalances?.some(r=>r.asset!=="USDT"&&
   ((num(r.free)??0)>0||(num(r.locked)??0)>0))??false;
- const combinedUsdt=futuresTotalUsdt!==null&&verifiedSpotUsdt!==null&&!spotOtherHoldings
-  ?futuresTotalUsdt+verifiedSpotUsdt:null;
+ const combinedUsdt=futuresTotalUsdt!==null&&totalSpotUsdt!==null&&!spotOtherHoldings
+  ?futuresTotalUsdt+totalSpotUsdt:null;
 
  useEffect(()=>{setKind(initialKind);},[initialKind]);
  useEffect(()=>{let cancelled=false;const poll=()=>getAsterMarkets().then(list=>{
