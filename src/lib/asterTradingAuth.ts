@@ -27,24 +27,22 @@ function nonce():string{
  * owning master-wallet "user" AND the authorized agent "signer". Domain B
  * (chainId 1666) signs the read; chainId 56 is only for owner authorization.
  *
- * Canonical query fields are sorted by ASCII key, per the V3 API Overview
- * and Aster's public v3_client reference; timestamp is included in the
- * signed parameters. Reuse the exact signed URLSearchParams on the wire.
+ * For Futures signed reads, use the explicit order from the official
+ * V3 send_by_url example and hypurrquant/perp-cli: business params, nonce,
+ * user, signer. Do not include timestamp or sorted-key serialization. The
+ * URL-encoded request is exactly the EIP-712 message being signed.
  * asterChain is a management parameter, not part of these USER_DATA reads.
  * No new agent, signature prompt, order, or transfer is created here.
  */
 async function signAsterFuturesRead(
  signed:SavedAsterAgent,fields:Record<string,string>={}
 ):Promise<URLSearchParams>{
- const signedAtMs=Date.now();
  const params:Record<string,string>={
-  ...fields,nonce:nonce(),signer:signed.agent,
-  timestamp:String(signedAtMs),user:signed.user,
+  ...fields,nonce:nonce(),user:signed.user,signer:signed.agent,
  };
- // Always sign the exact bytes sent to Aster, in deterministic key order.
- const query=new URLSearchParams(
-  Object.entries(params).sort(([a],[b])=>a<b?-1:a>b?1:0)
- );
+ // Insertion order is significant: it matches Python urlencode(my_dict)
+ // from Aster V3's own send_by_url example. No timestamp/sort extra fields.
+ const query=new URLSearchParams(params);
  const wallet=new Wallet(signed.privateKey);
  if(getAddress(wallet.address)!==getAddress(signed.agent))
   throw new Error("Local Aster agent signing key does not match approved agent.");
