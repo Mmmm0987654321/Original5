@@ -22,19 +22,29 @@ function nonce():string{
  lastNonce=n;
  return String(n);
 }
-/** Build an API-WALLET authenticated Futures V3 read. Aster separates
- * signer-authenticated USER_DATA/TRADE requests from the user's master-wallet
- * management signatures. For these read-only calls identify the API wallet
- * with "signer" alone: including "user" selects the main-wallet identity,
- * whose private key MUST NEVER be used for unattended reads.
- * The EIP-712 message exactly matches the query minus "signature".
+/** Sign an Aster V3 Futures USER_DATA query with the approved agent wallet.
+ * Aster's official V3 authentication and Aster Code docs require BOTH the
+ * owning master-wallet "user" AND the authorized agent "signer". Domain B
+ * (chainId 1666) signs the read; chainId 56 is only for owner authorization.
+ *
+ * Canonical query fields are sorted by ASCII key, per the V3 API Overview
+ * and Aster's public v3_client reference; timestamp is included in the
+ * signed parameters. Reuse the exact signed URLSearchParams on the wire.
+ * asterChain is a management parameter, not part of these USER_DATA reads.
+ * No new agent, signature prompt, order, or transfer is created here.
  */
 async function signAsterFuturesRead(
  signed:SavedAsterAgent,fields:Record<string,string>={}
 ):Promise<URLSearchParams>{
- const query=new URLSearchParams({
-  ...fields,asterChain:"Mainnet",signer:signed.agent,nonce:nonce(),
- });
+ const signedAtMs=Date.now();
+ const params:Record<string,string>={
+  ...fields,nonce:nonce(),signer:signed.agent,
+  timestamp:String(signedAtMs),user:signed.user,
+ };
+ // Always sign the exact bytes sent to Aster, in deterministic key order.
+ const query=new URLSearchParams(
+  Object.entries(params).sort(([a],[b])=>a<b?-1:a>b?1:0)
+ );
  const wallet=new Wallet(signed.privateKey);
  if(getAddress(wallet.address)!==getAddress(signed.agent))
   throw new Error("Local Aster agent signing key does not match approved agent.");
