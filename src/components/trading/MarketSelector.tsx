@@ -525,7 +525,7 @@ function OfficialAssetLogo({
       {/* Neutral loading surface only; never flash a different/fake logo. */}
       {loadedSrc !== src && (
         <div className="absolute inset-0 flex items-center justify-center bg-brand-overlay-subtle" aria-hidden="true">
-          <span className="w-3 h-3 rounded-full bg-brand-border/70" />
+          <span className="text-[9px] font-mono font-bold text-brand-muted uppercase" aria-hidden="true">{base.replace(/[^A-Z0-9]/ig,"").slice(0,3)||"?"}</span>
         </div>
       )}
       <img
@@ -1173,7 +1173,12 @@ export default function MarketSelector({
                 tok.symbol === selectedSymbol ||
                 cleanTokSymbol === cleanSelected;
               const isSpot = activeCategory === "spot";
-              const leverage = getPerpLeverageFormatted(tok.symbol, tok.maxLeverage);
+              // External venues cannot borrow Hyperliquid's symbol-based
+              // leverage assumptions. Only their own verified metadata.
+              const leverage = externalPricesOnly
+                ? (typeof tok.maxLeverage==="number" && Number.isSafeInteger(tok.maxLeverage) && tok.maxLeverage>0
+                  ? tok.maxLeverage+"x":null)
+                : getPerpLeverageFormatted(tok.symbol, tok.maxLeverage);
               // Spot display must use the resolved ticker, never raw sourceCoin/spotSymbol.
               const displayTicker = isSpot
                 ? String(tok.symbol || tok.name || "").trim().replace(/-SPOT$/i, "").toUpperCase()
@@ -1235,7 +1240,7 @@ export default function MarketSelector({
                         {displayTicker}
                       </span>
                       <span className="text-[9px] sm:text-[10px] font-semibold text-accent leading-tight block mt-0.5 whitespace-nowrap">
-                        {isSpot ? t("spot") : `${leverage} ${t("perp_short")}`}
+                        {isSpot ? t("spot") : `${leverage ? leverage+" " : ""}${t("perp_short")}`}
                       </span>
                     </div>
                   </div>

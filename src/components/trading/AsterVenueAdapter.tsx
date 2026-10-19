@@ -2,7 +2,7 @@ import React,{useEffect,useMemo,useState,useCallback} from "react";
 import type {Position,OpenOrder,TradeHistoryItem} from "../../types";
 import {Wallet,TrendingUp,Unlock,Lock} from "lucide-react";
 import type {TokenMetadata} from "../../types";
-import MarketSelector,{renderAssetLogo} from "./MarketSelector";
+import MarketSelector,{renderAssetLogo,tokenMatchesSubcategory,type PerpSubcategory} from "./MarketSelector";
 import TVChart from "./TVChart";
 import MarketsPanel from "../dashboard/MarketsPanel";
 import PositionTable from "./PositionTable";
@@ -24,6 +24,9 @@ import HideDexPositionActionBar,{type HideDexPositionSort} from "./HideDexPositi
 import HideDexTradingToast from "./HideDexTradingToast";
 import TpSlModal from "./TpSlModal";
 import HideDexAssetAllocation from "../dashboard/HideDexAssetAllocation";
+import HideDexFundsPerformance,{type HideDexPerformancePeriod,type HideDexPerformanceMarket} from "../dashboard/HideDexFundsPerformance";
+import HideDexPerformanceAreaChart from "../dashboard/HideDexPerformanceAreaChart";
+import AnalyticsPanel,{DailyFillVolumeBars} from "../dashboard/AnalyticsPanel";
 import HideDexTradingAuthorizationSheet from "./HideDexTradingAuthorizationSheet";
 import HideDexFundsOverview from "../dashboard/HideDexFundsOverview";
 import HideDexFundsDialogShell from "../dashboard/HideDexFundsDialogShell";
@@ -48,10 +51,19 @@ const quantize=(value:number,step:string)=>{const size=Number(step);if(!Number.i
  if(!Number.isFinite(out)||out<=0)throw Error("Order size is below market minimum");
  return out.toFixed(Math.min(12,precision));
 };
-const quoteMarkets=(m:AsterMarket):TokenMetadata=>({
- symbol:m.base,name:m.base,fullName:m.base,sourceCoin:m.symbol,
- price:m.last,change24h:m.change24h,volume24h:m.volume24h,high24h:null,low24h:null,category:"perps",subcategory:"crypto",
-});
+const quoteMarkets=(m:AsterMarket):TokenMetadata=>{
+ const token:TokenMetadata={
+  symbol:m.base,name:m.base,fullName:m.base,sourceCoin:m.symbol,
+  price:m.last,change24h:m.change24h,volume24h:m.volume24h,
+  high24h:null,low24h:null,category:"perps",
+  maxLeverage:m.maxLeverage??undefined
+ };
+ // Apply the original HideDex curated classification; never assign
+ // all instruments to Crypto just because the venue is Aster.
+ const verified=(["stocks","commodities","forex","indices","crypto"] as PerpSubcategory[])
+  .find(group=>tokenMatchesSubcategory(token,group));
+ return verified?{...token,subcategory:verified}:token;
+};
 export default function AsterVenueAdapter(p:{
  section:Section;initialKind:MarketKind;walletAddress:string;
  getWalletProvider:()=>Promise<AsterProvider>;onConnectWallet:()=>void;
@@ -95,6 +107,12 @@ export default function AsterVenueAdapter(p:{
  const [marginMode,setMarginMode]=useState<"CROSS"|"ISOLATED">("CROSS");
  const [leverage,setLeverage]=useState(1);
  const [maxLeverage,setMaxLeverage]=useState<number|null>(null);
+ const [leverageCaps,setLeverageCaps]=useState<Record<string,number>>({});
+ const [confirmedLeverage,setConfirmedLeverage]=useState<Record<string,number>>({});
+ const [performancePeriod,setPerformancePeriod]=useState<HideDexPerformancePeriod>("day");
+ const [performanceMarket,setPerformanceMarket]=useState<HideDexPerformanceMarket>("all");
+ const [tradesSymbol,setTradesSymbol]=useState<string|null>(null);
+ const [tradesError,setTradesError]=useState("");
  const [fundingModal,setFundingModal]=useState<"deposit"|"withdraw"|null>(null);
  const [fundingNetwork,setFundingNetwork]=useState<AsterChainId>(56);
  const [fundingTarget,setFundingTarget]=useState<"perp"|"spot">("perp");
@@ -107,12 +125,12 @@ export default function AsterVenueAdapter(p:{
  // One exact original market selector with separate, venue-authentic Spot and Perp
  // assets. The shared selector only recognizes Spot if spotSymbol is real.
  const tokens=useMemo<TokenMetadata[]>(()=>[
-  ...markets.map(quoteMarkets),
+  ...markets.map(m=>({...quoteMarkets(m),maxLeverage:leverageCaps[m.symbol]??m.maxLeverage??undefined})),
   ...spotMarkets.map(m=>({
    ...quoteMarkets(m),symbol:m.base+"-SPOT",name:m.base,
    category:"spot" as const,isSpotOnly:true,hasSpot:true,spotSymbol:m.symbol
   }))
- ],[markets,spotMarkets]);
+ ],[markets,spotMarkets,leverageCaps]);
  const available=signedBalance(balances);
  const ownedSpot=(asset:string)=>spotBalances?.find(x=>x.asset===asset);
  const spotFree=kind==="spot"?num(ownedSpot(side==="BUY"?(current?.quote??"USDT"):(current?.base??""))?.free):null;
@@ -126,6 +144,7 @@ export default function AsterVenueAdapter(p:{
    ?sizeUnit==="USDT"?Number(amount)/price:Number(amount):null;
  const orderValue=size!==null&&price!==null?size*price:null;
  const own=walletAddress.trim().toLowerCase();
+ const leverageStorageKey="hidedex_aster_verified_leverage_"+own;
  const accountMarginBalance=num(futuresAccount?.totalMarginBalance);
  const accountMaintenanceMargin=num(futuresAccount?.totalMaintMargin);
  const accountMarginRatio=accountMarginBalance!==null&&accountMarginBalance>0&&accountMaintenanceMargin!==null&&accountMaintenanceMargin>=0
@@ -167,6 +186,23 @@ export default function AsterVenueAdapter(p:{
  const combinedUsdt=futuresTotalUsdt!==null&&totalSpotUsdt!==null&&!spotOtherHoldings
   ?futuresTotalUsdt+totalSpotUsdt:null;
 
+ // Only signed and response-confirmed market leverage preferences are cached.
+ // The exchange's current risk record always overrides a stored hint.
+ useEffect(()=>{
+  let parsed:Record<string,number>={};
+  if(/^0x[0-9a-f]{40}$/i.test(own)){
+   try{
+    const value=JSON.parse(localStorage.getItem(leverageStorageKey)??"{}");
+    if(value&&typeof value==="object"&&!Array.isArray(value)){
+     for(const [symbol,lev] of Object.entries(value)){
+      if(/^[A-Z0-9]{3,32}$/.test(symbol)&&typeof lev==="number"&&
+         Number.isSafeInteger(lev)&&lev>=1&&lev<=1000)parsed[symbol]=lev;
+     }
+    }
+   }catch{ /* Browser storage unavailable: read from Aster signed account. */ }
+  }
+  setConfirmedLeverage(parsed);
+ },[leverageStorageKey]);
  useEffect(()=>{setKind(initialKind);},[initialKind]);
  useEffect(()=>{let cancelled=false;const poll=()=>getAsterMarkets().then(list=>{
   if(cancelled)return;setMarkets(list);setMarketError("");
@@ -217,40 +253,79 @@ export default function AsterVenueAdapter(p:{
  void read();const id=window.setInterval(read,30_000);
  return()=>{cancelled=true;window.clearInterval(id);};
  },[identity?.agent,own,reload]);
- useEffect(()=>{if(!(tab==="TRADE_HISTORY"||(section==="orders"&&p.initialOrdersTab==="TRADE_HISTORY"))||!identity?.mode||kind==="spot"||!current)return;
- let gone=false;void asterSignedRead(walletAddress,"/fapi/v3/userTrades",{symbol:current.symbol})
- .then(({data})=>{if(!gone)setTrades(rows(data));})
- .catch(e=>{if(!gone){setTrades(null);setNotice(sourceError(e));}});
- return()=>{gone=true;};
- },[tab,identity?.agent,current?.symbol,reload,kind,section,p.initialOrdersTab]);
- // Recommended plural endpoint: symbol queries may return a single object,
- // whereas multi-symbol queries return an array. Validate before unlocking.
  useEffect(()=>{
-  setMaxLeverage(null);
-  if(!identity?.mode||kind!=="perp"||!current)return;
+  const shouldRead=tab==="TRADE_HISTORY"||
+   (section==="orders"&&p.initialOrdersTab==="TRADE_HISTORY")||section==="funds";
+  const symbol=kind==="perp"?current?.symbol:null;
+  setTrades(null);setTradesSymbol(null);setTradesError("");
+  if(!shouldRead||!identity?.mode||!symbol)return;
+  let gone=false;
+  void asterSignedRead(walletAddress,"/fapi/v3/userTrades",{symbol,limit:"500"})
+   .then(({data})=>{
+    if(gone)return;
+    if(!Array.isArray(data))throw Error("Aster trade history response not verified");
+    setTrades(rows(data));setTradesSymbol(symbol);setTradesError("");
+   })
+   .catch(e=>{if(!gone){setTrades(null);setTradesSymbol(null);setTradesError(sourceError(e));}});
+  return()=>{gone=true;};
+ },[tab,identity?.agent,current?.symbol,reload,kind,section,p.initialOrdersTab]);
+ // Aster V3 supports a single signed leverageBrackets query without symbol:
+ // the entire per-market verified cap catalogue can populate Market Selector.
+ useEffect(()=>{
+  setLeverageCaps({});
+  if(!identity?.mode||!walletAddress)return;
+  let stopped=false;
+  void asterSignedRead(walletAddress,"/fapi/v3/leverageBrackets")
+   .then(({data})=>{
+    if(stopped)return;
+    const items=Array.isArray(data)?rows(data):obj(data)?[obj(data)!]:[];
+    const caps:Record<string,number>={};
+    for(const item of items){
+     if(typeof item.symbol!=="string"||!Array.isArray(item.brackets))continue;
+     const brackets=rows(item.brackets);
+     const initial=brackets.map(b=>num(b.initialLeverage)).filter((n):n is number=>n!==null&&Number.isInteger(n)&&n>0);
+     if(initial.length)caps[item.symbol]=Math.max(...initial);
+    }
+    setLeverageCaps(caps);
+   })
+   .catch(()=>{if(!stopped)setLeverageCaps({});});
+  return()=>{stopped=true;};
+ },[identity?.agent,own,identity?.mode?.order]);
+ useEffect(()=>{
+  if(kind!=="perp"||!current){setMaxLeverage(null);return;}
+  const cached=leverageCaps[current.symbol];
+  if(cached){setMaxLeverage(cached);return;}
+  setMaxLeverage(current.maxLeverage);
+  if(!identity?.mode||!walletAddress)return;
   let stopped=false;
   void asterSignedRead(walletAddress,"/fapi/v3/leverageBrackets",{symbol:current.symbol})
    .then(({data})=>{
     if(stopped)return;
     const item=Array.isArray(data)?rows(data).find(r=>r.symbol===current.symbol):obj(data);
-    if(item?.symbol!==current.symbol){setMaxLeverage(null);return;}
-    const first=Array.isArray(item.brackets)?rows(item.brackets)[0]:null;
-    const verified=num(first?.initialLeverage);
-    setMaxLeverage(verified!==null&&verified>=1&&Number.isInteger(verified)?verified:null);
-   })
-   .catch(()=>{if(!stopped)setMaxLeverage(null);});
+    if(item?.symbol!==current.symbol)return;
+    const brackets=rows(item.brackets);
+    const initial=brackets.map(b=>num(b.initialLeverage)).filter((n):n is number=>n!==null&&Number.isInteger(n)&&n>0);
+    if(!initial.length)return;
+    const cap=Math.max(...initial);
+    setLeverageCaps(prev=>({...prev,[current.symbol]:cap}));
+    setMaxLeverage(cap);
+   }).catch(()=>{ /* No unverified default leverage is shown. */ });
   return()=>{stopped=true;};
- },[identity?.mode?.order,identity?.agent,current?.symbol,kind]);
- // Read the actual current leverage/margin mode for an open Aster position.
+ },[current?.symbol,kind,leverageCaps[current?.symbol??""],identity?.agent,identity?.mode?.order]);
+ // Restore each pair independently. Aster positionRisk may include flat
+ // rows even for zero positions; respect any verified per-symbol setting.
  useEffect(()=>{
-  if(kind!=="perp")return;
-  const held=positionRows?.find(r=>r.symbol===current?.symbol);
-  if(!held)return;
-  const real=num(held.leverage);
-  if(real!==null&&real>=1)setLeverage(real);
-  if(held.marginType==="isolated")setMarginMode("ISOLATED");
-  else if(held.marginType==="cross")setMarginMode("CROSS");
- },[kind,current?.symbol,risk]);
+  if(kind!=="perp"||!current){setLeverage(1);return;}
+  const row=risk?.find(r=>r.symbol===current.symbol&&num(r.leverage)!==null);
+  const server=num(row?.leverage),saved=confirmedLeverage[current.symbol];
+  const cap=leverageCaps[current.symbol]??current.maxLeverage??null;
+  const next=server!==null&&server>=1?server:
+   typeof saved==="number"&&Number.isSafeInteger(saved)&&saved>=1?saved:1;
+  setLeverage(cap!==null?Math.min(next,cap):next);
+  if(row?.marginType==="isolated")setMarginMode("ISOLATED");
+  else if(row?.marginType==="cross")setMarginMode("CROSS");
+  else setMarginMode("CROSS");
+ },[kind,current?.symbol,risk,confirmedLeverage,leverageCaps]);
  useEffect(()=>{if(!fundingModal||fundingModal!=="withdraw")return;
  setWithdrawFee(null);void asterWithdrawQuote(fundingNetwork).then(setWithdrawFee).catch(e=>setNotice(sourceError(e)));
  },[fundingModal,fundingNetwork]);
@@ -350,8 +425,27 @@ export default function AsterVenueAdapter(p:{
     : asterSignedWrite(walletAddress,identity.mode!,"/fapi/v3/order","DELETE",{symbol,orderId}));
  };
  const changeLev=async(next:number)=>{
-  if(!identity?.mode||!current||maxLeverage===null||next>maxLeverage||next<1)return;
-  await act("Leverage",async()=>asterSignedWrite(walletAddress,identity.mode!,"/fapi/v3/leverage","POST",{symbol:current.symbol,leverage:String(Math.floor(next))}));
+  if(!identity?.mode||!current||maxLeverage===null||busy||
+     !Number.isSafeInteger(next)||next>maxLeverage||next<1)return;
+  const symbol=current.symbol;
+  setBusy(true);
+  // No success popup for leverage changes; an error is still actionable.
+  if(notice.toLowerCase().includes("leverage"))setNotice("");
+  try{
+   const response=await asterSignedWrite(walletAddress,identity.mode,"/fapi/v3/leverage","POST",{
+    symbol,leverage:String(next)
+   });
+   const ack=obj(response);
+   const verified=num(ack?.leverage);
+   if(ack?.symbol!==symbol||verified!==next)throw Error("Aster has not confirmed this leverage. Refresh the account and retry.");
+   const updated={...confirmedLeverage,[symbol]:verified};
+   setConfirmedLeverage(updated);
+   try{localStorage.setItem(leverageStorageKey,JSON.stringify(updated));}catch{}
+   setReload(v=>v+1);
+  }catch(e){
+   setToastKind("error");setNotice(sourceError(e));
+   setReload(v=>v+1);
+  }finally{setBusy(false);}
  };
  const changeMargin=async(next:"CROSS"|"ISOLATED")=>{
   if(!identity?.mode||!current)return;
@@ -416,6 +510,40 @@ export default function AsterVenueAdapter(p:{
     price:px,size:qty,value:px*qty,fee,timestamp:new Date(time).toLocaleString(),
     timestampMs:time,pnl:num(r.realizedPnl)??undefined,isSpot:kind==="spot"}];
  });
+ // Official Aster signed userTrades is scoped to ONE futures symbol.
+ // Never present this sample as all-venue total volume or full equity history.
+ const asterAnalytics=useMemo(()=>{
+  if(!trades||!tradesSymbol||kind!=="perp"||tradesSymbol!==current?.symbol)return null;
+  const days=performancePeriod==="day"?1:performancePeriod==="week"?7:
+   performancePeriod==="month"?30:null;
+  const cutoff=days===null?0:Date.now()-days*86400000;
+  let volume=0,realized=0,fees=0,volumeKnown=true,pnlKnown=true,feeKnown=true,idsKnown=true;
+  const ids=new Set<string>();
+  const loaded: Array<{time:number;px:number;sz:number;coin:string}>=[];
+  for(const r of trades){
+   const time=num(r.time),px=num(r.price),qty=num(r.qty);
+   if(time===null||time<=0||time<cutoff||r.symbol!==tradesSymbol)continue;
+   if(px===null||px<=0||qty===null||qty<=0)volumeKnown=false;
+   else{volume+=px*qty;loaded.push({time,px,sz:qty,coin:tradesSymbol});}
+   const pnl=num(r.realizedPnl);if(pnl===null)pnlKnown=false;else realized+=pnl;
+   const fee=num(r.commission);
+   if(fee===null||String(r.commissionAsset??"").toUpperCase()!=="USDT")feeKnown=false;
+   else fees+=fee;
+   if(r.orderId===undefined||r.orderId===null)idsKnown=false;
+   else ids.add(String(r.orderId));
+  }
+  const count=trades.filter(r=>r.symbol===tradesSymbol&&
+   (num(r.time)??0)>=cutoff).length;
+  return {
+   volume:volumeKnown?volume:null,
+   pnl:pnlKnown?realized:null,
+   fees:feeKnown?fees:null,
+   orders:idsKnown?ids.size:null,
+   count,loaded
+  };
+ },[trades,tradesSymbol,current?.symbol,kind,performancePeriod]);
+ const showPerpPerformance=kind==="perp"&&performanceMarket!=="spot";
+ const performanceLoaded=showPerpPerformance?asterAnalytics:null;
  const accountPanel=<HideDexUnifiedAccountPanel
   tabs={<TradingAccountTabBar activeTab={tab} onSelect={setTab}
    positionsCount={kind==="spot"?0:positionRows?.length} ordersCount={activeOrders?.length}/>}
@@ -641,7 +769,44 @@ export default function AsterVenueAdapter(p:{
        {label:"Spot USDT",color:"#717b8b",amount:hideBalance?"••••":totalSpotUsdt!==null?fmt(totalSpotUsdt):"—",
         percentage:combinedUsdt!==null&&combinedUsdt>0?100*(totalSpotUsdt??0)/combinedUsdt:null}
       ]}/>
-    {accountPanel}
+    <HideDexFundsPerformance
+      period={performancePeriod} onPeriod={setPerformancePeriod}
+      market={performanceMarket} onMarket={setPerformanceMarket}
+      summary={<AnalyticsPanel
+       period={performancePeriod} market={performanceMarket}
+       walletConnected={Boolean(walletAddress)} walletAddress={walletAddress}
+       fills={[]} loading={Boolean(identity?.mode)&&trades===null&&!tradesError}
+       failed={Boolean(tradesError)} sensitiveHidden={hideBalance}
+       venueStats={{
+        pnl:performanceLoaded?.pnl??null,
+        volume:performanceLoaded?.volume??null,
+        fees:performanceLoaded?.fees??null,
+        orders:performanceLoaded?.orders??null,
+        pnlLabel:"Realized PnL (loaded perp)",
+        volumeLabel:"Volume (selected perp)",
+        feesLabel:"Fees (USDT · loaded)",
+        ordersLabel:"Executed orders (loaded)"
+       }}
+      />}
+      chart={<HideDexPerformanceAreaChart
+       period={performancePeriod} data={[]} label="Equity"
+       hidden={hideBalance}
+       emptyMessage="Aster historical equity series is not verified; no estimated chart is shown."
+      />}
+    />
+    <DailyFillVolumeBars
+     fills={performanceLoaded?.loaded??[]}
+     period={performancePeriod}
+     walletConnected={Boolean(walletAddress)}
+     sensitiveHidden={hideBalance}
+     sourceLabel={kind==="perp"&&current?"Aster "+current.base+" Perp loaded fills":"Aster fills"}
+     unavailableMessage={
+       performanceMarket==="spot"||kind==="spot"?
+       "Aster Spot account-wide trading history has not been verified.":
+       !identity?.mode?"Verify Aster trading authorization to load fills.":
+       tradesError||(!asterAnalytics?"Loading Aster signed fills for the selected market…":undefined)
+     }
+    />
    </div>}
   {fundingModal&&<HideDexFundsDialogShell deposit={fundingModal==="deposit"} busy={busy}
    onClose={()=>{setFundingModal(null);setFundingAmount("");}} subtitle="Aster mainnet USDT — never sends funds to Hyperliquid or Lighter">

@@ -400,9 +400,18 @@ export function getOfficialTokenLogoCandidates(
    * TASK 7 — Exact native sourceCoin must be first
    * (e.g. sourceCoin = kSHIB -> kSHIB.svg then kSHIB.png)
    */
+  // Venue-qualified quote pairs like Aster BTCUSDT and ETHUSDT are NOT
+  // Hyperliquid token identity keys. Skip futile BTCUSDT.svg lookups, then
+  // use the existing verified BASE identity logo and its normal fallbacks.
+  const quotedMarketPair = Boolean(
+    base &&
+    (exactSourceCoin.toUpperCase() === base + "USDT" ||
+     exactSourceCoin.toUpperCase() === base + "USDC")
+  );
   if (
     exactSourceCoin &&
-    !exactSourceCoin.startsWith("@")
+    !exactSourceCoin.startsWith("@") &&
+    !quotedMarketPair
   ) {
     pushUrl(
       `https://app.hyperliquid.xyz/coins/${exactSourceCoin}.svg`,
