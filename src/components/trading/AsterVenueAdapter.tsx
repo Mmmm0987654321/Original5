@@ -114,6 +114,7 @@ export default function AsterVenueAdapter({
  const [futuresBalances,setFuturesBalances]=useState<AsterAccountBalance[]|null>(null);
  const [balanceError,setBalanceError]=useState("");
  const [balanceLoading,setBalanceLoading]=useState(false);
+ const [balanceAttempted,setBalanceAttempted]=useState(false);
  const [leverageLimits,setLeverageLimits]=useState<Record<string,AsterVerifiedLeverage>>({});
  const [leverageStatus,setLeverageStatus]=useState("");
  // Agent is owner-scoped; navigating or disconnecting never reuses another wallet's key.
@@ -121,6 +122,7 @@ export default function AsterVenueAdapter({
   let alive=true;
   clearAsterSession();
   setAgentIdentity(null);setFuturesBalances(null);setBalanceError("");
+  setBalanceAttempted(false);
   setLeverageLimits({});setLeverageStatus("");
   setAuthStatus("");setAuthSheetOpen(false);
   if(!walletAddress){setAgentRestoring(false);return ()=>{alive=false;};}
@@ -146,7 +148,7 @@ export default function AsterVenueAdapter({
  };
  // Read only authenticated exchange funds; unknown/error is never equivalent to zero.
  useEffect(()=>{
-  setFuturesBalances(null);setBalanceError("");
+  setFuturesBalances(null);setBalanceError("");setBalanceAttempted(false);
   if(!walletAddress||!agentIdentity||
      (section!=="trade"&&section!=="funds"&&section!=="orders"&&section!=="markets"))return;
   const controller=new AbortController();let running=false;let invalidSignature=false;
@@ -166,7 +168,13 @@ export default function AsterVenueAdapter({
       invalidSignature=true;
      setBalanceError(message);
     }
-   }finally{running=false;if(!controller.signal.aborted)setBalanceLoading(false);}
+   }finally{
+    running=false;
+    if(!controller.signal.aborted){
+      setBalanceLoading(false);
+      setBalanceAttempted(true);
+    }
+   }
   };
   void refresh();
   const interval=window.setInterval(()=>void refresh(),45_000);
@@ -368,7 +376,7 @@ export default function AsterVenueAdapter({
     <HideDexBalancesView items={verifiedBalances}
       unavailableMessage={agentRestoring?"Restoring encrypted Aster agent…":
        !agentIdentity?"Enable Aster trading to verify account balances.":
-       balanceLoading?"Loading verified Aster Futures balances…":
+       balanceLoading||!balanceAttempted?"Verifying Aster Futures balances…":
        balanceError||"Signed Aster account data unavailable"}/>
   </div>:
   <p className="py-7 text-center text-xs text-brand-muted" role="status">
@@ -459,6 +467,8 @@ export default function AsterVenueAdapter({
       totalValue={hideBalances?"••••":usdtTotal===null?"—":
         usdtTotal.toLocaleString("en-US",{maximumFractionDigits:6})+" USDT"}
       approximateValue={hideBalances?"≈ ••••":usdtTotal===null?
+        !agentIdentity?"Aster account authorization required":
+        !balanceAttempted||balanceLoading?"Verifying Aster Futures collateral…":
         "Aster Futures collateral unavailable":"Aster verified Perps USDT only · Spot not included"}
       accountLabel="Aster Account" accountModeLabel="Aster V3"
       walletAddress={walletAddress}
@@ -470,8 +480,9 @@ export default function AsterVenueAdapter({
         try{await navigator.clipboard.writeText(walletAddress);setCopiedAddress(true);}
         catch{setCopiedAddress(false);}
       }}
-      accountError={!agentIdentity?"Aster trading authorization required for account balances":
-        balanceError||(!futuresBalances?"Signed Aster balance data unavailable":undefined)}
+      accountError={!agentIdentity&&!agentRestoring?
+        "Aster trading authorization required for account balances":
+        balanceError||undefined}
       depositLabel="Deposit" depositSubtitle="Not connected to Aster funding API"
       withdrawLabel="Withdrawal" withdrawSubtitle="Not connected to Aster funding API"
       onDeposit={()=>{}} onWithdraw={()=>{}}

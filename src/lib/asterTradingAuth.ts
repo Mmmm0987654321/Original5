@@ -22,16 +22,18 @@ function nonce():string{
  lastNonce=n;
  return String(n);
 }
-/** Build the authenticated V3 Futures query exactly as Aster's official
- * demo/aster-code.py: business fields, asterChain=Mainnet, user, signer, nonce.
- * Sign the UNCHANGED encoded query using the agent's EIP-712 domain 1666,
- * and only append signature after signing. This never places an order.
+/** Build an API-WALLET authenticated Futures V3 read. Aster separates
+ * signer-authenticated USER_DATA/TRADE requests from the user's master-wallet
+ * management signatures. For these read-only calls identify the API wallet
+ * with "signer" alone: including "user" selects the main-wallet identity,
+ * whose private key MUST NEVER be used for unattended reads.
+ * The EIP-712 message exactly matches the query minus "signature".
  */
 async function signAsterFuturesRead(
  signed:SavedAsterAgent,fields:Record<string,string>={}
 ):Promise<URLSearchParams>{
  const query=new URLSearchParams({
-  ...fields,asterChain:"Mainnet",user:signed.user,signer:signed.agent,nonce:nonce(),
+  ...fields,asterChain:"Mainnet",signer:signed.agent,nonce:nonce(),
  });
  const wallet=new Wallet(signed.privateKey);
  if(getAddress(wallet.address)!==getAddress(signed.agent))
