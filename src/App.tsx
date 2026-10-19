@@ -28,7 +28,6 @@ import TVChart from "./components/trading/TVChart";
 import OrderBook from "./components/trading/OrderBook";
 import RedesignedTerminal from "./components/trading/RedesignedTerminal";
 import LighterMarketPreview from "./components/trading/LighterMarketPreview";
-import AsterVenueAdapter from "./components/trading/AsterVenueAdapter";
 import RecentTrades from "./components/trading/RecentTrades";
 import PositionTable from "./components/trading/PositionTable";
 import PortfolioPanel from "./components/dashboard/PortfolioPanel";
@@ -77,7 +76,6 @@ import { useHyperliquidSpotStateStream } from "./hooks/useHyperliquidSpotStateSt
 import {
   arbitrum,
   mainnet,
-  bsc,
 } from "@reown/appkit/networks";
 import {
   useAppKit,
@@ -293,13 +291,6 @@ export default function App() {
 
   // Unified Active Ethereum Wallet Hook
   const activeWallet = useActiveEthereumWallet();
-  // WalletConnect/Reown can replace its provider during an awaited chain
-  // switch. Async Aster registration must read the CURRENT provider, not the
-  // closure captured when the user first tapped Enable Trading.
-  const latestActiveWalletRef = useRef(activeWallet);
-  latestActiveWalletRef.current = activeWallet;
-  const latestReownChainIdRef = useRef<unknown>(appKitChainId);
-  latestReownChainIdRef.current = appKitChainId;
 
   const [walletConnectPending, setWalletConnectPending] = useState(false);
   const connectInFlightRef = useRef(false);
@@ -457,11 +448,8 @@ export default function App() {
   // One verified, in-memory session per connected wallet. Never trust
   // localStorage, query strings or a public status GET to unlock the app.
   const [requestedTab, setActiveTab] = useState<ActiveTab>(ActiveTab.Landing);
-  const [selectedExchange, setSelectedExchange] = useState<"hyperliquid" | "lighter" | "aster">(() => {
-    try {
-      const saved=sessionStorage.getItem("hidedex_exchange");
-      return saved==="lighter"||saved==="aster"?saved:"hyperliquid";
-    }
+  const [selectedExchange, setSelectedExchange] = useState<"hyperliquid" | "lighter">(() => {
+    try { return sessionStorage.getItem("hidedex_exchange") === "lighter" ? "lighter" : "hyperliquid"; }
     catch { return "hyperliquid"; }
   });
   useEffect(() => {
@@ -492,8 +480,7 @@ export default function App() {
       return;
     }
     setRestoreGraceElapsed(false);
-    // Absolute five-second cap: an indefinitely connecting WalletConnect
-    // session or stalled Early Access lookup must never blank the website.
+    // Prevent an indefinitely stalled restored wallet from blanking the landing page.
     const timer = window.setTimeout(() => setRestoreGraceElapsed(true), 5000);
     return () => window.clearTimeout(timer);
   }, [lastTradingWallet, refreshTradingWallet]);
@@ -850,28 +837,8 @@ export default function App() {
   }, []);
 
   const getTradingSetupProvider = useCallback(async (): Promise<Eip1193Provider> => {
-    return latestActiveWalletRef.current.getProvider();
-  }, []);
-
-  // Secondary chain signal from the active Reown EVM session. Unlike an old
-  // walletProvider closure, this value reflects post-switch hook updates.
-  // Never use it alone to approve an agent: the wallet must separately sign
-  // the exact Aster chain-56 EIP-712 payload and match the owner address.
-  const getAsterReownChainId = useCallback((): number | null => {
-    const raw = latestReownChainIdRef.current;
-    const value = typeof raw === "string"
-      ? raw.trim().replace(/^eip155:/i, "") : raw;
-    const parsed = typeof value === "number" || typeof value === "string"
-      ? Number(value) : NaN;
-    return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : null;
-  }, []);
-
-  // Only called by Aster's explicit Enable Trading action. Uses the same
-  // Reown network switcher already used by Hyperliquid, not a separate modal.
-  // Does not alter the default chain or automatic Hyperliquid alignment.
-  const requestAsterBscNetwork = useCallback(async (): Promise<void> => {
-    await switchNetwork(bsc);
-  }, [switchNetwork]);
+    return activeWallet.getProvider();
+  }, [activeWallet]);
 
   const HL_SIGNING_CHAIN_ALIGN_TIMEOUT_MS = 6_000;
   const HL_SIGNING_CHAIN_SETTLE_MS = 750;
@@ -1194,39 +1161,6 @@ export default function App() {
   const onLighterCatalog=useCallback((rows:TokenMetadata[])=>{
     setLighterSidebarTokens(prev=>{
       if(prev.length===rows.length&&prev.every((x,i)=>x.symbol===rows[i].symbol&&x.price===rows[i].price))return prev;
-      return rows;
-    });
-  },[]);
-
-  // Aster's market and favorites are independent of both existing exchanges.
-  // Only public market data is loaded until Aster Agent/Builder authorization
-  // is verified; the current UI must never show an HL/Lighter wallet balance.
-  const asterFavoritesKey="favorites:aster:"+favoritesOwner;
-  const [asterWatchlist,setAsterWatchlist]=useState<string[]>(()=>
-    readLighterFavorites(asterFavoritesKey));
-  const [asterSidebarTokens,setAsterSidebarTokens]=useState<TokenMetadata[]>([]);
-  const [asterMarketRequest,setAsterMarketRequest]=useState<{symbol:string;nonce:number}|null>(null);
-  const asterOwnerRef=useRef(asterFavoritesKey);
-  const skipAsterPersist=useRef(false);
-  useEffect(()=>{
-    if(asterOwnerRef.current===asterFavoritesKey)return;
-    asterOwnerRef.current=asterFavoritesKey;
-    skipAsterPersist.current=true;
-    setAsterWatchlist(readLighterFavorites(asterFavoritesKey));
-  },[asterFavoritesKey]);
-  useEffect(()=>{
-    if(asterOwnerRef.current!==asterFavoritesKey)return;
-    if(skipAsterPersist.current){skipAsterPersist.current=false;return;}
-    try{localStorage.setItem(asterFavoritesKey,JSON.stringify(asterWatchlist));}catch{}
-  },[asterFavoritesKey,asterWatchlist]);
-  const toggleAsterFavorite=useCallback((symbol:string)=>{
-    const id=String(symbol||"").toUpperCase();if(!id)return;
-    setAsterWatchlist(prev=>prev.includes(id)?prev.filter(x=>x!==id):[...prev,id]);
-  },[]);
-  const onAsterCatalog=useCallback((rows:TokenMetadata[])=>{
-    setAsterSidebarTokens(prev=>{
-      if(prev.length===rows.length&&prev.every((t,i)=>
-        t.symbol===rows[i].symbol&&t.price===rows[i].price))return prev;
       return rows;
     });
   },[]);
@@ -3938,19 +3872,14 @@ export default function App() {
             onDisconnectWallet={handleDisconnectWallet}
             isMobileOpen={mobileSidebarOpen}
             onCloseMobile={() => setMobileSidebarOpen(false)}
-            watchlist={selectedExchange === "lighter" ? lighterWatchlist :
-              selectedExchange === "aster" ? asterWatchlist : watchlist}
-            onToggleWatchlist={selectedExchange === "lighter" ? toggleLighterFavorite :
-              selectedExchange === "aster" ? toggleAsterFavorite : handleToggleWatchlist}
+            watchlist={selectedExchange === "lighter" ? lighterWatchlist : watchlist}
+            onToggleWatchlist={selectedExchange === "lighter" ? toggleLighterFavorite : handleToggleWatchlist}
             onSelectToken={(symbol) => {
               if(selectedExchange==="hyperliquid")setSelectedSymbol(symbol);
-              else if(selectedExchange==="lighter"&&lighterSidebarTokens.some(t=>t.symbol===symbol))
+              else if(lighterSidebarTokens.some(t=>t.symbol===symbol))
                 setLighterMarketRequest(prev=>({symbol,nonce:(prev?.nonce??0)+1}));
-              else if(selectedExchange==="aster"&&asterSidebarTokens.some(t=>t.symbol===symbol))
-                setAsterMarketRequest(prev=>({symbol,nonce:(prev?.nonce??0)+1}));
             }}
-            tokens={selectedExchange === "lighter" ? lighterSidebarTokens :
-              selectedExchange === "aster" ? asterSidebarTokens : tokens}
+            tokens={selectedExchange === "lighter" ? lighterSidebarTokens : tokens}
           />
         )}
 
@@ -3960,14 +3889,9 @@ export default function App() {
           
           {/* LANDING / HOME DASHBOARD PAGE */}
           {activeTab === ActiveTab.Landing && resumingTradingSession && (
-            <div className="min-h-[85dvh] w-full bg-brand-bg text-brand-text flex items-center justify-center p-6" role="status" aria-live="polite" aria-label="Checking saved wallet session">
-              <div className="w-full max-w-xs text-center space-y-5">
-                <div className="font-display text-2xl font-black tracking-[0.16em]">HIDEDEX</div>
-                <p className="text-sm text-brand-sub">Restoring your trading session…</p>
-                <div className="h-[3px] w-full rounded-full bg-brand-border/60 overflow-hidden">
-                  <div className="h-full w-1/3 rounded-full bg-brand-primary animate-pulse" />
-                </div>
-                <p className="text-xs text-brand-muted">The homepage will open automatically if your wallet takes longer than 5 seconds.</p>
+            <div className="min-h-[85dvh] w-full bg-brand-bg" role="status" aria-label="Checking saved wallet session">
+              <div className="h-[2px] w-full bg-brand-border/30 overflow-hidden">
+                <div className="h-full w-1/3 bg-brand-primary animate-pulse" />
               </div>
             </div>
           )}
@@ -4288,44 +4212,6 @@ export default function App() {
             />
           )}
 
-          {/* ASTER: existing shared HideDex chart, order book, order form and
-              market selector, supplied with ASTER-only read-only V3 data.
-              No signed Aster orders, deposits or account data are implied. */}
-          {selectedExchange === "aster" && (
-            activeTab === ActiveTab.Markets || activeTab === ActiveTab.Dashboard ||
-            activeTab === ActiveTab.Spot || activeTab === ActiveTab.Perp ||
-            activeTab === ActiveTab.Portfolio ||
-            activeTab === ActiveTab.Orders || activeTab === ActiveTab.TradeHistory
-          ) && (
-            <AsterVenueAdapter
-              walletAddress={walletConnected?walletAddress:""}
-              getWalletProvider={getTradingSetupProvider}
-              onSwitchToBsc={requestAsterBscNetwork}
-              getReownChainId={getAsterReownChainId}
-              onConnectWallet={()=>setShowWalletModal(true)}
-              section={
-                activeTab===ActiveTab.Dashboard?"dashboard":
-                activeTab===ActiveTab.Markets?"markets":
-                activeTab===ActiveTab.Portfolio?"funds":
-                activeTab===ActiveTab.Profile?"account":
-                activeTab===ActiveTab.Orders||activeTab===ActiveTab.TradeHistory?"orders":"trade"
-              }
-              initialKind={activeTab===ActiveTab.Spot?"spot":"perp"}
-              onMarketCatalog={onAsterCatalog}
-              watchlist={asterWatchlist}
-              onToggleFavorite={toggleAsterFavorite}
-              sidebarMarketRequest={asterMarketRequest}
-              initialOrdersTab={activeTab===ActiveTab.TradeHistory?"TRADE_HISTORY":"OPEN_ORDERS"}
-              onSelectSection={(section,kind)=>setActiveTab(
-                section==="dashboard"?ActiveTab.Dashboard:
-                section==="markets"?ActiveTab.Markets:
-                section==="funds"?ActiveTab.Portfolio:
-                section==="account"?ActiveTab.Profile:
-                kind==="spot"?ActiveTab.Spot:ActiveTab.Perp
-              )}
-            />
-          )}
-
           {/* PORTFOLIO BALANCE SCREEN */}
           {selectedExchange === "hyperliquid" && activeTab === ActiveTab.Portfolio && (
             walletConnected ? (
@@ -4377,7 +4263,7 @@ export default function App() {
           )}
 
           {/* ACCOUNT & SETTINGS PAGE */}
-          {(selectedExchange === "hyperliquid" || selectedExchange === "lighter" || selectedExchange === "aster") && activeTab === ActiveTab.Profile && (
+          {(selectedExchange === "hyperliquid" || selectedExchange === "lighter") && activeTab === ActiveTab.Profile && (
             <AccountSettingsPanel
               walletConnected={walletConnected}
               onDisconnectWallet={handleDisconnectWallet}

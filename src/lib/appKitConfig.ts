@@ -1,6 +1,6 @@
 import { createAppKit } from "@reown/appkit/react";
 import { EthersAdapter } from "@reown/appkit-adapter-ethers";
-import { arbitrum, mainnet, bsc } from "@reown/appkit/networks";
+import { arbitrum, mainnet } from "@reown/appkit/networks";
 
 const rawProjectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID;
 // Public Reown project ID already documented in this repository's .env.example.
@@ -15,8 +15,7 @@ if (!projectId) {
   throw new Error("VITE_WALLETCONNECT_PROJECT_ID is not configured");
 }
 
-// Keep existing default Arbitrum; BSC is selectable only for user-approved Aster signing.
-export const networks = [arbitrum, mainnet, bsc];
+export const networks = [arbitrum, mainnet];
 
 export const appKit = createAppKit({
   adapters: [new EthersAdapter()],

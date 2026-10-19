@@ -28,9 +28,6 @@ export interface HideDexFundsOverviewProps {
  withdrawSubtitle: string;
  onDeposit: () => void;
  onWithdraw: () => void;
- /** Disabled until a venue actually implements verified funding. */
- depositDisabled?: boolean;
- withdrawDisabled?: boolean;
  onTransfer?: () => void;
  transferLabel?: string;
  cards: readonly HideDexBalanceCard[];
@@ -98,9 +95,7 @@ export default function HideDexFundsOverview(props: HideDexFundsOverviewProps) {
    </div>
    <div className="grid grid-cols-2 max-[359px]:grid-cols-1 gap-2 sm:gap-3" id="funds-action-buttons-row">
      <button type="button" onClick={props.onDeposit}
-       disabled={props.depositDisabled}
-       title={props.depositDisabled?"Deposit authorization is not yet available for this exchange":undefined}
-       className="disabled:opacity-40 disabled:cursor-not-allowed p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl bg-accent text-brand-bg font-extrabold flex items-center justify-between transition-all hover:opacity-95 active:scale-[0.99] shadow-md cursor-pointer text-left group min-w-0"
+       className="p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl bg-accent text-brand-bg font-extrabold flex items-center justify-between transition-all hover:opacity-95 active:scale-[0.99] shadow-md cursor-pointer text-left group min-w-0"
        id="deposit-modal-trigger-btn">
        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
          <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-brand-bg/15 border border-brand-bg/25 flex items-center justify-center shrink-0">
@@ -114,9 +109,7 @@ export default function HideDexFundsOverview(props: HideDexFundsOverviewProps) {
        <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 opacity-75 shrink-0 transition-transform group-hover:translate-x-0.5 ml-1"/>
      </button>
      <button type="button" onClick={props.onWithdraw}
-       disabled={props.withdrawDisabled}
-       title={props.withdrawDisabled?"Withdrawal authorization is not yet available for this exchange":undefined}
-       className="disabled:opacity-40 disabled:cursor-not-allowed p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl bg-brand-surface border border-brand-border hover:bg-brand-overlay-normal text-brand-text font-extrabold flex items-center justify-between transition-all active:scale-[0.99] shadow-sm cursor-pointer text-left group min-w-0"
+       className="p-2.5 sm:p-3.5 rounded-xl sm:rounded-2xl bg-brand-surface border border-brand-border hover:bg-brand-overlay-normal text-brand-text font-extrabold flex items-center justify-between transition-all active:scale-[0.99] shadow-sm cursor-pointer text-left group min-w-0"
        id="withdraw-modal-trigger-btn">
        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
          <div className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-accent/10 border border-accent/25 flex items-center justify-center text-accent shrink-0">
