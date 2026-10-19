@@ -28,6 +28,7 @@ import TVChart from "./components/trading/TVChart";
 import OrderBook from "./components/trading/OrderBook";
 import RedesignedTerminal from "./components/trading/RedesignedTerminal";
 import LighterMarketPreview from "./components/trading/LighterMarketPreview";
+import AsterVenueAdapter from "./components/trading/AsterVenueAdapter";
 import RecentTrades from "./components/trading/RecentTrades";
 import PositionTable from "./components/trading/PositionTable";
 import PortfolioPanel from "./components/dashboard/PortfolioPanel";
@@ -448,8 +449,8 @@ export default function App() {
   // One verified, in-memory session per connected wallet. Never trust
   // localStorage, query strings or a public status GET to unlock the app.
   const [requestedTab, setActiveTab] = useState<ActiveTab>(ActiveTab.Landing);
-  const [selectedExchange, setSelectedExchange] = useState<"hyperliquid" | "lighter">(() => {
-    try { return sessionStorage.getItem("hidedex_exchange") === "lighter" ? "lighter" : "hyperliquid"; }
+  const [selectedExchange, setSelectedExchange] = useState<"hyperliquid" | "lighter" | "aster">(() => {
+    try { const s=sessionStorage.getItem("hidedex_exchange"); return s==="lighter"||s==="aster"?s:"hyperliquid"; }
     catch { return "hyperliquid"; }
   });
   useEffect(() => {
@@ -3872,14 +3873,14 @@ export default function App() {
             onDisconnectWallet={handleDisconnectWallet}
             isMobileOpen={mobileSidebarOpen}
             onCloseMobile={() => setMobileSidebarOpen(false)}
-            watchlist={selectedExchange === "lighter" ? lighterWatchlist : watchlist}
-            onToggleWatchlist={selectedExchange === "lighter" ? toggleLighterFavorite : handleToggleWatchlist}
+            watchlist={selectedExchange === "lighter" ? lighterWatchlist : selectedExchange === "aster" ? [] : watchlist}
+            onToggleWatchlist={selectedExchange === "lighter" ? toggleLighterFavorite : selectedExchange === "aster" ? ()=>{} : handleToggleWatchlist}
             onSelectToken={(symbol) => {
               if(selectedExchange==="hyperliquid")setSelectedSymbol(symbol);
-              else if(lighterSidebarTokens.some(t=>t.symbol===symbol))
+              else if(selectedExchange==="lighter"&&lighterSidebarTokens.some(t=>t.symbol===symbol))
                 setLighterMarketRequest(prev=>({symbol,nonce:(prev?.nonce??0)+1}));
             }}
-            tokens={selectedExchange === "lighter" ? lighterSidebarTokens : tokens}
+            tokens={selectedExchange === "lighter" ? lighterSidebarTokens : selectedExchange === "aster" ? [] : tokens}
           />
         )}
 
@@ -4211,6 +4212,29 @@ export default function App() {
               )}
             />
           )}
+
+          {selectedExchange==="aster" && (
+            activeTab===ActiveTab.Markets||activeTab===ActiveTab.Dashboard||
+            activeTab===ActiveTab.Spot||activeTab===ActiveTab.Perp||
+            activeTab===ActiveTab.Portfolio||activeTab===ActiveTab.Orders||
+            activeTab===ActiveTab.TradeHistory
+          ) && <AsterVenueAdapter
+            walletAddress={walletConnected?walletAddress:""}
+            getWalletProvider={async()=>await getTradingSetupProvider()}
+            onConnectWallet={()=>setShowWalletModal(true)}
+            initialKind={activeTab===ActiveTab.Spot?"spot":"perp"}
+            section={activeTab===ActiveTab.Dashboard?"dashboard":
+              activeTab===ActiveTab.Markets?"markets":
+              activeTab===ActiveTab.Portfolio?"funds":
+              activeTab===ActiveTab.Orders||activeTab===ActiveTab.TradeHistory?"orders":"trade"}
+            initialOrdersTab={activeTab===ActiveTab.TradeHistory?"TRADE_HISTORY":"OPEN_ORDERS"}
+            onSelectSection={(section,mode)=>setActiveTab(
+              section==="markets"?ActiveTab.Markets:
+              section==="funds"?ActiveTab.Portfolio:
+              section==="dashboard"?ActiveTab.Dashboard:
+              section==="orders"?ActiveTab.Orders:
+              mode==="spot"?ActiveTab.Spot:ActiveTab.Perp)}
+          />}
 
           {/* PORTFOLIO BALANCE SCREEN */}
           {selectedExchange === "hyperliquid" && activeTab === ActiveTab.Portfolio && (

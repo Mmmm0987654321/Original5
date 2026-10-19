@@ -44,8 +44,8 @@ import { DRAWING_SEARCH_ITEMS } from "../trading/KLineChartPane";
 interface NavbarProps {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
-  selectedExchange?: "hyperliquid" | "lighter";
-  onSelectExchange?: (venue: "hyperliquid" | "lighter") => void;
+  selectedExchange?: "hyperliquid" | "lighter" | "aster";
+  onSelectExchange?: (venue: "hyperliquid" | "lighter" | "aster") => void;
   walletConnected: boolean;
   walletAddress: string;
   walletType: "MetaMask" | "Rabby" | "Coinbase" | "WalletConnect" | "Injected" | "ReadOnly" | "Phantom" | null;
@@ -424,13 +424,13 @@ export default function Navbar({
         {onSelectExchange && activeTab !== ActiveTab.Landing && (
           <div ref={exchangeMenuRef} className="relative shrink-0 z-[75]" data-exchange-menu>
             <button type="button"
-              aria-label={`Exchange: ${selectedExchange === "lighter" ? "Lighter" : "Hyperliquid"}. Change exchange`}
-              title={selectedExchange === "lighter" ? "Lighter" : "Hyperliquid"}
+              aria-label={`Exchange: ${selectedExchange === "lighter" ? "Lighter" : selectedExchange === "aster" ? "Aster" : "Hyperliquid"}. Change exchange`}
+              title={selectedExchange === "lighter" ? "Lighter" : selectedExchange === "aster" ? "Aster" : "Hyperliquid"}
               aria-haspopup="menu" aria-expanded={exchangeMenuOpen}
               onClick={() => setExchangeMenuOpen(open => !open)}
               className={`h-8 sm:h-10 inline-flex items-center justify-center gap-0.5 sm:gap-1 rounded-lg border px-1.5 sm:px-2 text-brand-text transition-colors hover:bg-brand-overlay-normal ${exchangeMenuOpen ? "border-accent bg-brand-overlay-normal" : "border-brand-border bg-brand-surface"}`}>
-              <span aria-hidden="true" className={`w-2 h-2 rounded-full ${selectedExchange === "lighter" ? "bg-sky-400" : "bg-emerald-400"}`}/>
-              <span className="hidden min-[430px]:inline text-[10px] sm:text-xs font-semibold">{selectedExchange === "lighter" ? "Lighter" : "Hyperliquid"}</span>
+              <img src={`https://www.google.com/s2/favicons?domain=${selectedExchange==="lighter"?"lighter.exchange":selectedExchange==="aster"?"asterdex.com":"hyperliquid.xyz"}&sz=64`} alt="" aria-hidden="true" width={22} height={22} className="w-[22px] h-[22px] rounded object-contain shrink-0"/>
+              <span className="hidden min-[430px]:inline text-[10px] sm:text-xs font-semibold">{selectedExchange === "lighter" ? "Lighter" : selectedExchange === "aster" ? "Aster" : "Hyperliquid"}</span>
               <ChevronDown className={`w-3.5 h-3.5 shrink-0 transition-transform ${exchangeMenuOpen ? "rotate-180" : ""}`} />
             </button>
             {exchangeMenuOpen && typeof document !== "undefined" && createPortal(
@@ -443,6 +443,7 @@ export default function Navbar({
                   {([
                     { id: "hyperliquid", label: "Hyperliquid", domain: "hyperliquid.xyz" },
                     { id: "lighter", label: "Lighter", domain: "lighter.exchange" },
+                    { id: "aster", label: "Aster", domain: "asterdex.com" },
                   ] as const).map(venue=>(
                     <button type="button" role="menuitemradio" key={venue.id}
                       aria-checked={selectedExchange===venue.id}
@@ -486,11 +487,11 @@ export default function Navbar({
                       <div className="absolute right-0 mt-2 w-48 sm:w-56 rounded-xl sm:rounded-2xl bg-brand-bg p-1.5 sm:p-2 shadow-2xl border border-brand-border z-50 animate-in fade-in slide-in-from-top-3 duration-100">
                         <div className="px-2.5 py-1.5 sm:px-3 sm:py-2 border-b border-brand-border select-none">
                           <p className="text-[8px] sm:text-[9px] text-gray-400 font-bold tracking-wider uppercase">
-                            {selectedExchange === "lighter" ? "Lighter Account" : "Ledger Balance"}
+                            {selectedExchange === "lighter" ? "Lighter Account" : selectedExchange === "aster" ? "Aster Account" : "Ledger Balance"}
                           </p>
                           <p className="text-xs sm:text-sm font-bold text-brand-text mt-0.5">
-                            {selectedExchange === "lighter"
-                              ? "— USDC"
+                            {selectedExchange !== "hyperliquid"
+                              ? "—"
                               : <TrustShieldValue fieldKey="portfolio"
                                   value={`${balanceUSDC.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USDC`}
                                 />}
@@ -663,7 +664,7 @@ export default function Navbar({
                   </span>
                 </div>
                 <p className="text-xl font-bold text-brand-text mb-3">
-                  {selectedExchange === "lighter" ? (
+                  {selectedExchange !== "hyperliquid" ? (
                     <span className="text-sm font-semibold text-brand-muted">Lighter balance: see Funds</span>
                   ) : (
                     <TrustShieldValue fieldKey="portfolio" value={`${balanceUSDC.toLocaleString()} USDC`} />

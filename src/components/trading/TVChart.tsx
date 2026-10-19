@@ -1,4 +1,6 @@
 import { getLighterCandles } from "../../lib/lighterMarketData";
+import { getAsterCandles } from "../../lib/asterMarketData";
+import { getAsterSpotCandles } from "../../lib/asterSpotData";
 /**
  * @license
  * SPDX-License-Identifier: Apache-2.0
@@ -96,6 +98,8 @@ interface TVChartProps {
   tradeHistory?: TradeHistoryItem[];
   toolbarHostId?: string;
   lighterMarketId?: number;
+  asterMarketSymbol?: string;
+  asterMarketKind?: "perp"|"spot";
 }
 
 interface Candle {
@@ -126,6 +130,8 @@ function TVChartComponent({
   tradeHistory = [],
   toolbarHostId,
   lighterMarketId,
+  asterMarketSymbol,
+  asterMarketKind="perp",
 }: TVChartProps) {
   const [toolbarHost, setToolbarHost] = useState<HTMLElement | null>(null);
 
@@ -318,7 +324,7 @@ function TVChartComponent({
 
   const liveCandle =
     useLiveCandle(
-      lighterMarketId !== undefined ? "" : marketCoin,
+      lighterMarketId !== undefined || asterMarketSymbol ? "" : marketCoin,
       hlInterval
     );
 
@@ -333,8 +339,8 @@ function TVChartComponent({
     useQuery({
       queryKey: [
         "candles",
-        lighterMarketId !== undefined ? "lighter" : "hyperliquid",
-        lighterMarketId ?? marketCoin,
+        asterMarketSymbol ? "aster-"+asterMarketKind : lighterMarketId !== undefined ? "lighter" : "hyperliquid",
+        asterMarketSymbol ?? lighterMarketId ?? marketCoin,
         hlInterval,
         initialHistoryBars,
         historyLookbackMs,
@@ -349,16 +355,22 @@ function TVChartComponent({
             endTime -
             historyLookbackMs;
 
+          if (asterMarketSymbol) {
+            return (asterMarketKind==="spot"?getAsterSpotCandles(asterMarketSymbol,hlInterval,Math.min(500,initialHistoryBars)):getAsterCandles(asterMarketSymbol,hlInterval,Math.min(500,initialHistoryBars)))
+              .then(candles => ({ candles: candles.map(c => ({
+                t:c.time,o:c.open,h:c.high,l:c.low,c:c.close,v:c.volume
+              })) }));
+          }
           return lighterMarketId !== undefined
             ? getLighterCandles(lighterMarketId, hlInterval, Math.max(startTime, endTime - 500 * intervalMsValue), endTime)
             : fetchCandles(marketCoin, hlInterval, initialHistoryBars, startTime, endTime);
         },
 
       enabled:
-        lighterMarketId !== undefined || !!marketCoin,
+        !!asterMarketSymbol || lighterMarketId !== undefined || !!marketCoin,
 
       refetchInterval:
-        lighterMarketId !== undefined ? 15_000 : false,
+        asterMarketSymbol || lighterMarketId !== undefined ? 15_000 : false,
 
       refetchIntervalInBackground:
         false,
@@ -506,7 +518,7 @@ function TVChartComponent({
           number
       ) => {
         if (
-          (lighterMarketId === undefined && !marketCoin) ||
+          (!asterMarketSymbol && lighterMarketId === undefined && !marketCoin) ||
           !Number.isFinite(
             beforeTimestampMs
           )
@@ -517,6 +529,9 @@ function TVChartComponent({
           };
         }
 
+        // The Aster chart's first page is verified. Do not substitute
+        // Hyperliquid candles when Aster pagination is unavailable.
+        if (asterMarketSymbol) return { candles: [], hasMore: false };
         const now =
           Date.now();
 
@@ -592,6 +607,7 @@ function TVChartComponent({
       [
         marketCoin,
         lighterMarketId,
+        asterMarketSymbol,
         hlInterval,
         intervalMsValue,
       ]
@@ -1527,7 +1543,7 @@ function TVChartComponent({
               candles={candles}
               interval={interval}
               symbol={displayTicker}
-              drawingStorageKey={lighterMarketId !== undefined ? `lighter:${lighterMarketId}:${symbol}` : symbol}
+              drawingStorageKey={asterMarketSymbol ? `aster:${asterMarketKind}:${asterMarketSymbol}` : lighterMarketId !== undefined ? `lighter:${lighterMarketId}:${symbol}` : symbol}
               timezone={timezone}
               chartMode={chartType}
               showHighLow={showHighLow}

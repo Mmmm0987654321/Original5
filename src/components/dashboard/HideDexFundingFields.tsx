@@ -14,11 +14,11 @@ const getFundingChainLogo=(chainId:string|number|undefined):string|null=>{
 };
 export type FundingNetworkOption={value:string;label:string;description?:string;chainId?:number};
 export function HideDexFundingNetworkAsset({
- network,chainId,options,value,onNetworkChange,disabled=false,pickerStyle="native",showChainLogo=false,showUsdcLogo=false
+ network,chainId,options,value,onNetworkChange,disabled=false,pickerStyle="native",showChainLogo=false,showUsdcLogo=false,assetSymbol="USDC"
 }:{
  network:string;chainId?:string|number;
  options?:readonly FundingNetworkOption[];value?:string;onNetworkChange?:(v:string)=>void;disabled?:boolean;
- pickerStyle?:"native"|"modal";showChainLogo?:boolean;showUsdcLogo?:boolean;
+ pickerStyle?:"native"|"modal";showChainLogo?:boolean;showUsdcLogo?:boolean;assetSymbol?:string;
 }){
  const [pickerOpen,setPickerOpen]=React.useState(false);
  React.useEffect(()=>{
@@ -66,7 +66,7 @@ export function HideDexFundingNetworkAsset({
            <div className="flex items-center justify-between gap-3 pb-1">
              <div>
                <h3 id="hidedex-funds-network-title" className="font-bold text-lg">Select Network</h3>
-               <p className="text-xs text-brand-muted mt-0.5">Choose where your USDC is held</p>
+               <p className="text-xs text-brand-muted mt-0.5">Choose where your {assetSymbol} is held</p>
              </div>
              <button type="button" aria-label="Close" onClick={()=>setPickerOpen(false)}
                className="rounded-lg border border-brand-border p-2 text-brand-sub hover:text-brand-text">
@@ -100,12 +100,12 @@ export function HideDexFundingNetworkAsset({
      <span className="text-[11px] font-semibold text-brand-sub uppercase tracking-wider block">Asset Token</span>
      <div className="rounded-xl border border-brand-border bg-brand-overlay-subtle p-3 flex items-center justify-between">
        <div className="flex items-center gap-2.5">
-         {showUsdcLogo
+         {showUsdcLogo&&assetSymbol==="USDC"
            ?<img src={USDC_LOGO_URL} alt="USDC" width={32} height={32}
               decoding="async" className="w-8 h-8 rounded-full object-contain shrink-0"/>
            :<div className="w-8 h-8 rounded-full bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-blue-400 font-bold font-mono text-xs">$</div>}
-         <div><span className="font-bold text-sm text-brand-text">USDC</span>
-           <span className="text-xs text-brand-muted font-normal ml-1.5 hidden sm:inline">USD Coin</span></div>
+         <div><span className="font-bold text-sm text-brand-text">{assetSymbol}</span>
+           {assetSymbol==="USDC"&&<span className="text-xs text-brand-muted font-normal ml-1.5 hidden sm:inline">USD Coin</span>}</div>
        </div>
      </div>
    </div>
@@ -124,11 +124,11 @@ export function HideDexFundingDestination({address}:{address:string}){
  </div>;
 }
 export function HideDexFundingAmount({
- id,amount,onAmount,balanceLabel,balance,minLabel,disabled=false,placeholder="0.00",autoFocus=false
+ id,amount,onAmount,balanceLabel,balance,minLabel,disabled=false,placeholder="0.00",autoFocus=false,assetSymbol="USDC"
 }:{
  id:string;amount:string;onAmount:(s:string)=>void;
  balanceLabel?:string;balance?:React.ReactNode;minLabel?:string;
- disabled?:boolean;placeholder?:string;autoFocus?:boolean;
+ disabled?:boolean;placeholder?:string;autoFocus?:boolean;assetSymbol?:string;
 }){
  return <div className="space-y-1.5">
    <div className="flex items-center justify-between gap-2 text-[11px] font-semibold text-brand-sub">
@@ -139,7 +139,7 @@ export function HideDexFundingAmount({
      <input id={id} type="number" step="any" inputMode="decimal" autoComplete="off" required autoFocus={autoFocus} disabled={disabled}
        value={amount} onChange={e=>onAmount(e.target.value)} placeholder={placeholder}
        className="w-full min-w-0 bg-transparent text-xl sm:text-2xl font-bold font-mono text-brand-text placeholder:text-brand-muted/40 focus:outline-none disabled:opacity-50"/>
-     <span className="text-sm font-bold font-mono text-brand-sub pl-2 shrink-0 select-none">USDC</span>
+     <span className="text-sm font-bold font-mono text-brand-sub pl-2 shrink-0 select-none">{assetSymbol}</span>
    </div>
    {minLabel && <p className="text-xs text-brand-muted">{minLabel}</p>}
  </div>;
