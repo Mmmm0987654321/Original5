@@ -80,6 +80,8 @@ export default function AsterVenueAdapter(p:{
  const [view,setView]=useState<"chart"|"orderbook">("chart");
  const [infoOpen,setInfoOpen]=useState(false);
  const [depth,setDepth]=useState<{asks:AsterLevel[];bids:AsterLevel[]}|null>(null);
+ const [bookFlashes,setBookFlashes]=useState<Record<string,"BUY"|"SELL">>({});
+ const [lastLiveTrade,setLastLiveTrade]=useState<{symbol:string;kind:MarketKind;price:number}|null>(null);
  const [identity,setIdentity]=useState<AsterIdentity|null>(null);
  const [restoring,setRestoring]=useState(false);
  const [balances,setBalances]=useState<Raw[]|null>(null);
@@ -139,7 +141,11 @@ export default function AsterVenueAdapter(p:{
  const positionRows=useMemo(()=>risk===null?null:risk.filter(r=>{const n=num(r.positionAmt);return n!==null&&n!==0;}),[risk]);
  const currentPosition=positionRows?.find(r=>r.symbol===current?.symbol);
  const hasOpposite=!!currentPosition&&((side==="SELL"&&(num(currentPosition.positionAmt)??0)>0)||(side==="BUY"&&(num(currentPosition.positionAmt)??0)<0));
- const price=orderType==="MARKET"?current?.last??null:num(limitPrice);
+ // The last authenticated public trade takes precedence over the 45s catalogue.
+ // Never use bid/ask midpoint as a fake last-traded price.
+ const marketPrice=lastLiveTrade?.symbol===current?.symbol&&lastLiveTrade?.kind===kind
+  ?lastLiveTrade.price:current?.last??null;
+ const price=orderType==="MARKET"?marketPrice:num(limitPrice);
  const size=price!==null&&price>0&&num(amount)!==null
    ?sizeUnit==="USDT"?Number(amount)/price:Number(amount):null;
  const orderValue=size!==null&&price!==null?size*price:null;
@@ -216,11 +222,134 @@ export default function AsterVenueAdapter(p:{
    setSpotMarketError(list.length===0?"Aster Spot API returned no verified active USDT pairs.":"");
  }).catch(e=>{if(!cancelled){setSpotMarkets([]);setSpotMarketError(sourceError(e));}});
  void poll();const id=window.setInterval(poll,60_000);return()=>{cancelled=true;window.clearInterval(id);};},[]);
- useEffect(()=>{if(!current)return;let stopped=false;const read=()=> (kind==="spot"?getAsterSpotDepth(current.symbol):getAsterDepth(current.symbol)).then(x=>{
-  if(!stopped)setDepth(x);
- }).catch(()=>{if(!stopped)setDepth(null);});
- setDepth(null);void read();const id=window.setInterval(read,4_000);
- return()=>{stopped=true;window.clearInterval(id);};
+ // Read-only Aster mainnet market-data feed. This updates the ORIGINAL
+ // HideDexOrderBookPanel and price/header; it is not a new book UI or signer.
+ // Partial depth20 streams are complete TOP-20 snapshots (NOT diff updates).
+ useEffect(()=>{
+  const symbol=current?.symbol;
+  if(!symbol||!/^[A-Z0-9]{3,32}$/.test(symbol))return;
+  let stopped=false,connection:WebSocket|null=null;
+  let reconnectTimer:ReturnType<typeof setTimeout>|null=null;
+  let bookFlush:ReturnType<typeof setTimeout>|null=null;
+  let flashClear:ReturnType<typeof setTimeout>|null=null;
+  let shownBook:{asks:AsterLevel[];bids:AsterLevel[]}|null=null;
+  let tradeFlush:ReturnType<typeof setTimeout>|null=null;
+  let waitingBook:{asks:AsterLevel[];bids:AsterLevel[]}|null=null;
+  let waitingTrade:number|null=null;
+  let lastBook=0,lastTrade=0,retries=0;
+  setDepth(null);setBookFlashes({});setLastLiveTrade(null);
+  const parseSide=(raw:unknown,ask:boolean):AsterLevel[]|null=>{
+   if(!Array.isArray(raw))return null;
+   const sorted=raw.flatMap(item=>{
+    if(!Array.isArray(item)||item.length<2)return[];
+    const price=num(item[0]),size=num(item[1]);
+    return price!==null&&price>0&&size!==null&&size>0?[{price,size}]:[];
+   }).sort((a,b)=>ask?a.price-b.price:b.price-a.price).slice(0,20);
+   if(!sorted.length)return null;
+   let total=0;return sorted.map(row=>({...row,total:(total+=row.size)}));
+  };
+  const flushBook=()=>{
+   bookFlush=null;
+   if(stopped||!waitingBook)return;
+   const next=waitingBook;
+   const flashes:Record<string,"BUY"|"SELL">={};
+   if(shownBook){
+    for(const [side,previous,latest] of [
+      ["SELL",shownBook.asks,next.asks],["BUY",shownBook.bids,next.bids]
+    ] as const){
+     const prev=new Map(previous.map(level=>[level.price,level.size]));
+     for(const level of latest){
+      const prior=prev.get(level.price);
+      if(prior!==undefined&&prior!==level.size)
+       flashes[level.price.toString()]=side;
+     }
+    }
+   }
+   shownBook=next;setDepth(next);waitingBook=null;
+   if(Object.keys(flashes).length){
+    setBookFlashes(flashes);
+    if(flashClear)clearTimeout(flashClear);
+    flashClear=setTimeout(()=>{if(!stopped)setBookFlashes({});},450);
+   }
+  };
+  const flushTrade=()=>{
+   tradeFlush=null;
+   if(stopped||waitingTrade===null)return;
+   setLastLiveTrade({symbol,kind,price:waitingTrade});waitingTrade=null;
+  };
+  const fallbackDepth=async()=>{
+   if(stopped||Date.now()-lastBook<3000)return;
+   try{
+    const value=await (kind==="spot"?getAsterSpotDepth(symbol):getAsterDepth(symbol));
+    if(!stopped&&Date.now()-lastBook>=3000){shownBook=value;setDepth(value);}
+   }catch{ /* Preserve the last verified book on transient REST errors. */ }
+  };
+  const fallbackPrice=async()=>{
+   if(stopped||Date.now()-lastTrade<3500)return;
+   try{
+    const url=(kind==="spot"?"https://sapi.asterdex.com/api/v3/ticker/price?symbol=":
+       "https://fapi.asterdex.com/fapi/v3/ticker/price?symbol=")+encodeURIComponent(symbol);
+    const response=await fetch(url,{headers:{Accept:"application/json"}});
+    if(!response.ok) return;
+    const data=obj(await response.json());
+    const price=num(data?.price);
+    if(!stopped&&Date.now()-lastTrade>=3500&&data?.symbol===symbol&&price!==null&&price>0)
+     setLastLiveTrade({symbol,kind,price});
+   }catch{ /* Catalogue price remains a read-only last-price fallback. */ }
+  };
+  const connect=()=>{
+   if(stopped)return;
+   try{
+    const base=kind==="spot"?"wss://sstream.asterdex.com":"wss://fstream.asterdex.com";
+    const stream=symbol.toLowerCase();
+    const ws=new WebSocket(base+"/stream?streams="+stream+"@aggTrade/"+stream+"@depth20@100ms");
+    connection=ws;
+    ws.onopen=()=>{if(!stopped)retries=0;};
+    ws.onmessage=event=>{
+     if(stopped||typeof event.data!=="string")return;
+     let frame:unknown;
+     try{frame=JSON.parse(event.data);}catch{return;}
+     const wrapper=obj(frame),message=obj(wrapper?.data??frame);
+     if(!message||message.s!==symbol)return;
+     const streamName=String(wrapper?.stream??"");
+     if(message.e==="aggTrade"||streamName.endsWith("@aggTrade")){
+      const value=num(message.p);
+      if(value!==null&&value>0){
+       lastTrade=Date.now();waitingTrade=value;
+       if(!tradeFlush)tradeFlush=setTimeout(flushTrade,150);
+      }
+     }else if(streamName.includes("@depth20")&&Array.isArray(message.a)&&Array.isArray(message.b)){
+      const asks=parseSide(message.a,true),bids=parseSide(message.b,false);
+      if(asks&&bids){
+       lastBook=Date.now();waitingBook={asks,bids};
+       if(!bookFlush)bookFlush=setTimeout(flushBook,170);
+      }
+     }
+    };
+    ws.onerror=()=>{try{ws.close();}catch{}};
+    ws.onclose=()=>{
+     if(stopped)return;
+     if(connection===ws)connection=null;
+     const delay=Math.min(12000,1000*Math.pow(2,Math.min(retries++,4)));
+     reconnectTimer=setTimeout(connect,delay);
+    };
+   }catch{
+    if(!stopped)reconnectTimer=setTimeout(connect,5000);
+   }
+  };
+  void fallbackDepth();void fallbackPrice();connect();
+  const restTimer=window.setInterval(()=>{
+   void fallbackDepth();void fallbackPrice();
+  },4000);
+  return()=>{
+   stopped=true;window.clearInterval(restTimer);
+   if(reconnectTimer)clearTimeout(reconnectTimer);
+   if(bookFlush)clearTimeout(bookFlush);
+   if(tradeFlush)clearTimeout(tradeFlush);
+   if(flashClear)clearTimeout(flashClear);
+   const old=connection;connection=null;
+   if(old){old.onclose=null;old.onmessage=null;old.onerror=null;old.close();}
+  };
  },[current?.symbol,kind]);
  useEffect(()=>{let stopped=false;setIdentity(null);setBalances(null);setFuturesAccount(null);setSpotBalances(null);setSpotMode(null);setSpotOrders(null);setRisk(null);setOpenOrders(null);setTrades(null);setAccountError("");
  if(!/^0x[0-9a-f]{40}$/i.test(walletAddress)){setRestoring(false);return;}
@@ -520,12 +649,15 @@ export default function AsterVenueAdapter(p:{
   let volume=0,realized=0,fees=0,volumeKnown=true,pnlKnown=true,feeKnown=true,idsKnown=true;
   const ids=new Set<string>();
   const loaded: Array<{time:number;px:number;sz:number;coin:string}>=[];
+  const pnlFills: Array<{time:number;pnl:number}>=[];
   for(const r of trades){
    const time=num(r.time),px=num(r.price),qty=num(r.qty);
    if(time===null||time<=0||time<cutoff||r.symbol!==tradesSymbol)continue;
    if(px===null||px<=0||qty===null||qty<=0)volumeKnown=false;
    else{volume+=px*qty;loaded.push({time,px,sz:qty,coin:tradesSymbol});}
-   const pnl=num(r.realizedPnl);if(pnl===null)pnlKnown=false;else realized+=pnl;
+   const pnl=num(r.realizedPnl);
+   if(pnl===null)pnlKnown=false;
+   else{realized+=pnl;pnlFills.push({time,pnl});}
    const fee=num(r.commission);
    if(fee===null||String(r.commissionAsset??"").toUpperCase()!=="USDT")feeKnown=false;
    else fees+=fee;
@@ -534,12 +666,24 @@ export default function AsterVenueAdapter(p:{
   }
   const count=trades.filter(r=>r.symbol===tradesSymbol&&
    (num(r.time)??0)>=cutoff).length;
+  // This is NOT an equity or account-value series: it sums Aster's actual
+  // realizedPnl fields of loaded userTrades for the selected perp only.
+  const pnlSeries: Array<{timestamp:number;value:number}>=[];
+  if(pnlKnown&&pnlFills.length){
+   let total=0;
+   for(const fill of pnlFills.sort((a,b)=>a.time-b.time)){
+    total+=fill.pnl;
+    const last=pnlSeries[pnlSeries.length-1];
+    if(last?.timestamp===fill.time)last.value=total;
+    else pnlSeries.push({timestamp:fill.time,value:total});
+   }
+  }
   return {
    volume:volumeKnown?volume:null,
    pnl:pnlKnown?realized:null,
    fees:feeKnown?fees:null,
    orders:idsKnown?ids.size:null,
-   count,loaded
+   count,loaded,pnlSeries
   };
  },[trades,tradesSymbol,current?.symbol,kind,performancePeriod]);
  const showPerpPerformance=kind==="perp"&&performanceMarket!=="spot";
@@ -614,16 +758,16 @@ export default function AsterVenueAdapter(p:{
    onLeverageCommit:kind==="perp"&&identity?.mode?next=>void changeLev(next):undefined,
    leverageDisabled:!identity?.mode||maxLeverage===null}}
   side={{isPerp:kind==="perp",side,onSide:setSide,available:free!==null?fmt(free,5)+" "+(kind==="spot"&&side==="SELL"?current?.base??"COIN":"USDT"):"—"}}
-  basic={{type:orderType,price:limitPrice,onPrice:setLimitPrice,midPrice:current?.last,
+  basic={{type:orderType,price:limitPrice,onPrice:setLimitPrice,midPrice:marketPrice,
    size:amount,onSize:setAmount,sizeUnit:sizeUnit==="USDT"?"USDT":current?.base??"COIN",
    onToggleUnit:()=>{if(price&&num(amount)!==null&&price>0)
     setAmount(String(sizeUnit==="USDT"?Number(amount)/price:Number(amount)*price));
     else setAmount("");setSizeUnit(v=>v==="USDT"?"COIN":"USDT");}}}
-  presets={{disabled:free===null||!current?.last,onSelect:pct=>{
-   if(free===null||!current?.last)return;
+  presets={{disabled:free===null||marketPrice===null||marketPrice<=0,onSelect:pct=>{
+   if(free===null||marketPrice===null||marketPrice<=0)return;
    const spend=free*pct/100;
-   const notional=kind==="spot"&&side==="SELL"?spend*current.last:spend*(kind==="perp"?leverage:1);
-   const coin=kind==="spot"&&side==="SELL"?spend:notional/current.last;
+   const notional=kind==="spot"&&side==="SELL"?spend*marketPrice:spend*(kind==="perp"?leverage:1);
+   const coin=kind==="spot"&&side==="SELL"?spend:notional/marketPrice;
    setAmount(String(sizeUnit==="USDT"?Number(notional.toFixed(4)):Number(coin.toFixed(8))));
   }}}
   options={{visible:kind==="perp",reduce:{checked:reduceOnly,onChange:setReduceOnly,disabled:!hasOpposite||busy},tpsl:{checked:false,onChange:()=>{},disabled:true}}}
@@ -631,7 +775,6 @@ export default function AsterVenueAdapter(p:{
   place={{type:"button",side,busy,disabled:busy||!current||size===null||size<=0, onClick:()=>void order(),
    label:busy?"Processing…":!identity?"ENABLE TRADING":(kind==="spot"&&!spotMode||kind==="perp"&&!identity.mode)?"VERIFY ASTER ACCOUNT":"PLACE "+(kind==="spot"?(side==="BUY"?"BUY":"SELL"):(side==="BUY"?"LONG":"SHORT"))}}
  />;
- const marketPrice=current?.last??null;
  const tradeView=<>
   <HideDexUnifiedMarketHeader
    mobile={{logo:current?renderAssetLogo(current.base):null,ticker:current?.base??"ASTER",modeLabel:kind==="spot"?"Aster Spot":"Aster Perpetual",
@@ -645,14 +788,14 @@ export default function AsterVenueAdapter(p:{
    marketView={<HideDexUnifiedMarketView view={view}
     chart={current?<TVChart key={"aster-"+current.symbol} symbol={current.base} marketCoin="" asterMarketSymbol={current.symbol} asterMarketKind={kind}
      currentPrice={marketPrice} change24h={current.change24h} volume24h={current.volume24h} tradeHistory={[]} toolbarHostId="market-chart-toolbar-host"/>:<div className="p-6 text-brand-muted text-xs">Aster public market data loading…</div>}
-    orderBook={<HideDexOrderBookPanel asks={depth?.asks??[]} bids={depth?.bids??[]} midPrice={marketPrice} midLabel="Last Price"
+    orderBook={<HideDexOrderBookPanel asks={depth?.asks??[]} bids={depth?.bids??[]} midPrice={marketPrice} midLabel="Last Price" flashingPrices={bookFlashes}
      sizeUnit="USD" baseSymbol={current?.base??"COIN"} onToggleSizeUnit={()=>{}}
      onSelectPrice={v=>{setLimitPrice(String(v));setOrderType("LIMIT");}}
      formatPrice={n=>fmt(n,4)} formatSize={(price,size)=>"$"+fmt(price*size,2)} group="1" groupOptions={["1"]}
      onGroup={()=>{}}/>}
    />}
    orderForm={placeForm}
-   orderBook={<HideDexOrderBookPanel asks={depth?.asks??[]} bids={depth?.bids??[]} midPrice={marketPrice} midLabel="Last Price"
+   orderBook={<HideDexOrderBookPanel asks={depth?.asks??[]} bids={depth?.bids??[]} midPrice={marketPrice} midLabel="Last Price" flashingPrices={bookFlashes}
     sizeUnit="USD" baseSymbol={current?.base??"COIN"} onToggleSizeUnit={()=>{}}
     onSelectPrice={v=>{setLimitPrice(String(v));setOrderType("LIMIT");}}
     formatPrice={n=>fmt(n,4)} formatSize={(price,size)=>"$"+fmt(price*size,2)} group="1" groupOptions={["1"]} onGroup={()=>{}}/>}
@@ -689,10 +832,10 @@ export default function AsterVenueAdapter(p:{
     walletConnected={!!walletAddress} walletAddress={walletAddress}
     onConnectWallet={onConnectWallet}
     asterMarket={{
-     symbol:current.symbol,kind,price:current.last,maxLeverage:kind==="perp"?maxLeverage:null,
+     symbol:current.symbol,kind,price:marketPrice,maxLeverage:kind==="perp"?maxLeverage:null,
      accountSummary:accountPanel,
      orderBook:<HideDexOrderBookPanel
-      asks={depth?.asks??[]} bids={depth?.bids??[]} midPrice={current.last} midLabel="Last Price"
+      asks={depth?.asks??[]} bids={depth?.bids??[]} midPrice={marketPrice} midLabel="Last Price" flashingPrices={bookFlashes}
       sizeUnit="USD" baseSymbol={current.base} onToggleSizeUnit={()=>{}}
       onSelectPrice={v=>{setLimitPrice(String(v));setOrderType("LIMIT");onSelectSection("trade",kind);}}
       formatPrice={n=>fmt(n,4)} formatSize={(px,qty)=>"$"+fmt(px*qty,2)}
@@ -789,9 +932,14 @@ export default function AsterVenueAdapter(p:{
        }}
       />}
       chart={<HideDexPerformanceAreaChart
-       period={performancePeriod} data={[]} label="Equity"
+       period={performancePeriod}
+       data={performanceLoaded?.pnlSeries??[]}
+       label={"Cumulative Realized PnL · "+(current?.base??"Aster")+" (loaded)"}
        hidden={hideBalance}
-       emptyMessage="Aster historical equity series is not verified; no estimated chart is shown."
+       loading={Boolean(identity?.mode)&&trades===null&&!tradesError}
+       emptyMessage={performanceMarket==="spot"||kind==="spot"?
+        "Aster Spot historical PnL is not verified.":
+        tradesError||"Two timestamped, verified fills required for a realized PnL chart. Historical equity is not inferred."}
       />}
     />
     <DailyFillVolumeBars
