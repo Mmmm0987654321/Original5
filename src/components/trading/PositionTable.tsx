@@ -41,6 +41,8 @@ interface PositionTableProps {
   onModifyOrder?: (id: string, newPrice: number, newSize: number) => Promise<void> | void;
   onSavePositionTpSl?: (position: Position, tpPrice: number | null, slPrice: number | null) => Promise<void> | void;
   initialTab?: "POSITIONS" | "OPEN_ORDERS" | "HISTORY";
+  /** For venues where cancel/re-create editing has not been audited yet. */
+  allowModify?: boolean;
 }
 
 export default function PositionTable({
@@ -53,6 +55,7 @@ export default function PositionTable({
   onModifyOrder = () => {},
   onSavePositionTpSl,
   initialTab = "POSITIONS",
+  allowModify = true,
 }: PositionTableProps) {
   const [activeSubTab, setActiveSubTab] = useState<"POSITIONS" | "OPEN_ORDERS" | "HISTORY">(initialTab);
 
@@ -611,7 +614,7 @@ export default function PositionTable({
                             </div>
                           ) : (
                             <div className="flex gap-1 justify-end">
-                              {isModifiable && (
+                              {allowModify && isModifiable && (
                                 <button
                                   onClick={() => startEditing(ord)}
                                   className="p-1.5 rounded bg-brand-overlay-subtle hover:bg-brand-overlay-normal text-brand-muted hover:text-brand-text transition-all cursor-pointer"

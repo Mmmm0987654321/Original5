@@ -1,9 +1,11 @@
 import React,{useEffect,useMemo,useState,useCallback} from "react";
-import type {Position,OpenOrder} from "../../types";
+import type {Position,OpenOrder,TradeHistoryItem} from "../../types";
 import {Wallet,TrendingUp,Unlock,Lock} from "lucide-react";
 import type {TokenMetadata} from "../../types";
 import MarketSelector,{renderAssetLogo} from "./MarketSelector";
 import TVChart from "./TVChart";
+import MarketsPanel from "../dashboard/MarketsPanel";
+import PositionTable from "./PositionTable";
 import HideDexUnifiedMarketHeader from "./HideDexUnifiedMarketHeader";
 import HideDexUnifiedMarketView from "./HideDexUnifiedMarketView";
 import HideDexUnifiedTradeCanvas from "./HideDexUnifiedTradeCanvas";
@@ -59,6 +61,7 @@ export default function AsterVenueAdapter(p:{
  const [markets,setMarkets]=useState<AsterMarket[]>([]);
  const [spotMarkets,setSpotMarkets]=useState<AsterMarket[]>([]);
  const [marketError,setMarketError]=useState("");
+ const [spotMarketError,setSpotMarketError]=useState("");
  const [selectedSymbol,setSelectedSymbol]=useState("BTCUSDT");
  const [kind,setKind]=useState<MarketKind>(initialKind);
  const [selectOpen,setSelectOpen]=useState(false);
@@ -101,7 +104,15 @@ export default function AsterVenueAdapter(p:{
  const [expanded,setExpanded]=useState<Record<string,boolean>>({});
  const [tpsl,setTpsl]=useState<Raw|null>(null);
  const current=useMemo(()=>{const list=kind==="spot"?spotMarkets:markets;return list.find(m=>m.symbol===selectedSymbol)??list.find(m=>m.base==="BTC")??list[0]??null;},[kind,markets,spotMarkets,selectedSymbol]);
- const tokens=useMemo(()=>(kind==="spot"?spotMarkets:markets).map(m=>({...quoteMarkets(m),category:kind==="spot"?"spot" as const:"perps" as const,isSpotOnly:kind==="spot"})),[markets,spotMarkets,kind]);
+ // One exact original market selector with separate, venue-authentic Spot and Perp
+ // assets. The shared selector only recognizes Spot if spotSymbol is real.
+ const tokens=useMemo<TokenMetadata[]>(()=>[
+  ...markets.map(quoteMarkets),
+  ...spotMarkets.map(m=>({
+   ...quoteMarkets(m),symbol:m.base+"-SPOT",name:m.base,
+   category:"spot" as const,isSpotOnly:true,hasSpot:true,spotSymbol:m.symbol
+  }))
+ ],[markets,spotMarkets]);
  const available=signedBalance(balances);
  const ownedSpot=(asset:string)=>spotBalances?.find(x=>x.asset===asset);
  const spotFree=kind==="spot"?num(ownedSpot(side==="BUY"?(current?.quote??"USDT"):(current?.base??""))?.free):null;
@@ -163,8 +174,11 @@ export default function AsterVenueAdapter(p:{
  }).catch(e=>{if(!cancelled)setMarketError(sourceError(e));});
  void poll();const id=window.setInterval(poll,45_000);
  return()=>{cancelled=true;window.clearInterval(id);};},[]);
- useEffect(()=>{let cancelled=false;const poll=()=>getAsterSpotMarkets().then(list=>{if(!cancelled)setSpotMarkets(list);}).catch(e=>{
-  if(!cancelled)setMarketError("Aster Spot: "+sourceError(e));});
+ useEffect(()=>{let cancelled=false;const poll=()=>getAsterSpotMarkets().then(list=>{
+   if(cancelled)return;
+   setSpotMarkets(list);
+   setSpotMarketError(list.length===0?"Aster Spot API returned no verified active USDT pairs.":"");
+ }).catch(e=>{if(!cancelled){setSpotMarkets([]);setSpotMarketError(sourceError(e));}});
  void poll();const id=window.setInterval(poll,60_000);return()=>{cancelled=true;window.clearInterval(id);};},[]);
  useEffect(()=>{if(!current)return;let stopped=false;const read=()=> (kind==="spot"?getAsterSpotDepth(current.symbol):getAsterDepth(current.symbol)).then(x=>{
   if(!stopped)setDepth(x);
@@ -203,19 +217,40 @@ export default function AsterVenueAdapter(p:{
  void read();const id=window.setInterval(read,30_000);
  return()=>{cancelled=true;window.clearInterval(id);};
  },[identity?.agent,own,reload]);
- useEffect(()=>{if(tab!=="TRADE_HISTORY"||!identity?.mode||kind==="spot"||!current)return;
+ useEffect(()=>{if(!(tab==="TRADE_HISTORY"||(section==="orders"&&p.initialOrdersTab==="TRADE_HISTORY"))||!identity?.mode||kind==="spot"||!current)return;
  let gone=false;void asterSignedRead(walletAddress,"/fapi/v3/userTrades",{symbol:current.symbol})
  .then(({data})=>{if(!gone)setTrades(rows(data));})
  .catch(e=>{if(!gone){setTrades(null);setNotice(sourceError(e));}});
  return()=>{gone=true;};
- },[tab,identity?.agent,current?.symbol,reload,kind]);
- useEffect(()=>{if(!identity?.mode||!current)return;
- let stopped=false;
- void asterSignedRead(walletAddress,"/fapi/v3/leverageBracket",{symbol:current.symbol})
- .then(({data})=>{if(stopped)return;const arr=rows(data);const x=arr.find(z=>z.symbol===current.symbol);const entry=Array.isArray(x?.brackets)?rows(x.brackets)[0]:null;const lev=num(entry?.initialLeverage);setMaxLeverage(lev!==null&&lev>=1?lev:null);})
- .catch(()=>{if(!stopped)setMaxLeverage(null);});
- return()=>{stopped=true;};
- },[identity?.mode?.order,identity?.agent,current?.symbol]);
+ },[tab,identity?.agent,current?.symbol,reload,kind,section,p.initialOrdersTab]);
+ // Recommended plural endpoint: symbol queries may return a single object,
+ // whereas multi-symbol queries return an array. Validate before unlocking.
+ useEffect(()=>{
+  setMaxLeverage(null);
+  if(!identity?.mode||kind!=="perp"||!current)return;
+  let stopped=false;
+  void asterSignedRead(walletAddress,"/fapi/v3/leverageBrackets",{symbol:current.symbol})
+   .then(({data})=>{
+    if(stopped)return;
+    const item=Array.isArray(data)?rows(data).find(r=>r.symbol===current.symbol):obj(data);
+    if(item?.symbol!==current.symbol){setMaxLeverage(null);return;}
+    const first=Array.isArray(item.brackets)?rows(item.brackets)[0]:null;
+    const verified=num(first?.initialLeverage);
+    setMaxLeverage(verified!==null&&verified>=1&&Number.isInteger(verified)?verified:null);
+   })
+   .catch(()=>{if(!stopped)setMaxLeverage(null);});
+  return()=>{stopped=true;};
+ },[identity?.mode?.order,identity?.agent,current?.symbol,kind]);
+ // Read the actual current leverage/margin mode for an open Aster position.
+ useEffect(()=>{
+  if(kind!=="perp")return;
+  const held=positionRows?.find(r=>r.symbol===current?.symbol);
+  if(!held)return;
+  const real=num(held.leverage);
+  if(real!==null&&real>=1)setLeverage(real);
+  if(held.marginType==="isolated")setMarginMode("ISOLATED");
+  else if(held.marginType==="cross")setMarginMode("CROSS");
+ },[kind,current?.symbol,risk]);
  useEffect(()=>{if(!fundingModal||fundingModal!=="withdraw")return;
  setWithdrawFee(null);void asterWithdrawQuote(fundingNetwork).then(setWithdrawFee).catch(e=>setNotice(sourceError(e)));
  },[fundingModal,fundingNetwork]);
@@ -282,10 +317,11 @@ export default function AsterVenueAdapter(p:{
   });
  };
  // Same verified Aster trigger route, displayed with the existing HideDex sheet.
- const sendTrigger=async(tpPrice:number|null,slPrice:number|null)=>{
-  if(!identity?.mode||!tpsl||!walletAddress)return;
+ const sendTrigger=async(tpPrice:number|null,slPrice:number|null,overrideTarget?:Raw)=>{
+  if(!identity?.mode||!walletAddress)throw Error("Aster signer not verified");
   if(tpPrice===null&&slPrice===null)return;
-  const target=tpsl;
+  const target=overrideTarget??tpsl;
+  if(!target)throw Error("Aster position not selected");
   const accepted=await act("TP / SL",async()=>{
    const symbol=String(target.symbol??"");
    const market=markets.find(m=>m.symbol===symbol);
@@ -305,6 +341,7 @@ export default function AsterVenueAdapter(p:{
    }
   });
   if(accepted)setTpsl(null);
+  else throw Error("Aster trigger was not accepted; check the order state.");
  };
  const cancel=async(orderId:string,symbol:string)=>{
   if(!(kind==="spot"?spotMode:identity?.mode))return;
@@ -352,6 +389,33 @@ export default function AsterVenueAdapter(p:{
    return list;
  },[positionRows,positionSort]);
  const allExpanded=!!sortedPositions?.length&&sortedPositions.every(r=>!!expanded[String(r.symbol)]);
+ const managerOrders:OpenOrder[]|null=activeOrders===null?null:activeOrders.flatMap(r=>{
+  if(typeof r.symbol!=="string"||r.orderId==null)return[];
+  const rawType=String(r.type??"").toUpperCase();
+  const isTp=rawType.includes("TAKE_PROFIT"),isSl=rawType.includes("STOP");
+  const isTrigger=isTp||isSl||(num(r.stopPrice)??0)>0;
+  const t=rawType==="LIMIT"?"LIMIT" as const:isTrigger?"TRIGGER" as const:"UNKNOWN" as const;
+  const state=String(r.status??"NEW").toUpperCase();
+  const stat=state==="FILLED"?"FILLED" as const:state==="CANCELED"?"CANCELLED" as const:
+    state==="PARTIALLY_FILLED"?"PARTIAL" as const:"OPEN" as const;
+  const trigger=num(r.stopPrice)??0, px=num(r.price)??0,quantity=num(r.origQty)??0;
+  return [{
+    id:String(r.orderId),symbol:r.symbol.replace(/USDT$/,""),sourceCoin:r.symbol,
+    type:t,side:r.side==="SELL"?"SELL" as const:"BUY" as const,
+    price:isTrigger&&trigger>0?trigger:px,size:quantity,filled:num(r.executedQty)??0,
+    status:stat,timestamp:num(r.time)!==null?new Date(Number(r.time)).toLocaleString():"—",
+    triggerPrice:trigger>0?trigger:undefined,isTrigger,tpsl:isTp?"tp" as const:isSl?"sl" as const:undefined,
+    isSpot:kind==="spot"
+  }];
+ });
+ const managerTrades:TradeHistoryItem[]|null=trades===null?null:trades.flatMap((r,i)=>{
+   const px=num(r.price),qty=num(r.qty),fee=num(r.commission),time=num(r.time);
+   if(px===null||qty===null||fee===null||time===null||typeof r.symbol!=="string")return[];
+   return [{id:String(r.id??i),symbol:r.symbol.replace(/USDT$/,""),
+    side:r.side==="SELL"?"SELL" as const:"BUY" as const,
+    price:px,size:qty,value:px*qty,fee,timestamp:new Date(time).toLocaleString(),
+    timestampMs:time,pnl:num(r.realizedPnl)??undefined,isSpot:kind==="spot"}];
+ });
  const accountPanel=<HideDexUnifiedAccountPanel
   tabs={<TradingAccountTabBar activeTab={tab} onSelect={setTab}
    positionsCount={kind==="spot"?0:positionRows?.length} ordersCount={activeOrders?.length}/>}
@@ -472,23 +536,79 @@ export default function AsterVenueAdapter(p:{
      title="Aster" message={notice} onClose={()=>setNotice("")}/>}
   {!notice&&accountError&&<p role="alert" className="p-2 text-xs text-rose-400">{accountError}</p>}
   {restoring&&<p className="p-2 text-xs text-brand-muted">Verifying encrypted Aster agent for this wallet…</p>}
-  {selectOpen&&<MarketSelector tokens={tokens} selectedSymbol={current?.base??""} externalPricesOnly
+  {selectOpen&&<MarketSelector tokens={tokens} selectedSymbol={kind==="spot"?current?.base+"-SPOT":current?.base??""} externalPricesOnly
     initialCategory={kind==="spot"?"spot":"perps"} onClose={()=>setSelectOpen(false)}
-    onSelectToken={symbol=>{const found=(kind==="spot"?spotMarkets:markets).find(m=>m.base===symbol);if(found){setSelectedSymbol(found.symbol);setSelectOpen(false);onSelectSection("trade",kind);}}}/>}
+    onSelectToken={(symbol,mode)=>{
+     const actual=(mode==="spot"?spotMarkets:markets).find(m=>m.base===(mode==="spot"?symbol.replace(/-SPOT$/,""):symbol));
+     if(actual){setSelectedSymbol(actual.symbol);setKind(mode);setSelectOpen(false);onSelectSection("trade",mode);}
+    }}/>}
   {authOpen&&<HideDexTradingAuthorizationSheet title="Enable Trading" onClose={()=>{if(!busy)setAuthOpen(false);}}
     primaryDisabled={busy||!walletAddress} primaryLabel={busy?"CHECK YOUR WALLET":"SIGN TO ENABLE TRADING →"}
     onPrimary={()=>void enable()} description={<p className="text-sm text-brand-sub">
      Sign once with the connected wallet on BNB Chain to register a fresh Aster Pro API trading agent. The key stays encrypted on this browser. Withdrawals are NOT authorized by this step. Signed balance verification is required before real orders.</p>}/>}
 
   {section==="trade"&&tradeView}
-  {section==="markets"&&<div className="space-y-2">
-    <h2 className="text-lg font-bold p-2">Aster {kind==="spot"?"Spot":"Perpetual"} Markets</h2>
-    <button className="px-3 py-2 rounded border border-brand-border text-xs" onClick={()=>setSelectOpen(true)}>Search Markets</button>
-    <div className="max-h-[70vh] overflow-auto">{(kind==="spot"?spotMarkets:markets).map(m=><button key={m.symbol} onClick={()=>{setSelectedSymbol(m.symbol);onSelectSection("trade",kind);}}
-      className="w-full flex justify-between items-center border-b border-brand-border p-3 text-sm text-brand-text hover:bg-brand-overlay-subtle">
-      <span className="font-semibold">{m.base}/USDT</span><span>{fmt(m.last,5)}</span><span>{m.change24h===null?"—":fmt(m.change24h)+"%"}</span></button>)}</div>
-   </div>}
-  {(section==="orders"||section==="dashboard")&&accountPanel}
+  {section==="markets"&&<>
+   {kind==="spot"&&spotMarketError&&<p role="alert" className="py-2 px-3 text-xs text-brand-muted">{spotMarketError}</p>}
+   {current&&<MarketsPanel
+    tokens={tokens} selectedSymbol={kind==="spot"?current.base+"-SPOT":current.base}
+    setSelectedSymbol={()=>{}}
+    onSelectToken={(symbol,mode)=>{
+     const base=mode==="spot"?symbol.replace(/-SPOT$/,""):symbol;
+     const found=(mode==="spot"?spotMarkets:markets).find(m=>m.base===base);
+     if(found){setSelectedSymbol(found.symbol);setKind(mode);}
+    }}
+    walletConnected={!!walletAddress} walletAddress={walletAddress}
+    onConnectWallet={onConnectWallet}
+    asterMarket={{
+     symbol:current.symbol,kind,price:current.last,maxLeverage:kind==="perp"?maxLeverage:null,
+     accountSummary:accountPanel,
+     orderBook:<HideDexOrderBookPanel
+      asks={depth?.asks??[]} bids={depth?.bids??[]} midPrice={current.last} midLabel="Last Price"
+      sizeUnit="USD" baseSymbol={current.base} onToggleSizeUnit={()=>{}}
+      onSelectPrice={v=>{setLimitPrice(String(v));setOrderType("LIMIT");onSelectSection("trade",kind);}}
+      formatPrice={n=>fmt(n,4)} formatSize={(px,qty)=>"$"+fmt(px*qty,2)}
+      group="1" groupOptions={["1"]} onGroup={()=>{}}
+     />
+    }}
+   />}
+  </>}
+  {section==="dashboard"&&accountPanel}
+  {section==="orders"&&(
+   !walletAddress||!identity?.mode||managerOrders===null||positionRows===null
+    ?<div className="glass-panel rounded-2xl p-4 text-sm text-brand-muted">
+      {accountError||"Aster order manager requires a verified signed account read."}</div>
+    :<div className="space-y-6 animate-in fade-in duration-200">
+      <div className="flex flex-col gap-1.5 border-b border-brand-border pb-4">
+       <h1 className="text-xl font-bold font-sans text-brand-text uppercase tracking-wider">
+        {p.initialOrdersTab==="TRADE_HISTORY"?"Settled Audits":"Trigger Orders"}
+       </h1>
+      </div>
+      {p.initialOrdersTab==="TRADE_HISTORY"&&managerTrades===null?
+        <p className="text-xs text-brand-muted p-4">Aster trade history is not yet verified.</p>:
+       <PositionTable
+        isPerp={kind==="perp"}
+        positions={positionRows.map(asterPositionModel)}
+        openOrders={managerOrders}
+        tradeHistory={managerTrades??[]}
+        initialTab={p.initialOrdersTab==="TRADE_HISTORY"?"HISTORY":"OPEN_ORDERS"}
+        allowModify={false}
+        onCancelOrder={async id=>{
+         const raw=activeOrders?.find(r=>String(r.orderId)===id);
+         if(raw&&typeof raw.symbol==="string")await cancel(id,raw.symbol);
+        }}
+        onClosePosition={async(pos,pct)=>{
+         const raw=positionRows.find(r=>String(r.symbol)===pos.sourceCoin);
+         if(raw)await closePos(raw,pct);
+        }}
+        onSavePositionTpSl={async(pos,tp,sl)=>{
+         const raw=positionRows.find(r=>String(r.symbol)===pos.sourceCoin);
+         if(!raw)throw Error("Verified Aster position not found");
+         await sendTrigger(tp,sl,raw);
+        }}
+       />}
+    </div>
+  )}
   {section==="funds"&&<div id="funds-portfolio-container" className="space-y-3 sm:space-y-4 text-brand-text font-sans bg-brand-bg px-3 pt-2 pb-2 sm:p-4 sm:pb-8 rounded-3xl max-w-4xl mx-auto w-full">
     <HideDexFundsOverview totalLabel="TOTAL FUNDS"
      totalValue={hideBalance?"••••":combinedUsdt!==null?fmt(combinedUsdt)+" USDT":futuresTotalUsdt!==null?fmt(futuresTotalUsdt)+" USDT":"—"}
