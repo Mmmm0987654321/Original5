@@ -1,6 +1,6 @@
 import { createAppKit } from "@reown/appkit/react";
 import { EthersAdapter } from "@reown/appkit-adapter-ethers";
-import { arbitrum, mainnet } from "@reown/appkit/networks";
+import { arbitrum, mainnet, bsc } from "@reown/appkit/networks";
 
 const rawProjectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID;
 // Public Reown project ID already documented in this repository's .env.example.
@@ -15,7 +15,9 @@ if (!projectId) {
   throw new Error("VITE_WALLETCONNECT_PROJECT_ID is not configured");
 }
 
-export const networks = [arbitrum, mainnet];
+// Keep the original Hyperliquid/Lighter networks and register BNB Chain
+// for Aster wallet-signed agent authorization. Never change the default chain.
+export const networks = [arbitrum, mainnet, bsc];
 
 export const appKit = createAppKit({
   adapters: [new EthersAdapter()],

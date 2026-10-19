@@ -77,6 +77,7 @@ import { useHyperliquidSpotStateStream } from "./hooks/useHyperliquidSpotStateSt
 import {
   arbitrum,
   mainnet,
+  bsc,
 } from "@reown/appkit/networks";
 import {
   useAppKit,
@@ -840,6 +841,73 @@ export default function App() {
   const getTradingSetupProvider = useCallback(async (): Promise<Eip1193Provider> => {
     return activeWallet.getProvider();
   }, [activeWallet]);
+
+  // Aster-only bridge: Reown WalletConnect can switch an approved network through
+  // useAppKitNetwork.switchNetwork while its EIP-1193 provider may NOT expose
+  // wallet_switchEthereumChain. Never change Hyperliquid/Lighter providers.
+  // Authenticate the owner again and verify the actual provider chain before
+  // authorizing any Aster signature, deposit, or withdrawal.
+  const getAsterWalletProvider = useCallback(async () => {
+    await getTradingSetupProvider(); // Reject a disconnected or changed wallet.
+    const expectedOwner = activeWallet.address?.toLowerCase();
+    if (!expectedOwner) throw new Error("Reconnect your wallet before enabling Aster trading.");
+    return {
+      request: async ({ method, params }: { method: string; params?: unknown[] }): Promise<unknown> => {
+        if (method !== "wallet_switchEthereumChain") {
+          const provider = await getTradingSetupProvider();
+          return provider.request({ method, ...(params ? { params } : {}) });
+        }
+
+        const rawTarget = (params?.[0] as { chainId?: unknown } | undefined)?.chainId;
+        if (typeof rawTarget !== "string") throw new Error("Aster requested an invalid wallet chain.");
+        let targetId: bigint;
+        try { targetId = BigInt(rawTarget); }
+        catch { throw new Error("Aster requested an invalid wallet chain."); }
+        const targetNetwork =
+          targetId === 56n ? bsc :
+          targetId === 42161n ? arbitrum :
+          targetId === 1n ? mainnet : null;
+        if (!targetNetwork) throw new Error("Unsupported Aster funding network.");
+
+        const verifiedChain = async (): Promise<boolean> => {
+          const provider = await getTradingSetupProvider();
+          const chainId = await provider.request({ method: "eth_chainId" });
+          const accounts = await provider.request({ method: "eth_accounts" }) as string[] | undefined;
+          if (!Array.isArray(accounts) || typeof accounts[0] !== "string" ||
+              accounts[0].toLowerCase() !== expectedOwner) {
+            throw new Error("Connected wallet changed. Reconnect before authorizing Aster.");
+          }
+          return BigInt(String(chainId)) === targetId;
+        };
+        if (await verifiedChain()) return null;
+        try {
+          await switchNetwork(targetNetwork);
+        } catch {
+          throw new Error(
+            "WalletConnect could not switch networks. Open your wallet, select " +
+            (targetId === 56n ? "BNB Smart Chain" : targetNetwork.name) +
+            ", then try again."
+          );
+        }
+
+        // Some WalletConnect wallets apply a network change asynchronously.
+        // Verify on-chain wallet provider state, not just Reown's UI selection.
+        for (let i = 0; i < 16; i++) {
+          try {
+            if (await verifiedChain()) return null;
+          } catch (e) {
+            if (String(e).includes("Connected wallet changed")) throw e;
+          }
+          await new Promise<void>(resolve => setTimeout(resolve, 350));
+        }
+        throw new Error(
+          "Your wallet did not confirm the network switch. Select " +
+          (targetId === 56n ? "BNB Smart Chain (56)" : targetNetwork.name) +
+          " in your wallet, then retry Enable Trading."
+        );
+      },
+    };
+  }, [activeWallet.address, getTradingSetupProvider, switchNetwork]);
 
   const HL_SIGNING_CHAIN_ALIGN_TIMEOUT_MS = 6_000;
   const HL_SIGNING_CHAIN_SETTLE_MS = 750;
@@ -4220,7 +4288,7 @@ export default function App() {
             activeTab===ActiveTab.TradeHistory
           ) && <AsterVenueAdapter
             walletAddress={walletConnected?walletAddress:""}
-            getWalletProvider={async()=>await getTradingSetupProvider()}
+            getWalletProvider={getAsterWalletProvider}
             onConnectWallet={()=>setShowWalletModal(true)}
             initialKind={activeTab===ActiveTab.Spot?"spot":"perp"}
             section={activeTab===ActiveTab.Dashboard?"dashboard":
