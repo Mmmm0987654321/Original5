@@ -1008,17 +1008,8 @@ export default function App() {
 
   useEffect(() => {
     const checkAndRedirect = () => {
-      const isLargeScreen =
-        typeof window !== "undefined" &&
-        window.innerWidth >= 640;
-
-      if (
-        isLargeScreen &&
-        activeTab === ActiveTab.Markets &&
-        hasPerpApproval
-      ) {
-        setActiveTab(ActiveTab.Perp);
-      }
+      // Markets is a deliberate destination for new visitors and returning
+      // users. Never redirect it into Perpetual on larger screens.
 
       if (
         mode === "ANONYMOUS" &&
@@ -1044,13 +1035,7 @@ export default function App() {
       const handleMediaChange = (
         e: MediaQueryListEvent
       ) => {
-        if (
-          e.matches &&
-          activeTab === ActiveTab.Markets &&
-          hasPerpApproval
-        ) {
-          setActiveTab(ActiveTab.Perp);
-        }
+        // A viewport change must never move a visitor off Markets.
       };
 
       if (mediaQuery.addEventListener) {
@@ -4009,7 +3994,7 @@ export default function App() {
               showEarlyAccessOnMount={earlyAccessRequestedFromPerp}
               onClosePerpEarlyAccess={() => {
                 setEarlyAccessRequestedFromPerp(false);
-                setActiveTab(ActiveTab.Spot);
+                setActiveTab(ActiveTab.Markets);
               }}
               onVerifyLaunchApp={async (wallet: string): Promise<void> => {
                 // Start Trading opens public Spot; this NEVER grants Perpetual.
@@ -4018,10 +4003,10 @@ export default function App() {
                     wallet.trim().toLowerCase() !== currentWallet) {
                   throw new Error("Connected wallet mismatch. Please reconnect.");
                 }
-                // First visit opens the Spot market terminal with a live chart.
-                // Returning visitors keep their last screen if it is safe to
-                // reopen; Perpetual still requires a fresh server grant.
-                let entryTab = ActiveTab.Spot;
+                // First visit opens Markets with its real chart. Returning
+                // visitors keep a safe saved screen; Perpetual still requires
+                // a fresh server grant.
+                let entryTab = ActiveTab.Markets;
                 try {
                   const walletIsValid = walletConnected && /^0x[0-9a-f]{40}$/.test(currentWallet);
                   const previous = walletIsValid
@@ -4036,15 +4021,15 @@ export default function App() {
                       entryTab = next;
                     }
                   }
-                } catch { /* Default to visible Spot chart when storage is blocked. */ }
+                } catch { /* Default to Markets when storage is blocked. */ }
                 setPublicWorkspaceOpened(true);
                 setEarlyAccessRequestedFromPerp(false);
                 setActiveTab(entryTab);
                 if (walletConnected && /^0x[0-9a-f]{40}$/.test(currentWallet)) {
                   try {
                     localStorage.setItem("hidedex_last_trading_wallet", currentWallet);
-                    if (entryTab === ActiveTab.Spot) {
-                      // Do not erase an existing user's remembered screen.
+                    if (entryTab === ActiveTab.Markets) {
+                      // Preserve any existing user's last chosen screen.
                       const key = "hidedex_last_trading_tab_" + currentWallet;
                       if (!localStorage.getItem(key)) localStorage.setItem(key, entryTab);
                     }

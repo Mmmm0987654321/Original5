@@ -74,7 +74,7 @@ export const CHART_COLOR_PRESETS = [
 ];
 
 const EMA_SLOT_PERIODS = [9, 21, 50, 100, 200, 400];
-/** Conventional default moving-average bands; saved user preferences remain untouched. */
+/** Available moving-average slots; only the standard EMA(21) is enabled by default. */
 const MA_SLOT_PERIODS = [20, 50, 200, 9, 100, 300];
 
 const EMA_DEFAULT_COLORS = [
@@ -106,7 +106,7 @@ export const DEFAULT_RSI_ROWS: RsiBandRow[] = RSI_SLOT_PERIODS.map((period, i) =
 }));
 
 export const DEFAULT_EMA_ROWS: MaBandRow[] = EMA_SLOT_PERIODS.map((period, i) => ({
-  enabled: i < 3,
+  enabled: i === 1,
   period,
   source: 'close',
   color: EMA_DEFAULT_COLORS[i] ?? '#eab308',
@@ -114,7 +114,7 @@ export const DEFAULT_EMA_ROWS: MaBandRow[] = EMA_SLOT_PERIODS.map((period, i) =>
 }));
 
 export const DEFAULT_MA_ROWS: MaBandRow[] = MA_SLOT_PERIODS.map((period, i) => ({
-  enabled: i < 3,
+  enabled: false,
   period,
   source: 'close',
   color: MA_DEFAULT_COLORS[i] ?? '#94a3b8',
@@ -1158,7 +1158,7 @@ export const DEFAULT_INDICATOR_PREFS: WebIndicatorPrefs = {
   emaRows: DEFAULT_EMA_ROWS.map((r) => ({ ...r })),
   maRows: DEFAULT_MA_ROWS.map((r) => ({ ...r })),
   emaVisible: true,
-  maVisible: true,
+  maVisible: false,
   vwap: false,
   vwapVisible: true,
   vwapLength: 14,
@@ -1211,14 +1211,11 @@ const KEY = 'builderpad:indicatorPrefs';
 /** One-shot: volume pane used to default on; hide it unless the user turns it back on. */
 const VOL_OFF_MIGRATION = 'builderpad:volOff.v1';
 const INDICATOR_COLORS_MIGRATION = 'builderpad:indicatorColors.v1';
+const SINGLE_EMA_DEFAULT_MIGRATION = 'builderpad:singleEma21Default.v1';
 
-/** Volume pane default: on for desktop desks, off on phones where chart height is scarce. */
+/** Keep the untouched chart free of a second indicator/subpane by default. */
 function defaultVol(): boolean {
-  try {
-    return typeof window !== 'undefined' && window.matchMedia('(min-width: 1024px)').matches;
-  } catch {
-    return false;
-  }
+  return false;
 }
 
 function freshPrefs(): WebIndicatorPrefs {
@@ -1387,6 +1384,38 @@ function migrateLegacyIndicatorColors(prefs: WebIndicatorPrefs, hadSaved: boolea
     nextMaRows[2] = { ...nextMaRows[2], color: '#1677FF' };
     const next = { ...prefs, maRows: nextMaRows };
     localStorage.setItem(KEY, JSON.stringify(next));
+    return next;
+  } catch {
+    return prefs;
+  }
+}
+
+/** One-time migration of untouched old multi-line presets only.
+ * Never erase intentionally customized indicator combinations.
+ */
+function migrateLegacyDefaultAverages(prefs: WebIndicatorPrefs, hadSaved: boolean): WebIndicatorPrefs {
+  if (!hadSaved) return prefs;
+  try {
+    if (localStorage.getItem(SINGLE_EMA_DEFAULT_MIGRATION) === '1') return prefs;
+    const oldEma = prefs.emaRows.length === EMA_SLOT_PERIODS.length &&
+      prefs.emaRows.every((r, i) => r.period === EMA_SLOT_PERIODS[i] && r.source === 'close' && r.enabled === (i < 3));
+    const oldMa = prefs.maRows.length === MA_SLOT_PERIODS.length &&
+      prefs.maRows.every((r, i) => r.period === MA_SLOT_PERIODS[i] && r.source === 'close' && r.enabled === (i < 3));
+    if (!oldEma || !oldMa || !prefs.emaVisible || !prefs.maVisible ||
+        prefs.vwap || prefs.boll || prefs.macd || prefs.rsi || prefs.cci || prefs.supertrend ||
+        prefs.extraIndicators.length > 0 || prefs.customIndicators.length > 0) {
+      localStorage.setItem(SINGLE_EMA_DEFAULT_MIGRATION, '1');
+      return prefs;
+    }
+    const next: WebIndicatorPrefs = {
+      ...prefs,
+      emaRows: prefs.emaRows.map((r, i) => ({ ...r, enabled: i === 1 })),
+      maRows: prefs.maRows.map(r => ({ ...r, enabled: false })),
+      maVisible: false,
+      vol: false,
+    };
+    localStorage.setItem(KEY, JSON.stringify(next));
+    localStorage.setItem(SINGLE_EMA_DEFAULT_MIGRATION, '1');
     return next;
   } catch {
     return prefs;
@@ -1773,7 +1802,7 @@ export function loadIndicatorPrefs(): WebIndicatorPrefs {
       indicatorSettings,
     };
     const volMigrated = migrateVolumeOff(loaded, true);
-    return migrateLegacyIndicatorColors(volMigrated, true);
+    return migrateLegacyDefaultAverages(migrateLegacyIndicatorColors(volMigrated, true), true);
   } catch {
     return freshPrefs();
   }
