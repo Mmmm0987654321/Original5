@@ -596,19 +596,20 @@ export default function Navbar({
             </button>
 
 
-            {/* One shared Trust Shield mode control on every exchange and
-                in Standard, Private and Anonymous. Existing password checks stay
-                entirely inside TrustShieldPopup; no new privacy implementation. */}
-            <button
-              type="button"
-              onClick={() => { setWalletDropdownOpen(false); setExchangeMenuOpen(false); onOpenPrivacyMode(); }}
-              className="flex items-center justify-center p-1.5 sm:p-2 rounded-xl border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-all cursor-pointer shrink-0"
-              title={"Trust Shield: "+(trustShieldMode==="STANDARD"?"Standard":trustShieldMode==="PRIVATE"?"Private":"Anonymous")+". Switch mode"}
-              aria-label="Change Trust Shield privacy mode"
-              id="nav-change-privacy-mode"
-            >
-              <ShieldCheck className="w-4 h-4" />
-            </button>
+            {/* Anonymous mode must never trap the user without a way to switch back.
+                Restore the originally approved Trust Shield button behavior. */}
+            {trustShieldMode === "ANONYMOUS" && (
+              <button
+                type="button"
+                onClick={() => { setWalletDropdownOpen(false); onOpenPrivacyMode(); }}
+                className="flex items-center justify-center p-1.5 sm:p-2 rounded-xl border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-all cursor-pointer shrink-0"
+                title="Change Privacy Mode"
+                aria-label="Change Privacy Mode"
+                id="nav-change-privacy-mode"
+              >
+                <ShieldCheck className="w-4 h-4" />
+              </button>
+            )}
 
             {/* 4. Sidebar Menu Button */}
             <button
