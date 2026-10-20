@@ -458,6 +458,21 @@ export default function Navbar({
                       {selectedExchange===venue.id&&<Check className="w-4 h-4 shrink-0 text-accent"/>}
                     </button>
                   ))}
+                  {/* Future native HideDex exchange: brand entry only.
+                      No click handler, routing, signing or order execution. */}
+                  <div className="mt-2 pt-2 border-t border-brand-border" role="group" aria-label="Upcoming exchange">
+                    <div aria-disabled="true"
+                      className="w-full flex items-center justify-between gap-3 rounded-xl px-3 py-3 opacity-55 cursor-not-allowed select-none"
+                      title="HideDex Exchange — Coming Soon">
+                      <span className="flex min-w-0 items-center gap-3">
+                        <HideDexLogo size={28} showText={false}/>
+                        <span className="flex flex-col min-w-0 gap-0.5">
+                          <span className="text-sm font-bold text-brand-text">HideDex</span>
+                          <span className="text-[10px] text-brand-muted font-medium">Coming Soon</span>
+                        </span>
+                      </span>
+                    </div>
+                  </div>
                 </div>
               </div>,document.body
             )}
@@ -581,20 +596,19 @@ export default function Navbar({
             </button>
 
 
-            {/* Anonymous mode must never trap the user without a way to switch back.
-                Opens the existing password-verified Trust Shield mode selector. */}
-            {trustShieldMode === "ANONYMOUS" && (
-              <button
-                type="button"
-                onClick={() => { setWalletDropdownOpen(false); onOpenPrivacyMode(); }}
-                className="flex items-center justify-center p-1.5 sm:p-2 rounded-xl border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-all cursor-pointer shrink-0"
-                title="Change Privacy Mode"
-                aria-label="Change Privacy Mode"
-                id="nav-change-privacy-mode"
-              >
-                <ShieldCheck className="w-4 h-4" />
-              </button>
-            )}
+            {/* One shared Trust Shield mode control on every exchange and
+                in Standard, Private and Anonymous. Existing password checks stay
+                entirely inside TrustShieldPopup; no new privacy implementation. */}
+            <button
+              type="button"
+              onClick={() => { setWalletDropdownOpen(false); setExchangeMenuOpen(false); onOpenPrivacyMode(); }}
+              className="flex items-center justify-center p-1.5 sm:p-2 rounded-xl border border-accent/30 bg-accent/10 text-accent hover:bg-accent/20 transition-all cursor-pointer shrink-0"
+              title={"Trust Shield: "+(trustShieldMode==="STANDARD"?"Standard":trustShieldMode==="PRIVATE"?"Private":"Anonymous")+". Switch mode"}
+              aria-label="Change Trust Shield privacy mode"
+              id="nav-change-privacy-mode"
+            >
+              <ShieldCheck className="w-4 h-4" />
+            </button>
 
             {/* 4. Sidebar Menu Button */}
             <button
@@ -665,7 +679,7 @@ export default function Navbar({
                 </div>
                 <p className="text-xl font-bold text-brand-text mb-3">
                   {selectedExchange !== "hyperliquid" ? (
-                    <span className="text-sm font-semibold text-brand-muted">Lighter balance: see Funds</span>
+                    <span className="text-sm font-semibold text-brand-muted">{selectedExchange==="aster"?"Aster":"Lighter"} balance: see Funds</span>
                   ) : (
                     <TrustShieldValue fieldKey="portfolio" value={`${balanceUSDC.toLocaleString()} USDC`} />
                   )}

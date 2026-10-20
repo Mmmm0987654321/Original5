@@ -123,7 +123,14 @@ export default function AsterVenueAdapter(p:{
  const [hideBalance,setHideBalance]=useState(false);
  const [expanded,setExpanded]=useState<Record<string,boolean>>({});
  const [tpsl,setTpsl]=useState<Raw|null>(null);
- const current=useMemo(()=>{const list=kind==="spot"?spotMarkets:markets;return list.find(m=>m.symbol===selectedSymbol)??list.find(m=>m.base==="BTC")??list[0]??null;},[kind,markets,spotMarkets,selectedSymbol]);
+ // Never substitute another token on mode switch (Spot and Perp market
+ // lists differ). A fresh workspace may still default to BTC if available.
+ const current=useMemo(()=>{
+  const list=kind==="spot"?spotMarkets:markets;
+  if(!selectedSymbol)return null;
+  return list.find(m=>m.symbol===selectedSymbol)??
+   (selectedSymbol==="BTCUSDT"?(list.find(m=>m.base==="BTC")??list[0]??null):null);
+ },[kind,markets,spotMarkets,selectedSymbol]);
  // One exact original market selector with separate, venue-authentic Spot and Perp
  // assets. The shared selector only recognizes Spot if spotSymbol is real.
  const tokens=useMemo<TokenMetadata[]>(()=>[
@@ -212,7 +219,6 @@ export default function AsterVenueAdapter(p:{
  useEffect(()=>{setKind(initialKind);},[initialKind]);
  useEffect(()=>{let cancelled=false;const poll=()=>getAsterMarkets().then(list=>{
   if(cancelled)return;setMarkets(list);setMarketError("");
-  if(list.length&&!list.some(x=>x.symbol===selectedSymbol))setSelectedSymbol(list[0].symbol);
  }).catch(e=>{if(!cancelled)setMarketError(sourceError(e));});
  void poll();const id=window.setInterval(poll,45_000);
  return()=>{cancelled=true;window.clearInterval(id);};},[]);
@@ -577,8 +583,21 @@ export default function AsterVenueAdapter(p:{
   }finally{setBusy(false);}
  };
  const changeMargin=async(next:"CROSS"|"ISOLATED")=>{
-  if(!identity?.mode||!current)return;
-  await act("Margin mode",async()=>asterSignedWrite(walletAddress,identity.mode!,"/fapi/v3/marginType","POST",{symbol:current.symbol,marginType:next==="CROSS"?"CROSSED":"ISOLATED"}));
+  if(!identity?.mode||!current||busy||next===marginMode)return;
+  const symbol=current.symbol;
+  // A margin-mode request is a signed Aster mutation. The selector must NOT
+  // change before the exchange accepts it.
+  setBusy(true);
+  try{
+   await asterSignedWrite(walletAddress,identity.mode,"/fapi/v3/marginType","POST",{
+    symbol,marginType:next==="CROSS"?"CROSSED":"ISOLATED"
+   });
+   setMarginMode(next);
+   setReload(v=>v+1);
+  }catch(e){
+   setToastKind("error");setNotice(sourceError(e));
+   setReload(v=>v+1);
+  }finally{setBusy(false);}
  };
  const history:HideDexHistoryRow[]|null=trades===null?null:trades.flatMap((r,i)=>{
   const px=num(r.price),qty=num(r.qty);if(px===null||qty===null)return[];
@@ -753,7 +772,7 @@ export default function AsterVenueAdapter(p:{
   onSubmit={e=>e.preventDefault()}
   selectors={{isPerp:kind==="perp",orderType,onOrderType:v=>{if(v==="MARKET"||v==="LIMIT")setOrderType(v);},
    availableOrderTypes:["MARKET","LIMIT"],marginMode,
-   onMarginMode:kind==="perp"&&identity?.mode?next=>{setMarginMode(next);void changeMargin(next);}:undefined,
+   onMarginMode:kind==="perp"&&identity?.mode&&!busy?next=>void changeMargin(next):undefined,
    leverage, maxLeverage, onLeverage:kind==="perp"&&identity?.mode?setLeverage:undefined,
    onLeverageCommit:kind==="perp"&&identity?.mode?next=>void changeLev(next):undefined,
    leverageDisabled:!identity?.mode||maxLeverage===null}}
@@ -775,30 +794,46 @@ export default function AsterVenueAdapter(p:{
   place={{type:"button",side,busy,disabled:busy||!current||size===null||size<=0, onClick:()=>void order(),
    label:busy?"Processing…":!identity?"ENABLE TRADING":(kind==="spot"&&!spotMode||kind==="perp"&&!identity.mode)?"VERIFY ASTER ACCOUNT":"PLACE "+(kind==="spot"?(side==="BUY"?"BUY":"SELL"):(side==="BUY"?"LONG":"SHORT"))}}
  />;
+ // The same original Spot/Perp toggle drives Aster's venue-specific pair
+ // selection. If the other mode has no counterpart, open the real selector
+ // instead of quietly trading a different token.
+ const switchAsterMode=()=>{
+  const next:MarketKind=kind==="perp"?"spot":"perp";
+  const options=next==="spot"?spotMarkets:markets;
+  const target=options.find(m=>m.base===current?.base);
+  setKind(next);
+  setSelectedSymbol(target?.symbol??"");
+  if(!target)setSelectOpen(true);
+  onSelectSection("trade",next);
+ };
+ // ONE original HideDexOrderBookPanel renderer, reused in the shared
+ // chart/orderbook switch, trade layout and markets view. These are layout
+ // placements, not duplicate Aster-specific UI components.
+ const renderAsterBook=(onPrice:(price:number)=>void,baseSymbol:string)=>
+  <HideDexOrderBookPanel
+   asks={depth?.asks??[]} bids={depth?.bids??[]}
+   midPrice={marketPrice} midLabel="Last Price" flashingPrices={bookFlashes}
+   sizeUnit="USD" baseSymbol={baseSymbol} onToggleSizeUnit={()=>{}}
+   onSelectPrice={onPrice}
+   formatPrice={n=>fmt(n,4)} formatSize={(price,size)=>"$"+fmt(price*size,2)}
+   group="1" groupOptions={["1"]} onGroup={()=>{}}/>;
  const tradeView=<>
   <HideDexUnifiedMarketHeader
    mobile={{logo:current?renderAssetLogo(current.base):null,ticker:current?.base??"ASTER",modeLabel:kind==="spot"?"Aster Spot":"Aster Perpetual",
     priceLabel:fmt(marketPrice),change24h:current?.change24h,onSelectMarket:()=>setSelectOpen(true),mode:kind,
-    switchMode:"toggle",onSwitchMode:()=>{setKind(kind==="perp"?"spot":"perp");onSelectSection("trade",kind==="perp"?"spot":"perp");}}}
+    switchMode:"toggle",onSwitchMode:switchAsterMode}
    desktop={{logo:current?renderAssetLogo(current.base):null,ticker:current?.base??"ASTER",
     sublabel:kind==="spot"?"Aster Spot":"Aster Perpetual",onMarket:()=>setSelectOpen(true),view,onView:setView,marketInfoOpen:infoOpen,onMarketInfo:()=>setInfoOpen(v=>!v)}}
-   info={{ticker:current?.symbol??"—",mode:kind,priceLabel:"$"+fmt(marketPrice),change24h:current?.change24h,fundingRate:null,openInterestUsd:null,onSwitch:()=>{setKind(kind==="perp"?"spot":"perp");onSelectSection("trade",kind==="perp"?"spot":"perp");}}}
+   info={{ticker:current?.symbol??"—",mode:kind,priceLabel:"$"+fmt(marketPrice),change24h:current?.change24h,fundingRate:null,openInterestUsd:null,onSwitch:switchAsterMode}
    showChartToolbar={view==="chart"}/>
   <HideDexUnifiedTradeCanvas
    marketView={<HideDexUnifiedMarketView view={view}
     chart={current?<TVChart key={"aster-"+current.symbol} symbol={current.base} marketCoin="" asterMarketSymbol={current.symbol} asterMarketKind={kind}
      currentPrice={marketPrice} change24h={current.change24h} volume24h={current.volume24h} tradeHistory={[]} toolbarHostId="market-chart-toolbar-host"/>:<div className="p-6 text-brand-muted text-xs">Aster public market data loading…</div>}
-    orderBook={<HideDexOrderBookPanel asks={depth?.asks??[]} bids={depth?.bids??[]} midPrice={marketPrice} midLabel="Last Price" flashingPrices={bookFlashes}
-     sizeUnit="USD" baseSymbol={current?.base??"COIN"} onToggleSizeUnit={()=>{}}
-     onSelectPrice={v=>{setLimitPrice(String(v));setOrderType("LIMIT");}}
-     formatPrice={n=>fmt(n,4)} formatSize={(price,size)=>"$"+fmt(price*size,2)} group="1" groupOptions={["1"]}
-     onGroup={()=>{}}/>}
+    orderBook={renderAsterBook(v=>{setLimitPrice(String(v));setOrderType("LIMIT");},current?.base??"COIN")}
    />}
    orderForm={placeForm}
-   orderBook={<HideDexOrderBookPanel asks={depth?.asks??[]} bids={depth?.bids??[]} midPrice={marketPrice} midLabel="Last Price" flashingPrices={bookFlashes}
-    sizeUnit="USD" baseSymbol={current?.base??"COIN"} onToggleSizeUnit={()=>{}}
-    onSelectPrice={v=>{setLimitPrice(String(v));setOrderType("LIMIT");}}
-    formatPrice={n=>fmt(n,4)} formatSize={(price,size)=>"$"+fmt(price*size,2)} group="1" groupOptions={["1"]} onGroup={()=>{}}/>}
+   orderBook={renderAsterBook(v=>{setLimitPrice(String(v));setOrderType("LIMIT");},current?.base??"COIN")}
    account={accountPanel}/>
  </>;
  return <div className="w-full min-w-0 text-brand-text pb-1" data-exchange="aster">
@@ -807,7 +842,7 @@ export default function AsterVenueAdapter(p:{
      title="Aster" message={notice} onClose={()=>setNotice("")}/>}
   {!notice&&accountError&&<p role="alert" className="p-2 text-xs text-rose-400">{accountError}</p>}
   {restoring&&<p className="p-2 text-xs text-brand-muted">Verifying encrypted Aster agent for this wallet…</p>}
-  {selectOpen&&<MarketSelector tokens={tokens} selectedSymbol={kind==="spot"?current?.base+"-SPOT":current?.base??""} externalPricesOnly
+  {selectOpen&&<MarketSelector tokens={tokens} selectedSymbol={kind==="spot"&&current?current.base+"-SPOT":current?.base??""} externalPricesOnly
     initialCategory={kind==="spot"?"spot":"perps"} onClose={()=>setSelectOpen(false)}
     onSelectToken={(symbol,mode)=>{
      const actual=(mode==="spot"?spotMarkets:markets).find(m=>m.base===(mode==="spot"?symbol.replace(/-SPOT$/,""):symbol));
@@ -834,13 +869,7 @@ export default function AsterVenueAdapter(p:{
     asterMarket={{
      symbol:current.symbol,kind,price:marketPrice,maxLeverage:kind==="perp"?maxLeverage:null,
      accountSummary:accountPanel,
-     orderBook:<HideDexOrderBookPanel
-      asks={depth?.asks??[]} bids={depth?.bids??[]} midPrice={marketPrice} midLabel="Last Price" flashingPrices={bookFlashes}
-      sizeUnit="USD" baseSymbol={current.base} onToggleSizeUnit={()=>{}}
-      onSelectPrice={v=>{setLimitPrice(String(v));setOrderType("LIMIT");onSelectSection("trade",kind);}}
-      formatPrice={n=>fmt(n,4)} formatSize={(px,qty)=>"$"+fmt(px*qty,2)}
-      group="1" groupOptions={["1"]} onGroup={()=>{}}
-     />
+     orderBook:renderAsterBook(v=>{setLimitPrice(String(v));setOrderType("LIMIT");onSelectSection("trade",kind);},current.base)
     }}
    />}
   </>}
