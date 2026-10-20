@@ -76,6 +76,9 @@ export default function AsterVenueAdapter(p:{
  const [spotMarketError,setSpotMarketError]=useState("");
  const [selectedSymbol,setSelectedSymbol]=useState("BTCUSDT");
  const [kind,setKind]=useState<MarketKind>(initialKind);
+ // Shield is not a Futures V3 trade type. Keep its unverified surface fully
+ // separate from normal Perp and Spot order submission and price/leverage data.
+ const [shieldView,setShieldView]=useState(false);
  const [selectOpen,setSelectOpen]=useState(false);
  const [view,setView]=useState<"chart"|"orderbook">("chart");
  const [infoOpen,setInfoOpen]=useState(false);
@@ -209,7 +212,8 @@ export default function AsterVenueAdapter(p:{
   }
   setConfirmedLeverage(parsed);
  },[leverageStorageKey]);
- useEffect(()=>{setKind(initialKind);},[initialKind]);
+ useEffect(()=>{setKind(initialKind);setShieldView(false);},[initialKind]);
+ useEffect(()=>{if(section!=="trade")setShieldView(false);},[section]);
  useEffect(()=>{let cancelled=false;const poll=()=>getAsterMarkets().then(list=>{
   if(cancelled)return;setMarkets(list);setMarketError("");
   if(list.length&&!list.some(x=>x.symbol===selectedSymbol))setSelectedSymbol(list[0].symbol);
@@ -481,6 +485,13 @@ export default function AsterVenueAdapter(p:{
   finally{setBusy(false);}
  };
  const order=async()=>{
+  // Defense in depth: a Shield selection must NEVER route to regular
+  // /fapi/v3/order or /api/v3/order, even if a stale handler runs.
+  if(shieldView){
+   setToastKind("error");
+   setNotice("Aster Shield trading is not supported by the verified V3 agent API. No order was sent.");
+   return;
+  }
   if(!walletAddress){onConnectWallet();return;}
   if(!identity){setAuthOpen(true);return;}
   const mode=kind==="spot"?spotMode:identity.mode;
@@ -818,7 +829,53 @@ export default function AsterVenueAdapter(p:{
     onPrimary={()=>void enable()} description={<p className="text-sm text-brand-sub">
      Sign once with the connected wallet on BNB Chain to register a fresh Aster Pro API trading agent. The key stays encrypted on this browser. Withdrawals are NOT authorized by this step. Signed balance verification is required before real orders.</p>}/>}
 
-  {section==="trade"&&tradeView}
+  {section==="trade"&&<>
+   <div className="flex items-center gap-1.5 mb-2 px-1" aria-label="Aster trading product">
+    {(["perp","spot","shield"] as const).map(product=><button
+     type="button" key={product}
+     aria-pressed={product==="shield"?shieldView:!shieldView&&kind===product}
+     onClick={()=>{
+      if(product==="shield"){setShieldView(true);setSelectOpen(false);return;}
+      setShieldView(false);setKind(product);onSelectSection("trade",product);
+     }}
+     className={"rounded-lg border px-3 py-2 text-xs font-semibold transition-colors "+
+      ((product==="shield"?shieldView:!shieldView&&kind===product)
+       ?"border-accent bg-accent/15 text-brand-text"
+       :"border-brand-border bg-brand-surface text-brand-muted hover:text-brand-text")}>
+     {product==="shield"?"Shield (Read-only)":product==="perp"?"Perp":"Spot"}
+    </button>)}
+   </div>
+   {shieldView?
+    <section className="glass-panel rounded-2xl border border-brand-border bg-brand-surface p-4 sm:p-6 space-y-4" aria-label="Aster Shield integration status">
+     <div className="flex items-center justify-between gap-3">
+      <h2 className="text-lg font-bold text-brand-text">Aster Shield</h2>
+      <span className="text-[10px] uppercase tracking-wide rounded-lg border border-brand-border px-2 py-1 text-brand-muted">Read-only · Not connected</span>
+     </div>
+     <p role="status" className="text-sm text-brand-sub leading-relaxed">
+      Real Shield trading is unavailable in this integration. The verified Aster Futures V3 API supports regular Perp orders,
+      not Shield order execution. This screen does not use regular Perp prices, positions or leverage as Shield data.
+     </p>
+     <div className="grid grid-cols-2 gap-2 text-xs">
+      <div className="rounded-xl border border-brand-border p-3">
+       <div className="text-brand-muted mb-1">Shield max leverage</div>
+       <div className="font-bold text-brand-text">Unverified</div>
+      </div>
+      <div className="rounded-xl border border-brand-border p-3">
+       <div className="text-brand-muted mb-1">Shield positions</div>
+       <div className="font-bold text-brand-text">Unavailable</div>
+      </div>
+     </div>
+     <button type="button" disabled aria-disabled="true"
+      className="w-full rounded-xl border border-brand-border bg-brand-overlay-subtle p-3 font-bold text-xs text-brand-muted opacity-60 cursor-not-allowed">
+      SHIELD ORDER / CLOSE / TP-SL UNAVAILABLE
+     </button>
+     <p className="text-[11px] text-brand-muted">
+      Your existing Aster Spot and Perp trading remain available in their respective tabs.
+      Shield execution requires a separately verified, official Shield integration.
+     </p>
+    </section>
+    :tradeView}
+  </>}
   {section==="markets"&&<>
    {kind==="spot"&&spotMarketError&&<p role="alert" className="py-2 px-3 text-xs text-brand-muted">{spotMarketError}</p>}
    {current&&<MarketsPanel
