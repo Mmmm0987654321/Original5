@@ -66,10 +66,11 @@ const quoteMarkets=(m:AsterMarket):TokenMetadata=>{
 };
 export default function AsterVenueAdapter(p:{
  section:Section;initialKind:MarketKind;walletAddress:string;
+ perpTradingApproved:boolean;
  getWalletProvider:()=>Promise<AsterProvider>;onConnectWallet:()=>void;
  onSelectSection:(section:Section,kind?:MarketKind)=>void;initialOrdersTab?:"OPEN_ORDERS"|"TRADE_HISTORY";
 }){
- const {section,initialKind,walletAddress,onConnectWallet,getWalletProvider,onSelectSection}=p;
+ const {section,initialKind,walletAddress,onConnectWallet,getWalletProvider,onSelectSection,perpTradingApproved}=p;
  const [markets,setMarkets]=useState<AsterMarket[]>([]);
  const [spotMarkets,setSpotMarkets]=useState<AsterMarket[]>([]);
  const [marketError,setMarketError]=useState("");
@@ -481,6 +482,11 @@ export default function AsterVenueAdapter(p:{
   finally{setBusy(false);}
  };
  const order=async()=>{
+  if(kind==="perp"&&!perpTradingApproved){
+   setToastKind("error");
+   setNotice("Perpetual trading requires approved Early Access. Spot trading is available.");
+   return;
+  }
   if(!walletAddress){onConnectWallet();return;}
   if(!identity){setAuthOpen(true);return;}
   const mode=kind==="spot"?spotMode:identity.mode;
@@ -753,16 +759,20 @@ export default function AsterVenueAdapter(p:{
   onSubmit={e=>e.preventDefault()}
   selectors={{isPerp:kind==="perp",orderType,onOrderType:v=>{if(v==="MARKET"||v==="LIMIT")setOrderType(v);},
    availableOrderTypes:["MARKET","LIMIT"],marginMode,
-   onMarginMode:kind==="perp"&&identity?.mode?next=>{setMarginMode(next);void changeMargin(next);}:undefined,
-   leverage, maxLeverage, onLeverage:kind==="perp"&&identity?.mode?setLeverage:undefined,
-   onLeverageCommit:kind==="perp"&&identity?.mode?next=>void changeLev(next):undefined,
-   leverageDisabled:!identity?.mode||maxLeverage===null}}
+   onMarginMode:kind==="perp"&&perpTradingApproved&&identity?.mode?next=>{setMarginMode(next);void changeMargin(next);}:undefined,
+   leverage, maxLeverage, onLeverage:kind==="perp"&&perpTradingApproved&&identity?.mode?setLeverage:undefined,
+   onLeverageCommit:kind==="perp"&&perpTradingApproved&&identity?.mode?next=>void changeLev(next):undefined,
+   leverageDisabled:!identity?.mode||maxLeverage===null||(kind==="perp"&&!perpTradingApproved)}}
   side={{isPerp:kind==="perp",side,onSide:setSide,available:free!==null?fmt(free,5)+" "+(kind==="spot"&&side==="SELL"?current?.base??"COIN":"USDT"):"—"}}
   basic={{type:orderType,price:limitPrice,onPrice:setLimitPrice,midPrice:marketPrice,
    size:amount,onSize:setAmount,sizeUnit:sizeUnit==="USDT"?"USDT":current?.base??"COIN",
    onToggleUnit:()=>{if(price&&num(amount)!==null&&price>0)
     setAmount(String(sizeUnit==="USDT"?Number(amount)/price:Number(amount)*price));
     else setAmount("");setSizeUnit(v=>v==="USDT"?"COIN":"USDT");}}}
+  advancedFields={kind==="perp"&&!perpTradingApproved?
+   <p role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-200">
+    Perpetual trading requires approved Early Access. Charts remain available; Spot is open.
+   </p>:undefined}
   presets={{disabled:free===null||marketPrice===null||marketPrice<=0,onSelect:pct=>{
    if(free===null||marketPrice===null||marketPrice<=0)return;
    const spend=free*pct/100;
@@ -776,9 +786,9 @@ export default function AsterVenueAdapter(p:{
   // entering a nonzero order size. Validate order size only AFTER an agent
   // exists; never trigger authorization automatically during restore.
   place={{type:"button",side,busy,
-   disabled:busy||restoring||(identity!==null&&(!current||size===null||size<=0)),
+   disabled:(kind==="perp"&&!perpTradingApproved)||busy||restoring||(identity!==null&&(!current||size===null||size<=0)),
    onClick:()=>void order(),
-   label:busy?"Processing…":restoring?"RESTORING ASTER AGENT":!identity?"ENABLE TRADING":(kind==="spot"&&!spotMode||kind==="perp"&&!identity.mode)?"VERIFY ASTER ACCOUNT":"PLACE "+(kind==="spot"?(side==="BUY"?"BUY":"SELL"):(side==="BUY"?"LONG":"SHORT"))}}
+   label:kind==="perp"&&!perpTradingApproved?"PERPETUAL LOCKED":busy?"Processing…":restoring?"RESTORING ASTER AGENT":!identity?"ENABLE TRADING":(kind==="spot"&&!spotMode||kind==="perp"&&!identity.mode)?"VERIFY ASTER ACCOUNT":"PLACE "+(kind==="spot"?(side==="BUY"?"BUY":"SELL"):(side==="BUY"?"LONG":"SHORT"))}}
  />;
  const tradeView=<>
   <HideDexUnifiedMarketHeader

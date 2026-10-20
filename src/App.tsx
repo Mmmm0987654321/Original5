@@ -458,6 +458,10 @@ export default function App() {
     try { sessionStorage.setItem("hidedex_exchange", selectedExchange); } catch { /* Private browsing */ }
   }, [selectedExchange]);
   const [launchVerifiedWallet, setLaunchVerifiedWallet] = useState<string | null>(null);
+  // Public terminal access is UI navigation, never Early Access approval.
+  const [publicWorkspaceOpened, setPublicWorkspaceOpened] = useState(false);
+  const [showPerpAccessSheet, setShowPerpAccessSheet] = useState(false);
+  const [earlyAccessRequestedFromPerp, setEarlyAccessRequestedFromPerp] = useState(false);
   // Local storage remembers previously opened UX, never access authorization.
   const [lastTradingWallet, setLastTradingWallet] = useState<string>(() => {
     try { return localStorage.getItem("hidedex_last_trading_wallet")?.toLowerCase() ?? ""; }
@@ -486,14 +490,16 @@ export default function App() {
     const timer = window.setTimeout(() => setRestoreGraceElapsed(true), 5000);
     return () => window.clearTimeout(timer);
   }, [lastTradingWallet, refreshTradingWallet]);
-  const hasTradingAccess = walletConnected
-    && !!walletAddress
-    && launchVerifiedWallet === walletAddress.trim().toLowerCase();
+  const hasTradingAccess = publicWorkspaceOpened || (
+    walletConnected && !!walletAddress &&
+    launchVerifiedWallet === walletAddress.trim().toLowerCase()
+  );
   // Every tab/route renderer uses the effective tab, so a URL or child
   // Exchange selection persists across Market, Trade, Funds and Account tabs.
   // A tab change must never silently switch trading venues.
 
-  // setActiveTab cannot render trading screens before signed verification.
+  // Public Spot/market pages are accessible without wallet; signing still requires
+  // a real wallet, and Perp entry uses separate server-granted approval.
   const activeTab: ActiveTab = hasTradingAccess ? requestedTab : ActiveTab.Landing;
   const isPublicLanding = activeTab === ActiveTab.Landing;
   const mainContentRef = useRef<HTMLElement>(null);
@@ -514,9 +520,17 @@ export default function App() {
   } | null>(null);
   const [accessLookupState, setAccessLookupState] =
     useState<"idle" | "checking" | "ready" | "error">("idle");
+  // Spot is public; Perpetual entries are approved only by an authenticated
+  // connected wallet plus the current server-reported Early Access status.
+  const hasPerpApproval = hasTradingAccess && walletConnected &&
+    connectedAccess?.wallet === walletAddress.trim().toLowerCase() &&
+    connectedAccess.status === "granted";
+  useEffect(() => {
+    setShowPerpAccessSheet(activeTab === ActiveTab.Perp && !hasPerpApproval);
+  }, [activeTab, hasPerpApproval, selectedExchange]);
   useEffect(() => {
     const wallet = walletAddress.trim().toLowerCase();
-    if (!refreshTradingWallet || wallet !== refreshTradingWallet ||
+    if ((!publicWorkspaceOpened && (!refreshTradingWallet || wallet !== refreshTradingWallet)) ||
         !walletConnected || !/^0x[0-9a-f]{40}$/.test(wallet)) {
       setConnectedAccess(null);
       setAccessLookupState("idle");
@@ -547,15 +561,15 @@ export default function App() {
       }
     })();
     return () => { cancelled = true; };
-  }, [walletConnected, walletAddress, refreshTradingWallet]);
+  }, [walletConnected, walletAddress, refreshTradingWallet, publicWorkspaceOpened]);
 
-  // Resume only a previously opened trading workspace with a wallet that is
-  // BOTH actually reconnected AND currently approved by the server.
+  // Restore a previously opened wallet workspace after a current server check.
+  // Unapproved wallets may resume Spot but must not resume Perpetual entries.
   useEffect(() => {
     if (!refreshTradingWallet || !walletConnected || !walletAddress || !lastTradingWallet) return;
     const wallet = walletAddress.trim().toLowerCase();
     if (wallet !== refreshTradingWallet || wallet !== lastTradingWallet || connectedAccess?.wallet !== wallet ||
-        connectedAccess.status !== "granted" || launchVerifiedWallet === wallet) return;
+        launchVerifiedWallet === wallet) return;
     let preferredTab: ActiveTab = ActiveTab.Markets;
     try {
       const previousTab = localStorage.getItem("hidedex_last_trading_tab_" + wallet);
@@ -565,19 +579,24 @@ export default function App() {
       }
     } catch { /* storage may be blocked */ }
     setLaunchVerifiedWallet(wallet);
-    setActiveTab(preferredTab);
+    setActiveTab(connectedAccess.status !== "granted" && preferredTab === ActiveTab.Perp
+      ? ActiveTab.Spot : preferredTab);
     // Refresh does not request trading signatures or reopen Trust Shield.
   }, [walletConnected, walletAddress, lastTradingWallet, refreshTradingWallet, connectedAccess, launchVerifiedWallet]);
 
-  // Remember the current screen while the user is in the verified app.
+  // Remember user-selected screens for a future public entry. This is only
+  // navigation history; it cannot unlock Perpetual or authorize a trade.
   useEffect(() => {
     if (!hasTradingAccess || requestedTab === ActiveTab.Landing) return;
-    const wallet = walletAddress.trim().toLowerCase();
     try {
-      localStorage.setItem("hidedex_last_trading_wallet", wallet);
-      localStorage.setItem("hidedex_last_trading_tab_" + wallet, requestedTab);
+      sessionStorage.setItem("hidedex_last_public_trading_tab", requestedTab);
+      const wallet = walletAddress.trim().toLowerCase();
+      if (walletConnected && /^0x[0-9a-f]{40}$/.test(wallet)) {
+        localStorage.setItem("hidedex_last_trading_wallet", wallet);
+        localStorage.setItem("hidedex_last_trading_tab_" + wallet, requestedTab);
+      }
     } catch { /* nonessential UX cache */ }
-  }, [hasTradingAccess, requestedTab, walletAddress]);
+  }, [hasTradingAccess, requestedTab, walletConnected, walletAddress]);
 
   // Treat saved wallet as a UI-only restore hint, never as access authorization.
   // Keep the neutral boot shell visible throughout Reown/provider restoration and
@@ -819,7 +838,7 @@ export default function App() {
   // Only offer Hyperliquid signing on the actual Spot/Perp terminal.
   // A zero-balance user may still configure trading permissions voluntarily.
   const isTradeTerminalActive = hasTradingAccess &&
-    (activeTab === ActiveTab.Perp || activeTab === ActiveTab.Spot);
+    (activeTab === ActiveTab.Spot || (activeTab === ActiveTab.Perp && hasPerpApproval));
   const showTradingSetup =
     isTradeTerminalActive &&
     !!normalizedTradingAddress &&
@@ -981,7 +1000,10 @@ export default function App() {
     // Even when switching between two still-connected accounts, discard the
     // old wallet's proof and require a fresh server-signed launch approval.
     setLaunchVerifiedWallet(null);
-    setActiveTab(ActiveTab.Landing);
+    setConnectedAccess(null);
+    setActiveTab(tab => publicWorkspaceOpened
+      ? (tab === ActiveTab.Perp ? ActiveTab.Spot : tab)
+      : ActiveTab.Landing);
   }, [walletConnected, walletAddress]);
 
   useEffect(() => {
@@ -992,7 +1014,8 @@ export default function App() {
 
       if (
         isLargeScreen &&
-        activeTab === ActiveTab.Markets
+        activeTab === ActiveTab.Markets &&
+        hasPerpApproval
       ) {
         setActiveTab(ActiveTab.Perp);
       }
@@ -1001,7 +1024,7 @@ export default function App() {
         mode === "ANONYMOUS" &&
         activeTab === ActiveTab.Profile
       ) {
-        setActiveTab(ActiveTab.Perp);
+        setActiveTab(hasPerpApproval ? ActiveTab.Perp : ActiveTab.Spot);
       }
     };
 
@@ -1023,7 +1046,8 @@ export default function App() {
       ) => {
         if (
           e.matches &&
-          activeTab === ActiveTab.Markets
+          activeTab === ActiveTab.Markets &&
+          hasPerpApproval
         ) {
           setActiveTab(ActiveTab.Perp);
         }
@@ -1052,7 +1076,8 @@ export default function App() {
     }
   }, [
     mode,
-    activeTab
+    activeTab,
+    hasPerpApproval
   ]);
 
   // Handle URL direct routing checks for trade-history, leaderboard, analytics, referral, order-history, funding-history, twap-history
@@ -1124,7 +1149,7 @@ export default function App() {
   });
 
   const [userSettings, setUserSettings] = useState<UserSettings>(() => {
-    let savedTheme: "dark" | "light" = "light";
+    let savedTheme: "dark" | "light" = "dark";
     if (typeof window !== "undefined") {
       // The full theme ID is authoritative; a monochrome profile must not
       // be collapsed back into Classic Light by stale anon_theme state.
@@ -2458,7 +2483,7 @@ export default function App() {
 
   // Load saved visual preferences on startup
   useEffect(() => {
-    const savedTheme = localStorage.getItem("pref_theme_id") || "light";
+    const savedTheme = localStorage.getItem("pref_theme_id") || "mono-dark";
     const savedSizeStr = localStorage.getItem("pref_font_size_percent");
     let savedSizeNum = 100;
     if (savedSizeStr) {
@@ -2487,7 +2512,7 @@ export default function App() {
   // Sync theme changes with the DOM and localStorage
   useEffect(() => {
     const isLight = userSettings.theme === "light";
-    const existingThemeId = localStorage.getItem("pref_theme_id") || "light";
+    const existingThemeId = localStorage.getItem("pref_theme_id") || "mono-dark";
     const existingIsLight = existingThemeId === "light" || existingThemeId === "mono-light";
     // Preserve the chosen exact profile when it belongs to the requested mode.
     // Only the navbar's explicit light/dark toggle changes the theme family.
@@ -2521,7 +2546,7 @@ export default function App() {
   // Keep the navbar light/dark state in sync without overwriting mono themes.
   useEffect(() => {
     const syncProfile = () => {
-      const themeId = localStorage.getItem("pref_theme_id") || "light";
+      const themeId = localStorage.getItem("pref_theme_id") || "mono-dark";
       const next = (themeId === "light" || themeId === "mono-light") ? "light" : "dark";
       setUserSettings(prev => prev.theme === next ? prev : { ...prev, theme: next });
     };
@@ -2773,7 +2798,7 @@ export default function App() {
     setWalletConnected(false);
     setWalletAddress("");
     setWalletType(null);
-    setActiveTab(ActiveTab.Landing);
+    setActiveTab(publicWorkspaceOpened ? ActiveTab.Spot : ActiveTab.Landing);
     setTradingSetupComplete(false);
     setSetupRestoreCheckedAddress(null);
     setSetupVerifiedAddress(null);
@@ -3981,55 +4006,53 @@ export default function App() {
               }}
               onDisconnectWallet={handleDisconnectWallet}
               walletAddress={walletAddress}
+              showEarlyAccessOnMount={earlyAccessRequestedFromPerp}
+              onClosePerpEarlyAccess={() => {
+                setEarlyAccessRequestedFromPerp(false);
+                setActiveTab(ActiveTab.Spot);
+              }}
               onVerifyLaunchApp={async (wallet: string): Promise<void> => {
-                // Reown has already verified the connected wallet's address.
-                // Consult the *current* Supabase waitlist approval, not a local
-                // cache. No second wallet signature is requested at launch.
-                const activeWalletAddress = walletAddress.trim().toLowerCase();
-                if (!walletConnected || !/^0x[0-9a-f]{40}$/.test(activeWalletAddress) ||
-                    activeWalletAddress !== wallet.trim().toLowerCase()) {
-                  throw new Error("Connect the approved wallet to continue.");
+                // Start Trading opens public Spot; this NEVER grants Perpetual.
+                const currentWallet = walletAddress.trim().toLowerCase();
+                if (walletConnected && wallet &&
+                    wallet.trim().toLowerCase() !== currentWallet) {
+                  throw new Error("Connected wallet mismatch. Please reconnect.");
                 }
-                // Reuse a fresh in-memory wallet-connect check; otherwise
-                // run ONE lightweight API lookup, never slow volume refresh.
-                let access = connectedAccess?.wallet === activeWalletAddress &&
-                  Date.now() - connectedAccess.checkedAt < 60_000
-                  ? connectedAccess.status : null;
-                if (!access) {
-                  const response = await fetch(HIDEDEX_EARLY_ACCESS_API, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ action: "access", wallet: activeWalletAddress }),
-                  });
-                  const status = await response.json().catch(() => ({}));
-                  if (!response.ok || status.wallet !== activeWalletAddress) {
-                    throw new Error(status.error || "Unable to check Early Access approval.");
-                  }
-                  access = status.access_status;
-                  if (access === "none" || access === "pending" || access === "granted") {
-                    setConnectedAccess({wallet:activeWalletAddress,status:access,checkedAt:Date.now()});
-                  }
-                }
-                if (access !== "granted") {
-                  throw new Error("This wallet is still on the waitlist.");
-                }
-                // Storage remembers UI history only. Trading access always
-                // requires the live server-granted status above.
+                // First visit opens the Spot market terminal with a live chart.
+                // Returning visitors keep their last screen if it is safe to
+                // reopen; Perpetual still requires a fresh server grant.
+                let entryTab = ActiveTab.Spot;
                 try {
-                  localStorage.setItem("hidedex_last_trading_wallet", activeWalletAddress);
-                  localStorage.setItem("hidedex_last_trading_tab_" + activeWalletAddress, ActiveTab.Markets);
-                  localStorage.setItem("hidedex_last_access_checked_at", String(Date.now()));
-                } catch { /* Storage may be unavailable. */ }
-                // Session-scoped navigation hint: only refresh within this opened
-                // trading tab may restore the app without flashing the homepage.
-                try { sessionStorage.setItem("hidedex_active_trading_wallet", activeWalletAddress); }
-                catch { /* Storage may be unavailable: Launch App still works */ }
-                setLastTradingWallet(activeWalletAddress);
-                setLaunchVerifiedWallet(activeWalletAddress);
-                setActiveTab(ActiveTab.Markets);
-                // Trust Shield config is a TRADING preference: show only after
-                // this server-granted transition, never during wallet signup.
-                if (!popupSeen) setShowTrustShieldPopup(true);
+                  const walletIsValid = walletConnected && /^0x[0-9a-f]{40}$/.test(currentWallet);
+                  const previous = walletIsValid
+                    ? localStorage.getItem("hidedex_last_trading_tab_" + currentWallet)
+                    : sessionStorage.getItem("hidedex_last_public_trading_tab");
+                  if (previous && previous !== ActiveTab.Landing &&
+                      Object.values(ActiveTab).includes(previous as ActiveTab)) {
+                    const next = previous as ActiveTab;
+                    if (next !== ActiveTab.Perp ||
+                        (hasPerpApproval && connectedAccess?.wallet === currentWallet &&
+                         Date.now() - connectedAccess.checkedAt < 60_000)) {
+                      entryTab = next;
+                    }
+                  }
+                } catch { /* Default to visible Spot chart when storage is blocked. */ }
+                setPublicWorkspaceOpened(true);
+                setEarlyAccessRequestedFromPerp(false);
+                setActiveTab(entryTab);
+                if (walletConnected && /^0x[0-9a-f]{40}$/.test(currentWallet)) {
+                  try {
+                    localStorage.setItem("hidedex_last_trading_wallet", currentWallet);
+                    if (entryTab === ActiveTab.Spot) {
+                      // Do not erase an existing user's remembered screen.
+                      const key = "hidedex_last_trading_tab_" + currentWallet;
+                      if (!localStorage.getItem(key)) localStorage.setItem(key, entryTab);
+                    }
+                    sessionStorage.setItem("hidedex_active_trading_wallet", currentWallet);
+                  } catch { /* UX restore hints are optional; never permission. */ }
+                  setLastTradingWallet(currentWallet);
+                  setLaunchVerifiedWallet(currentWallet);
+                }
               }}
               accountValueUsd={realAccountValueUsd}
               withdrawableUsd={realWithdrawableUsd}
@@ -4100,6 +4123,7 @@ export default function App() {
               key="trading-terminal"
               symbol={selectedSymbol}
               isPerp={activeTab === ActiveTab.Perp}
+              perpTradingApproved={hasPerpApproval}
               pricePreset={selectedPricePreset}
               onPricePresetConsumed={() => setSelectedPricePreset(undefined)}
               currentToken={currentToken}
@@ -4271,6 +4295,7 @@ export default function App() {
                 "trade"
               }
               initialKind={activeTab === ActiveTab.Spot ? "spot" : "perp"}
+              perpTradingApproved={hasPerpApproval}
               onSelectSection={(section, marketKind) => setActiveTab(
                 section === "dashboard" ? ActiveTab.Dashboard :
                 section === "markets" ? ActiveTab.Markets :
@@ -4291,6 +4316,7 @@ export default function App() {
             getWalletProvider={getAsterWalletProvider}
             onConnectWallet={()=>setShowWalletModal(true)}
             initialKind={activeTab===ActiveTab.Spot?"spot":"perp"}
+            perpTradingApproved={hasPerpApproval}
             section={activeTab===ActiveTab.Dashboard?"dashboard":
               activeTab===ActiveTab.Markets?"markets":
               activeTab===ActiveTab.Portfolio?"funds":
@@ -4482,6 +4508,40 @@ export default function App() {
         </div>
       )}
 
+
+      {/* Read-only Perp charts remain visible until the wallet is approved.
+          This is an entry gate, not an exchange API permission. */}
+      {showPerpAccessSheet && activeTab === ActiveTab.Perp && !hasPerpApproval && (
+        <div className="fixed inset-0 z-[90] flex items-end justify-center" role="presentation">
+          <button type="button" aria-label="Dismiss Perpetual access notice"
+            className="absolute inset-0 bg-black/55"
+            onClick={() => setShowPerpAccessSheet(false)}/>
+          <div role="dialog" aria-modal="true" aria-labelledby="perp-access-title"
+            className="relative w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl border border-brand-border bg-brand-surface px-5 pt-5 pb-[max(26px,env(safe-area-inset-bottom))] text-brand-text shadow-2xl">
+            <button type="button" aria-label="Close" onClick={() => setShowPerpAccessSheet(false)}
+              className="absolute top-3 right-3 rounded-lg p-1.5 text-brand-muted hover:text-brand-text"><X className="h-5 w-5"/></button>
+            <h2 id="perp-access-title" className="pr-8 text-lg font-bold">Perpetual Trading — Early Access</h2>
+            <p className="mt-2 text-sm leading-6 text-brand-sub">
+              Explore Perpetual markets and charts freely. New Perpetual trades on Hyperliquid,
+              Lighter and Aster require an approved Early Access wallet. Spot trading is open
+              to connected wallets, subject to the exchanges' normal signing and balance requirements.
+            </p>
+            <button type="button" onClick={() => {
+              setShowPerpAccessSheet(false);
+              setEarlyAccessRequestedFromPerp(true);
+              setActiveTab(ActiveTab.Landing);
+            }} className="mt-5 w-full rounded-xl bg-accent py-3 text-sm font-extrabold text-brand-bg">
+              Join Early Access
+            </button>
+            <button type="button" onClick={() => {
+              setShowPerpAccessSheet(false);
+              setActiveTab(ActiveTab.Spot);
+            }} className="mt-2 w-full rounded-xl border border-brand-border py-3 text-sm font-bold text-brand-text">
+              Continue with Spot
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Wallet Selector Modal (Compact, real Web3 wallet gateway with mobile deep links) */}
       <WalletConnectModal

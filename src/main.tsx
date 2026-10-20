@@ -23,19 +23,18 @@ const queryClient = new QueryClient({
 // still synchronize later changes; they must never be responsible for the
 // first visible paint (which previously flashed the legacy green palette).
 if (typeof window !== 'undefined') {
-  let themeId = 'light';
+  let themeId = 'mono-dark';
   let fontSize = 100;
   let headersFont = 'Inter';
   let numbersFont = 'JetBrains Mono';
   try {
     const saved = localStorage.getItem('pref_theme_id');
-    // Old installations persisted Cosmic Slate as their default dark theme.
-    // Migrate it ONCE to Classic Light; intentional future theme selections
-    // remain untouched, including a manually selected Cosmic Slate profile.
+    // Migrate the old first-run Cosmic Slate default ONCE to Mono Black.
+    // Do not overwrite any other saved theme chosen by a returning user.
     const migrationKey = 'hidedex_legacy_green_theme_migrated_v1';
     const needsMigration = localStorage.getItem(migrationKey) !== '1';
     if (needsMigration && saved === 'cosmic-slate') {
-      themeId = 'light';
+      themeId = 'mono-dark';
       localStorage.setItem('pref_theme_id', themeId);
     } else if (saved && THEME_PROFILES.some(profile => profile.id === saved)) {
       themeId = saved;
@@ -57,7 +56,7 @@ if (typeof window !== 'undefined') {
     headersFont = localStorage.getItem('pref_headers_font') || headersFont;
     numbersFont = localStorage.getItem('pref_numbers_font') || numbersFont;
   } catch {
-    // Storage may be unavailable in restricted browsers; default to light.
+    // Storage may be unavailable in restricted browsers; default to Mono Black.
   }
   applyPreferencesToDOM(themeId, fontSize, headersFont, numbersFont);
 }

@@ -458,6 +458,19 @@ export default function Navbar({
                       {selectedExchange===venue.id&&<Check className="w-4 h-4 shrink-0 text-accent"/>}
                     </button>
                   ))}
+                  <div className="mt-1.5 border-t border-brand-border pt-2">
+                    <button type="button" disabled aria-disabled="true" aria-label="HideDex exchange upcoming"
+                      className="w-full flex items-center justify-between gap-3 rounded-xl px-3 py-3 text-left cursor-not-allowed"
+                      title="HideDex trading venue is coming soon">
+                      <span className="flex min-w-0 items-center gap-3">
+                        <img src="/hidedex-logo.webp" alt="" aria-hidden="true" width={30} height={30}
+                          decoding="async" draggable={false}
+                          className="w-[30px] h-[30px] rounded-md object-contain shrink-0"/>
+                        <span className="text-sm font-bold text-brand-text">HideDex</span>
+                      </span>
+                      <span className="shrink-0 rounded-md border border-brand-border bg-brand-overlay-subtle px-2 py-0.5 text-[10px] font-semibold text-brand-muted">Upcoming</span>
+                    </button>
+                  </div>
                 </div>
               </div>,document.body
             )}

@@ -102,6 +102,7 @@ import TopTradesView, { LiveTradeItem } from "./TopTradesView";
 interface RedesignedTerminalProps {
   symbol: string;
   isPerp: boolean;
+  perpTradingApproved: boolean;
   currentToken: TokenMetadata;
   tokens: TokenMetadata[];
   balanceUSDC: number;
@@ -259,6 +260,7 @@ function saveMarginTypeForWeb(
 export default function RedesignedTerminal({
   symbol,
   isPerp,
+  perpTradingApproved,
   currentToken,
   tokens,
   balanceUSDC,
@@ -3288,6 +3290,16 @@ export default function RedesignedTerminal({
       message: "",
     });
 
+    // Public Perp is read-only until the connected wallet's live
+    // Early Access grant is confirmed; never enter wallet signing here.
+    if (isPerp && !perpTradingApproved) {
+      setPlaceStatus({
+        type: "error",
+        message: "Perpetual trading requires approved Early Access. Spot trading is open.",
+      });
+      return;
+    }
+
     if (!walletAddress) {
       onConnectWallet();
       return;
@@ -4550,6 +4562,11 @@ export default function RedesignedTerminal({
             sizeUnit,onToggleUnit:handleToggleSizeUnit,
           }:null}
           advancedFields={<>
+            {isPerp && !perpTradingApproved && (
+              <p role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-200">
+                Perpetual trading requires approved Early Access. Charts remain available; you can trade Spot.
+              </p>
+            )}
             {(orderType === "STOP_LIMIT" || orderType === "TAKE_LIMIT") && (
               <div className="space-y-1.5">
                 {/* Trigger Price */}
@@ -4783,6 +4800,7 @@ export default function RedesignedTerminal({
             type:"submit",onClick:showOrderButtonTap,
             disabled:((() => {
                 if (isPlacingOrder) return true;
+                if (isPerp && !perpTradingApproved) return true;
                 if (isPerp) {
                   if (sizeUsd <= 0) return true;
                   if (notEnoughMarginEffectiveSide) return true;
@@ -4817,7 +4835,9 @@ export default function RedesignedTerminal({
                 }
               })()),
             side:orderSide,busy:isPlacingOrder,tapped:orderButtonTapped,
-            label:(isPlacingOrder
+            label:(isPerp && !perpTradingApproved
+                ? "PERPETUAL LOCKED"
+                : isPlacingOrder
                 ? `Place ${orderSide === "BUY" ? (isPerp ? "Long" : "Buy") : (isPerp ? "Short" : "Sell")}`
                 : isPerp && reduceOnly && currentRoDisabled
                 ? roTooLarge

@@ -131,6 +131,7 @@ type Props = {
   onConnectWallet: () => void;
   section: Section;
   initialKind?: Kind;
+  perpTradingApproved: boolean;
   onSelectSection: (section: Section, marketKind?: Kind) => void;
   onMarketCatalog?:(tokens:TokenMetadata[])=>void;
   watchlist?:readonly string[];
@@ -156,7 +157,7 @@ function labelKind(kind: Kind) { return kind === "perp" ? "Perpetual" : "Spot"; 
  */
 export default function LighterMarketPreview({
   walletAddress, getWalletProvider, onConnectWallet, section, initialKind = "perp", onSelectSection,
-  onMarketCatalog,watchlist=[],onToggleFavorite,sidebarMarketRequest,initialOrdersTab,
+  perpTradingApproved,onMarketCatalog,watchlist=[],onToggleFavorite,sidebarMarketRequest,initialOrdersTab,
 }: Props) {
   const [markets, setMarkets] = useState<LighterMarket[]>([]);
   const [selectedMarketId, setSelectedMarketId] = useState<number | null>(null);
@@ -330,14 +331,14 @@ export default function LighterMarketPreview({
   // device key gets a silent verification attempt; never auto-register a new
   // key just because the verification endpoint is temporarily unavailable.
   useEffect(()=>{
-    if(section!=="trade"||!walletAddress||!signerRestore.complete||
+    if((kind==="perp"&&!perpTradingApproved)||section!=="trade"||!walletAddress||!signerRestore.complete||
       signerRestore.wallet!==walletAddress.toLowerCase()||
       signerRestore.hasSaved||restoringSavedSigner||tradingIdentity)return;
     const key=walletAddress.toLowerCase();
     if(promptedWallets.current.has(key))return;
     promptedWallets.current.add(key);
     setAuthSheetOpen(true);
-  },[section,walletAddress,signerRestore,restoringSavedSigner,tradingIdentity]);
+  },[section,walletAddress,signerRestore,restoringSavedSigner,tradingIdentity,kind,perpTradingApproved]);
 
   // Keep transaction/status feedback out of the Trade layout and dismiss
   // automatically; the modal retains registration/recovery instructions.
@@ -379,6 +380,11 @@ export default function LighterMarketPreview({
     } finally { setTradingBusy(false); }
   };
   const submitTrade = async () => {
+    if(kind==="perp"&&!perpTradingApproved){
+      setNoticeKind("error");
+      setTradingNotice("Perpetual trading requires approved Early Access. Spot trading is available.");
+      return;
+    }
     if (!walletAddress || !selected || tradingBusy) return;
     if(uncertainPosition){
       setNoticeKind("pending");
@@ -836,7 +842,7 @@ export default function LighterMarketPreview({
     ":"+marketId+":"+leverage+":"+mode;
 
   const queueMarginUpdate=(leverage:number,mode:"cross"|"isolated")=>{
-    if(kind!=="perp"||!selected||!selected.maxLeverage||
+    if(!perpTradingApproved||kind!=="perp"||!selected||!selected.maxLeverage||
       !Number.isSafeInteger(leverage)||leverage<1||leverage>selected.maxLeverage)return;
     const request={key:marginKey(selected.id,leverage,mode),
       marketId:selected.id,leverage,mode,attempt:0};
@@ -850,6 +856,7 @@ export default function LighterMarketPreview({
   const applyLighterMargin=async(request:{
     key:string;marketId:number;leverage:number;mode:"cross"|"isolated";attempt:number;
   }):Promise<boolean>=>{
+    if(!perpTradingApproved)return false;
     if(acknowledgedMarginRef.current===request.key){
       // An accepted signed update may still be settling. Do not claim
       // leverage is active or send a second signed margin update.
@@ -1141,7 +1148,7 @@ export default function LighterMarketPreview({
   // automatically and can never authorize a real order.
   useEffect(()=>{
     // Read the real account setting before consuming a signed leverage update.
-    if(!marginIntent||kind!=="perp"||!selected||accountsLoading||
+    if(!marginIntent||!perpTradingApproved||kind!=="perp"||!selected||accountsLoading||
        marginIntent.marketId!==selected.id)return;
     const wait=Math.max(650,marginRetryUntilRef.current-Date.now());
     const timer=window.setTimeout(async()=>{
@@ -1858,15 +1865,15 @@ export default function LighterMarketPreview({
             availableOrderTypes:["MARKET","LIMIT"],
             onOrderType:next=>{if(next==="MARKET"||next==="LIMIT")setOrderType(next.toLowerCase() as "market"|"limit");},
             marginMode:marginMode.toUpperCase() as "CROSS"|"ISOLATED",
-            onMarginMode:next=>{
+            onMarginMode:kind==="perp"&&!perpTradingApproved?undefined:next=>{
               const mode=next.toLowerCase() as "cross"|"isolated";
               setMarginMode(mode);queueMarginUpdate(chosenLeverage,mode);
             },
             leverage:chosenLeverage,
             maxLeverage:selected?.maxLeverage??null,
-            onLeverage:next=>setChosenLeverage(next),
-            onLeverageCommit:next=>queueMarginUpdate(next,marginMode),
-            leverageDisabled:!selected?.maxLeverage,
+            onLeverage:kind==="perp"&&!perpTradingApproved?undefined:next=>setChosenLeverage(next),
+            onLeverageCommit:kind==="perp"&&!perpTradingApproved?undefined:next=>queueMarginUpdate(next,marginMode),
+            leverageDisabled:!selected?.maxLeverage||(kind==="perp"&&!perpTradingApproved),
           }}
           side={{
             isPerp:kind==="perp",
@@ -1886,6 +1893,10 @@ export default function LighterMarketPreview({
               setSizeUnit(v=>v==="USD"?"COIN":"USD");
             },
           }}
+          advancedFields={kind==="perp"&&!perpTradingApproved?
+            <p role="status" className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-2.5 py-2 text-[11px] text-amber-200">
+              Perpetual trading requires approved Early Access. Charts remain available; Spot is open.
+            </p>:undefined}
           presets={{
             disabled:!marketPrice||availableForMarket===null,
             onSelect:percent=>{
@@ -1939,8 +1950,8 @@ export default function LighterMarketPreview({
           place={{
             type:"button",onClick:submitTrade,side:side==="buy"?"BUY":"SELL",
             busy:tradingBusy,
-            disabled:tradingBusy||!walletAddress||!selected||feed.status!=="live"||!(sizeInCoin>0),
-            label:tradingBusy?"Processing…":"PLACE "+(side==="buy"?(kind==="perp"?"LONG":"BUY"):(kind==="perp"?"SHORT":"SELL")),
+            disabled:(kind==="perp"&&!perpTradingApproved)||tradingBusy||!walletAddress||!selected||feed.status!=="live"||!(sizeInCoin>0),
+            label:kind==="perp"&&!perpTradingApproved?"PERPETUAL LOCKED":tradingBusy?"Processing…":"PLACE "+(side==="buy"?(kind==="perp"?"LONG":"BUY"):(kind==="perp"?"SHORT":"SELL")),
           }}
         />}
         orderBook={<>

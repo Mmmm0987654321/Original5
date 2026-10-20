@@ -152,6 +152,8 @@ interface LandingPageProps {
   onConnectWallet: () => void;
   onSignEarlyAccessMessage: (message: string) => Promise<string>;
   onVerifyLaunchApp: (wallet: string) => Promise<void>;
+  showEarlyAccessOnMount?: boolean;
+  onClosePerpEarlyAccess?: () => void;
   onDisconnectWallet?: () => void;
   walletAddress: string;
   accountValueUsd: number;
@@ -167,6 +169,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   onConnectWallet,
   onSignEarlyAccessMessage,
   onVerifyLaunchApp,
+  showEarlyAccessOnMount = false,
+  onClosePerpEarlyAccess,
   onDisconnectWallet,
   walletAddress,
   accountValueUsd,
@@ -183,6 +187,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   // Ephemeral wallet-app roundtrip flag. No Gmail, X handle or permission is stored.
   const earlyAccessReturnKey = "hidedex_ea_wallet_return";
   const [isEarlyAccessOpen, setIsEarlyAccessOpen] = useState(() => {
+    if (showEarlyAccessOnMount) return true;
     try {
       const requestedAt = Number(sessionStorage.getItem(earlyAccessReturnKey));
       return Number.isFinite(requestedAt) && requestedAt > 0 &&
@@ -192,6 +197,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const closeEarlyAccess = () => {
     try { sessionStorage.removeItem(earlyAccessReturnKey); } catch {}
     setIsEarlyAccessOpen(false);
+    if (showEarlyAccessOnMount) onClosePerpEarlyAccess?.();
   };
   const handleEarlyAccessConnect = () => {
     try { sessionStorage.setItem(earlyAccessReturnKey, String(Date.now())); } catch {}
@@ -539,18 +545,14 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
     }
   ];
 
-  // One lightweight, authoritative server check in onVerifyLaunchApp.
+  // Open the public Spot workspace without inventing a Perp approval.
+  // Signing and the server-granted Perp status are checked separately.
   const handleLaunchApp = async () => {
     if (earlyAccessBusy) return;
     setEarlyAccessError("");
-    if (!walletConnected || !walletAddress) {
-      setIsEarlyAccessOpen(true);
-      return;
-    }
     setEarlyAccessBusy(true);
     try {
       await onVerifyLaunchApp(walletAddress);
-      setEarlyAccessState("granted");
       setIsEarlyAccessOpen(false);
     } catch (err: unknown) {
       setEarlyAccessError(err instanceof Error ? err.message : "Unable to confirm access.");

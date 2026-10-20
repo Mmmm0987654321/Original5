@@ -579,7 +579,7 @@ export default function TradingPreferencesModal({
 
   // 3. Theme selection state
   const [selectedThemeId, setSelectedThemeId] = useState<string>(() => {
-    return localStorage.getItem("pref_theme_id") || "light";
+    return localStorage.getItem("pref_theme_id") || "mono-dark";
   });
 
   const handleSelectTheme = (themeId: string) => {
@@ -841,9 +841,9 @@ export default function TradingPreferencesModal({
       feedbackStr = "Shield Reset! ✓";
       descriptionStr = "Trust Shield privacy mode reset to Standard.";
     } else if (activeTab === "THEME") {
-      setSelectedThemeId("light");
+      setSelectedThemeId("mono-dark");
       feedbackStr = "Theme Reset! ✓";
-      descriptionStr = "Color scheme reverted to Cosmic Slate theme.";
+      descriptionStr = "Color scheme reverted to Mono Black default theme.";
     } else if (activeTab === "TEXT_STYLE") {
       setFontSizePercent(100);
       setHeadersFont("Inter");
