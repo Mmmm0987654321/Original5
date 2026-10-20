@@ -458,21 +458,6 @@ export default function Navbar({
                       {selectedExchange===venue.id&&<Check className="w-4 h-4 shrink-0 text-accent"/>}
                     </button>
                   ))}
-                  {/* Future native HideDex exchange: brand entry only.
-                      No click handler, routing, signing or order execution. */}
-                  <div className="mt-2 pt-2 border-t border-brand-border" role="group" aria-label="Upcoming exchange">
-                    <div aria-disabled="true"
-                      className="w-full flex items-center justify-between gap-3 rounded-xl px-3 py-3 opacity-55 cursor-not-allowed select-none"
-                      title="HideDex Exchange — Coming Soon">
-                      <span className="flex min-w-0 items-center gap-3">
-                        <HideDexLogo size={28} showText={false}/>
-                        <span className="flex flex-col min-w-0 gap-0.5">
-                          <span className="text-sm font-bold text-brand-text">HideDex</span>
-                          <span className="text-[10px] text-brand-muted font-medium">Coming Soon</span>
-                        </span>
-                      </span>
-                    </div>
-                  </div>
                 </div>
               </div>,document.body
             )}
@@ -597,7 +582,7 @@ export default function Navbar({
 
 
             {/* Anonymous mode must never trap the user without a way to switch back.
-                Restore the originally approved Trust Shield button behavior. */}
+                Opens the existing password-verified Trust Shield mode selector. */}
             {trustShieldMode === "ANONYMOUS" && (
               <button
                 type="button"
@@ -680,7 +665,7 @@ export default function Navbar({
                 </div>
                 <p className="text-xl font-bold text-brand-text mb-3">
                   {selectedExchange !== "hyperliquid" ? (
-                    <span className="text-sm font-semibold text-brand-muted">{selectedExchange==="aster"?"Aster":"Lighter"} balance: see Funds</span>
+                    <span className="text-sm font-semibold text-brand-muted">Lighter balance: see Funds</span>
                   ) : (
                     <TrustShieldValue fieldKey="portfolio" value={`${balanceUSDC.toLocaleString()} USDC`} />
                   )}

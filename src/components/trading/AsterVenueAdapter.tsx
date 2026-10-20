@@ -38,8 +38,6 @@ import {ASTER_CHAINS,asterDepositUsdt,asterWithdrawQuote,asterWithdrawUsdt,type 
 
 type Section="dashboard"|"markets"|"trade"|"funds"|"orders"|"account";
 type MarketKind="spot"|"perp";
-type StpMode="EXPIRE_TAKER"|"EXPIRE_MAKER"|"EXPIRE_BOTH";
-type GlobalModeChoice={type:"position"|"assets"|"stp";value:string};
 type Raw=Record<string,unknown>;
 const obj=(x:unknown):Raw|null=>x!==null&&typeof x==="object"&&!Array.isArray(x)?x as Raw:null;
 const rows=(x:unknown):Raw[]=>Array.isArray(x)?x.map(obj).filter((r):r is Raw=>r!==null):[];
@@ -47,10 +45,6 @@ const num=asterNumber;
 const fmt=(n:number|null,d=2)=>n!==null&&Number.isFinite(n)?n.toLocaleString(undefined,{maximumFractionDigits:d}):"—";
 const signedBalance=(v:unknown)=>rows(v).find(a=>a.asset==="USDT"||a.asset==="USDC")??null;
 const sourceError=(err:unknown)=>err instanceof Error?err.message.slice(0,220):"Aster operation unavailable";
-const fromAsterBool=(value:unknown):boolean|null=>
- value===true||value==="true"?true:value===false||value==="false"?false:null;
-const fromAsterStp=(value:unknown):StpMode|null=>
- value==="EXPIRE_TAKER"||value==="EXPIRE_MAKER"||value==="EXPIRE_BOTH"?value:null;
 const quantize=(value:number,step:string)=>{const size=Number(step);if(!Number.isFinite(value)||value<=0||!Number.isFinite(size)||size<=0)throw Error("Invalid order size/tick from Aster");
  const precision=Math.max(0,(step.split(".")[1]??"").replace(/0+$/,"").length);
  const out=Math.floor(value/size+1e-9)*size;
@@ -113,15 +107,6 @@ export default function AsterVenueAdapter(p:{
  const [sizeUnit,setSizeUnit]=useState<"USDT"|"COIN">("USDT");
  const [reduceOnly,setReduceOnly]=useState(false);
  const [marginMode,setMarginMode]=useState<"CROSS"|"ISOLATED">("CROSS");
- const [positionMode,setPositionMode]=useState<boolean|null>(null);
- const [multiAssetsMode,setMultiAssetsMode]=useState<boolean|null>(null);
- const [stpMode,setStpMode]=useState<StpMode|null>(null);
- const [modePanelOpen,setModePanelOpen]=useState(false);
- const [modeChoice,setModeChoice]=useState<GlobalModeChoice|null>(null);
- const [modeBusy,setModeBusy]=useState(false);
- const [modeLoading,setModeLoading]=useState(false);
- const [modeError,setModeError]=useState("");
- const [modeReload,setModeReload]=useState(0);
  const [leverage,setLeverage]=useState(1);
  const [maxLeverage,setMaxLeverage]=useState<number|null>(null);
  const [leverageCaps,setLeverageCaps]=useState<Record<string,number>>({});
@@ -138,14 +123,7 @@ export default function AsterVenueAdapter(p:{
  const [hideBalance,setHideBalance]=useState(false);
  const [expanded,setExpanded]=useState<Record<string,boolean>>({});
  const [tpsl,setTpsl]=useState<Raw|null>(null);
- // Never substitute another token on mode switch (Spot and Perp market
- // lists differ). A fresh workspace may still default to BTC if available.
- const current=useMemo(()=>{
-  const list=kind==="spot"?spotMarkets:markets;
-  if(!selectedSymbol)return null;
-  return list.find(m=>m.symbol===selectedSymbol)??
-   (selectedSymbol==="BTCUSDT"?(list.find(m=>m.base==="BTC")??list[0]??null):null);
- },[kind,markets,spotMarkets,selectedSymbol]);
+ const current=useMemo(()=>{const list=kind==="spot"?spotMarkets:markets;return list.find(m=>m.symbol===selectedSymbol)??list.find(m=>m.base==="BTC")??list[0]??null;},[kind,markets,spotMarkets,selectedSymbol]);
  // One exact original market selector with separate, venue-authentic Spot and Perp
  // assets. The shared selector only recognizes Spot if spotSymbol is real.
  const tokens=useMemo<TokenMetadata[]>(()=>[
@@ -162,7 +140,7 @@ export default function AsterVenueAdapter(p:{
  const activeOrders=kind==="spot"?spotOrders:openOrders;
  const positionRows=useMemo(()=>risk===null?null:risk.filter(r=>{const n=num(r.positionAmt);return n!==null&&n!==0;}),[risk]);
  const currentPosition=positionRows?.find(r=>r.symbol===current?.symbol);
- const hasOpposite=positionMode===false&&!!currentPosition&&((side==="SELL"&&(num(currentPosition.positionAmt)??0)>0)||(side==="BUY"&&(num(currentPosition.positionAmt)??0)<0));
+ const hasOpposite=!!currentPosition&&((side==="SELL"&&(num(currentPosition.positionAmt)??0)>0)||(side==="BUY"&&(num(currentPosition.positionAmt)??0)<0));
  // The last authenticated public trade takes precedence over the 45s catalogue.
  // Never use bid/ask midpoint as a fake last-traded price.
  const marketPrice=lastLiveTrade?.symbol===current?.symbol&&lastLiveTrade?.kind===kind
@@ -192,9 +170,8 @@ export default function AsterVenueAdapter(p:{
   const margin=asterPositionMargin(r);
   const pnl=num(r.unRealizedProfit);
   return {
-   id:String(r.symbol??"")+(r.positionSide==="LONG"||r.positionSide==="SHORT"?":"+r.positionSide:""),
-   symbol:String(r.symbol??"").replace(/USDT$/,""),sourceCoin:String(r.symbol??""),
-   type:r.positionSide==="LONG"?"LONG":r.positionSide==="SHORT"?"SHORT":signed>=0?"LONG":"SHORT",leverage:num(r.leverage)??0,size:Math.abs(signed),
+   id:String(r.symbol??""),symbol:String(r.symbol??"").replace(/USDT$/,""),sourceCoin:String(r.symbol??""),
+   type:signed>=0?"LONG":"SHORT",leverage:num(r.leverage)??0,size:Math.abs(signed),
    entryPrice:num(r.entryPrice)??0,markPrice:num(r.markPrice)??0,
    liqPrice:num(r.liquidationPrice)??0,margin:margin??0,
    unrealizedPnl:pnl??0,unrealizedPnlPercent:margin!==null&&margin>0&&pnl!==null?100*pnl/margin:0,
@@ -235,6 +212,7 @@ export default function AsterVenueAdapter(p:{
  useEffect(()=>{setKind(initialKind);},[initialKind]);
  useEffect(()=>{let cancelled=false;const poll=()=>getAsterMarkets().then(list=>{
   if(cancelled)return;setMarkets(list);setMarketError("");
+  if(list.length&&!list.some(x=>x.symbol===selectedSymbol))setSelectedSymbol(list[0].symbol);
  }).catch(e=>{if(!cancelled)setMarketError(sourceError(e));});
  void poll();const id=window.setInterval(poll,45_000);
  return()=>{cancelled=true;window.clearInterval(id);};},[]);
@@ -420,32 +398,6 @@ export default function AsterVenueAdapter(p:{
    .catch(e=>{if(!gone){setTrades(null);setTradesSymbol(null);setTradesError(sourceError(e));}});
   return()=>{gone=true;};
  },[tab,identity?.agent,current?.symbol,reload,kind,section,p.initialOrdersTab]);
- // Aster V3 global Futures modes are exchange-owned account settings,
- // not HideDex privacy modes or client-side "preferences". Never guess.
- useEffect(()=>{
-  let cancelled=false;
-  setPositionMode(null);setMultiAssetsMode(null);setStpMode(null);setModeError("");
-  if(!identity?.mode||!walletAddress){setModeLoading(false);return;}
-  setModeLoading(true);
-  void Promise.allSettled([
-   asterSignedRead(walletAddress,"/fapi/v3/positionSide/dual"),
-   asterSignedRead(walletAddress,"/fapi/v3/multiAssetsMargin"),
-   asterSignedRead(walletAddress,"/fapi/v3/stpMode")
-  ]).then(results=>{
-   if(cancelled)return;
-   const extract=(index:number)=>results[index].status==="fulfilled"?
-    obj((results[index] as PromiseFulfilledResult<{data:unknown}>).value.data):null;
-   const position=fromAsterBool(extract(0)?.dualSidePosition);
-   const assets=fromAsterBool(extract(1)?.multiAssetsMargin);
-   const stp=fromAsterStp(extract(2)?.stpMode);
-   setPositionMode(position);setMultiAssetsMode(assets);setStpMode(stp);
-   if(position===null||assets===null||stp===null)
-    setModeError("Some Aster account modes could not be verified. Refresh and retry.");
-   else setModeError("");
-  }).catch(e=>{if(!cancelled)setModeError(sourceError(e));})
-   .finally(()=>{if(!cancelled)setModeLoading(false);});
-  return()=>{cancelled=true;};
- },[walletAddress,identity?.agent,identity?.mode?.order,modeReload]);
  // Aster V3 supports a single signed leverageBrackets query without symbol:
  // the entire per-market verified cap catalogue can populate Market Selector.
  useEffect(()=>{
@@ -528,85 +480,17 @@ export default function AsterVenueAdapter(p:{
   }catch(e){setToastKind("error");setNotice(sourceError(e));setAuthOpen(false);}
   finally{setBusy(false);}
  };
- const changeGlobalMode=async()=>{
-  if(!modeChoice||!identity?.mode||!walletAddress||busy||modeBusy)return;
-  const choice=modeChoice;
-  const target=choice.type==="position"?
-   "/fapi/v3/positionSide/dual":choice.type==="assets"?
-   "/fapi/v3/multiAssetsMargin":"/fapi/v3/stpMode";
-  const field=choice.type==="position"?"dualSidePosition":
-   choice.type==="assets"?"multiAssetsMargin":"stpMode";
-  const known=choice.type==="position"?positionMode!==null:
-   choice.type==="assets"?multiAssetsMode!==null:stpMode!==null;
-  if(!known){setModeError("Read the current Aster mode before changing it.");return;}
-  // Futures risk-changing account-wide settings cannot be switched under
-  // active trades. STP is a matching rule, but still user-confirmed.
-  if(choice.type!=="stp"&&
-    (positionRows===null||openOrders===null||positionRows.length>0||openOrders.length>0)){
-   setModeError("Close all Aster Futures positions and orders before switching this account-wide mode.");
-   return;
-  }
-  setModeBusy(true);setBusy(true);setModeError("");
-  try{
-   const requested=choice.value;
-   if(choice.type!=="stp"){
-    const [freshRisk,freshOrders]=await Promise.all([
-     asterSignedRead(walletAddress,"/fapi/v3/positionRisk"),
-     asterSignedRead(walletAddress,"/fapi/v3/openOrders")
-    ]);
-    if(!Array.isArray(freshRisk.data)||!Array.isArray(freshOrders.data))
-     throw Error("Cannot verify Aster open positions and orders.");
-    if(rows(freshRisk.data).some(r=>(num(r.positionAmt)??0)!==0)||
-       rows(freshOrders.data).length>0)
-     throw Error("Aster has open positions/orders. Close them first; none were automatically cancelled.");
-   }
-   await asterSignedWrite(walletAddress,identity.mode,target,"POST",{[field]:requested});
-   // Don't accept local UI state or POST 200 as proof of a risk-mode switch:
-   // Aster itself must report the new persisted value.
-   const verified=await asterSignedRead(walletAddress,target);
-   const result=obj(verified.data);
-   const actual=choice.type==="stp"?fromAsterStp(result?.stpMode):
-     fromAsterBool(result?.[field]);
-   const expected=choice.type==="stp"?requested:requested==="true";
-   if(actual!==expected)throw Error("Aster did not confirm the requested account mode. Check its current state before retrying.");
-   if(choice.type==="position"){
-    setPositionMode(actual as boolean);
-    setReduceOnly(false);
-   }else if(choice.type==="assets")setMultiAssetsMode(actual as boolean);
-   else setStpMode(actual as StpMode);
-   setModePanelOpen(false);setModeChoice(null);
-   setReload(v=>v+1);
-  }catch(e){
-   setModeError(sourceError(e));
-   // A POST may have succeeded before verification failed. Mark only the
-   // affected setting unverified; do NOT retry a signed change automatically.
-   if(choice.type==="position")setPositionMode(null);
-   else if(choice.type==="assets")setMultiAssetsMode(null);
-   else setStpMode(null);
-  }finally{setModeBusy(false);setBusy(false);}
- };
  const order=async()=>{
   if(!walletAddress){onConnectWallet();return;}
   if(!identity){setAuthOpen(true);return;}
   const mode=kind==="spot"?spotMode:identity.mode;
   if(!mode){setToastKind("error");setNotice(accountError||"Aster signed "+kind+" account verification required. No order sent.");return;}
-  if(kind==="perp"&&positionMode===null){
-   setToastKind("error");setNotice("Verify Aster One-way / Hedge mode before placing Futures orders.");return;
-  }
   if(!current||size===null||price===null||size<=0||price<=0){setToastKind("error");setNotice("Select a valid Aster market, price and size.");return;}
   await act("Order",async()=>{
    if(!current)return;
    const qty=quantize(size,current.step);
    if(current.minQty!==null&&Number(qty)<current.minQty)throw Error("Below Aster minimum order quantity");
    if(current.minNotional!==null&&Number(qty)*price<current.minNotional)throw Error("Below Aster minimum notional");
-   if(kind==="perp"){
-    const liveMode=await asterSignedRead(walletAddress,"/fapi/v3/positionSide/dual");
-    const verifiedMode=fromAsterBool(obj(liveMode.data)?.dualSidePosition);
-    if(verifiedMode===null||verifiedMode!==positionMode){
-     setModeReload(v=>v+1);
-     throw Error("Aster Position Mode changed or cannot be verified. No order sent.");
-    }
-   }
    const params:Record<string,string>={symbol:current.symbol,side,type:orderType,quantity:qty};
    if(orderType==="LIMIT"){params.timeInForce="GTC";params.price=quantize(price,current.tick);}
    if(kind==="spot"){
@@ -618,45 +502,22 @@ export default function AsterVenueAdapter(p:{
      if(side==="SELL"&&size>free)throw Error("Insufficient verified Spot asset balance");
      return asterSignedSpotWrite(walletAddress,mode!,"/api/v3/order","POST",params);
    }
-   if(positionMode===true){
-    if(reduceOnly)throw Error("Hedge Mode does not support reduceOnly. Close a position with Close Position.");
-    params.positionSide=side==="BUY"?"LONG":"SHORT";
-   }else if(reduceOnly){
-    if(!hasOpposite)throw Error("Reduce Only requires an opposite verified position");
-    params.reduceOnly="true";
-   }
+   if(reduceOnly){if(!hasOpposite)throw Error("Reduce Only requires opposite verified position");params.reduceOnly="true";}
    return asterSignedWrite(walletAddress,mode!,"/fapi/v3/order","POST",params);
   });
  };
  const closePos=async(pos:Raw,percent:number)=>{
-  if(!identity?.mode||!walletAddress||positionMode===null)
-   throw Error("Verify Aster account and current Position Mode before closing.");
+  if(!identity?.mode||!walletAddress)throw Error("Aster account is not verified");
+  if(pos.positionSide&&pos.positionSide!=="BOTH")throw Error("Hedge positions need explicit positionSide support. No close sent.");
   await act("Close",async()=>{
-   const symbol=String(pos.symbol||"");
-   const desired=pos.positionSide==="LONG"||pos.positionSide==="SHORT"?pos.positionSide:"BOTH";
-   if(positionMode===true&&desired==="BOTH")
-    throw Error("Hedge positionSide must be verified before closing.");
-   if(positionMode===false&&desired!=="BOTH")
-    throw Error("Position mode changed; refresh Aster positions first.");
-   const liveMode=await asterSignedRead(walletAddress,"/fapi/v3/positionSide/dual");
-   if(fromAsterBool(obj(liveMode.data)?.dualSidePosition)!==positionMode){
-    setModeReload(v=>v+1);
-    throw Error("Aster Position Mode changed. No close sent.");
-   }
-   const fresh=await asterSignedRead(walletAddress,"/fapi/v3/positionRisk",{symbol});
-   const latest=rows(fresh.data).find(x=>x.symbol===symbol&&
-    (x.positionSide??"BOTH")===desired);
-   const signed=num(latest?.positionAmt);if(signed===null||signed===0)
-    throw Error("Position already closed or not independently verified.");
+   const symbol=String(pos.symbol||""),fresh=await asterSignedRead(walletAddress,"/fapi/v3/positionRisk",{symbol});
+   const latest=rows(fresh.data).find(x=>x.symbol===symbol&&(!x.positionSide||x.positionSide==="BOTH"));
+   const signed=num(latest?.positionAmt);if(signed===null||signed===0)throw Error("Position already closed");
    const market=markets.find(x=>x.symbol===symbol);if(!market)throw Error("Aster market filters unavailable");
    const qty=quantize(Math.abs(signed)*percent/100,market.step);
-   const orderParams:Record<string,string>={
-    symbol,side:desired==="LONG"?"SELL":desired==="SHORT"?"BUY":signed>0?"SELL":"BUY",
-    type:"MARKET",quantity:qty
-   };
-   if(positionMode===true)orderParams.positionSide=desired;
-   else orderParams.reduceOnly="true";
-   return asterSignedWrite(walletAddress,identity.mode!,"/fapi/v3/order","POST",orderParams);
+   return asterSignedWrite(walletAddress,identity.mode!,"/fapi/v3/order","POST",{
+    symbol,side:signed>0?"SELL":"BUY",type:"MARKET",quantity:qty,reduceOnly:"true"
+   });
   });
  };
  // Same verified Aster trigger route, displayed with the existing HideDex sheet.
@@ -669,30 +530,18 @@ export default function AsterVenueAdapter(p:{
    const symbol=String(target.symbol??"");
    const market=markets.find(m=>m.symbol===symbol);
    if(!market)throw Error("Aster market filters unavailable");
-   const liveMode=await asterSignedRead(walletAddress,"/fapi/v3/positionSide/dual");
-   if(fromAsterBool(obj(liveMode.data)?.dualSidePosition)!==positionMode){
-    setModeReload(v=>v+1);
-    throw Error("Aster Position Mode changed. No TP/SL sent.");
-   }
    const current=await asterSignedRead(walletAddress,"/fapi/v3/positionRisk",{symbol});
-   if(positionMode===null)throw Error("Aster Position Mode has not been verified.");
-   const desired=target.positionSide==="LONG"||target.positionSide==="SHORT"?target.positionSide:"BOTH";
-   if(positionMode===true&&desired==="BOTH")throw Error("Hedge positionSide not verified");
-   if(positionMode===false&&desired!=="BOTH")throw Error("Position mode changed. Refresh Aster first.");
-   const matching=rows(current.data).find(x=>x.symbol===symbol&&
-    (x.positionSide??"BOTH")===desired);
+   const matching=rows(current.data).find(x=>x.symbol===symbol&&(!x.positionSide||x.positionSide==="BOTH"));
    const amt=num(matching?.positionAmt);
    if(amt===null||amt===0)throw Error("Position closed or unverified");
-   const side=desired==="LONG"?"SELL":desired==="SHORT"?"BUY":amt>0?"SELL":"BUY";
+   const side=amt>0?"SELL":"BUY";
    for(const [kind,trigger] of [["tp",tpPrice],["sl",slPrice]] as const){
     if(trigger===null)continue;
     if(!Number.isFinite(trigger)||trigger<=0)throw Error("Invalid Aster trigger price");
-    const params:Record<string,string>={
+    await asterSignedWrite(walletAddress,identity.mode!,"/fapi/v3/order","POST",{
      symbol,side,type:kind==="tp"?"TAKE_PROFIT_MARKET":"STOP_MARKET",
      closePosition:"true",stopPrice:quantize(trigger,market.tick),workingType:"MARK_PRICE"
-    };
-    if(positionMode===true)params.positionSide=desired;
-    await asterSignedWrite(walletAddress,identity.mode!,"/fapi/v3/order","POST",params);
+    });
    }
   });
   if(accepted)setTpsl(null);
@@ -728,21 +577,8 @@ export default function AsterVenueAdapter(p:{
   }finally{setBusy(false);}
  };
  const changeMargin=async(next:"CROSS"|"ISOLATED")=>{
-  if(!identity?.mode||!current||busy||next===marginMode)return;
-  const symbol=current.symbol;
-  // A margin-mode request is a signed Aster mutation. The selector must NOT
-  // change before the exchange accepts it.
-  setBusy(true);
-  try{
-   await asterSignedWrite(walletAddress,identity.mode,"/fapi/v3/marginType","POST",{
-    symbol,marginType:next==="CROSS"?"CROSSED":"ISOLATED"
-   });
-   setMarginMode(next);
-   setReload(v=>v+1);
-  }catch(e){
-   setToastKind("error");setNotice(sourceError(e));
-   setReload(v=>v+1);
-  }finally{setBusy(false);}
+  if(!identity?.mode||!current)return;
+  await act("Margin mode",async()=>asterSignedWrite(walletAddress,identity.mode!,"/fapi/v3/marginType","POST",{symbol:current.symbol,marginType:next==="CROSS"?"CROSSED":"ISOLATED"}));
  };
  const history:HideDexHistoryRow[]|null=trades===null?null:trades.flatMap((r,i)=>{
   const px=num(r.price),qty=num(r.qty);if(px===null||qty===null)return[];
@@ -775,7 +611,7 @@ export default function AsterVenueAdapter(p:{
    if(positionSort==="PNL")list.sort((a,b)=>(num(b.unRealizedProfit)??-Infinity)-(num(a.unRealizedProfit)??-Infinity));
    return list;
  },[positionRows,positionSort]);
- const allExpanded=!!sortedPositions?.length&&sortedPositions.every(r=>!!expanded[String(r.symbol)+":"+String(r.positionSide??"BOTH")]);
+ const allExpanded=!!sortedPositions?.length&&sortedPositions.every(r=>!!expanded[String(r.symbol)]);
  const managerOrders:OpenOrder[]|null=activeOrders===null?null:activeOrders.flatMap(r=>{
   if(typeof r.symbol!=="string"||r.orderId==null)return[];
   const rawType=String(r.type??"").toUpperCase();
@@ -858,7 +694,7 @@ export default function AsterVenueAdapter(p:{
   actions={tab==="POSITIONS"&&kind==="perp"&&<HideDexPositionActionBar
    sort={positionSort} onSort={setPositionSort} supportedSorts={["DEFAULT","SYMBOL","SIZE","PNL"]}
    allExpanded={allExpanded}
-   onToggleAll={()=>{const keys=(positionRows??[]).map(r=>String(r.symbol)+":"+String(r.positionSide??"BOTH"));setExpanded(Object.fromEntries(keys.map(k=>[k,!allExpanded])));}}
+   onToggleAll={()=>{const keys=(positionRows??[]).map(r=>String(r.symbol));setExpanded(Object.fromEntries(keys.map(k=>[k,!allExpanded])));}}
    // The original toolbar has a Close All control. Until batch-close is
    // verified on Aster, keep it visibly disabled rather than sending orders.
    onCloseAll={()=>{}} closeDisabled
@@ -868,24 +704,22 @@ export default function AsterVenueAdapter(p:{
   {tab==="POSITIONS"&&kind==="spot"?<p className="text-xs text-brand-muted py-6">Spot holdings appear in Balances. There are no Spot leveraged positions.</p>:tab==="POSITIONS"&&(sortedPositions===null?
    <p className="text-xs text-brand-muted py-6 text-center">{accountError||"Aster positions not verified."}</p>:
    sortedPositions.length===0?<p className="text-xs text-brand-muted py-6 text-center">No active Aster positions.</p>:
-   <div className="flex flex-col gap-3 w-full pr-1 overflow-y-auto max-h-[420px] scrollbar-thin scrollbar-thumb-brand-border/60 scrollbar-track-transparent" id="positions-card-container">{sortedPositions.map(r=>{
+   <div className="flex flex-col gap-3 w-full pr-1 overflow-y-auto max-h-[420px] scrollbar-thin scrollbar-thumb-brand-border/60 scrollbar-track-transparent" id="positions-card-container">{sortedPositions.map((r,i)=>{
     const signed=num(r.positionAmt)??0,symbol=String(r.symbol??""),coin=symbol.replace(/USDT$/,""),priceNum=num(r.markPrice),entry=num(r.entryPrice),
     pnl=num(r.unRealizedProfit),liquid=num(r.liquidationPrice),lev=num(r.leverage);
     const knownMargin=asterPositionMargin(r),estMargin=asterPositionEstimate(r);
     const roi=knownMargin!==null&&knownMargin>0&&pnl!==null?100*pnl/knownMargin:null;
-    const triggers=(openOrders??[]).filter(o=>o.symbol===symbol&&(num(o.stopPrice)??0)>0&&(o.positionSide??"BOTH")===(r.positionSide??"BOTH"));
+    const triggers=(openOrders??[]).filter(o=>o.symbol===symbol&&(num(o.stopPrice)??0)>0);
     const tp=triggers.find(o=>String(o.type).toUpperCase().includes("TAKE_PROFIT"));
     const sl=triggers.find(o=>String(o.type).toUpperCase().includes("STOP"));
     const target=openOrders===null?"—":
       [tp?"TP $"+fmt(num(tp.stopPrice),4):"",sl?"SL $"+fmt(num(sl.stopPrice),4):""].filter(Boolean).join(" · ")||"Not set";
-    const cardKey=symbol+":"+String(r.positionSide??"BOTH");
-    return <HideDexPositionCard key={cardKey}><HideDexPositionHeader
-     symbol={coin} side={r.positionSide==="LONG"?"LONG":r.positionSide==="SHORT"?"SHORT":signed>0?"LONG":"SHORT"}
-     isExpanded={!!expanded[cardKey]}
-     onToggle={()=>setExpanded(prev=>({...prev,[cardKey]:!prev[cardKey]}))}
+    return <HideDexPositionCard key={String(r.symbol)+":"+i}><HideDexPositionHeader
+     symbol={coin} side={signed>0?"LONG":"SHORT"} isExpanded={!!expanded[String(r.symbol)]}
+     onToggle={()=>setExpanded(prev=>({...prev,[String(r.symbol)]:!prev[String(r.symbol)]}))}
      marginLabel={r.marginType==="isolated"?"Isolated":r.marginType==="cross"?"Cross":null}
      leverageLabel={lev!==null?lev+"x":undefined} pnl={pnl} roi={roi}/>
-     {expanded[cardKey]&&<HideDexPositionDetails
+     {expanded[String(r.symbol)]&&<HideDexPositionDetails
       left={[
        {label:"Position Size",value:fmt(Math.abs(signed),8)+" "+coin,
         hint:entry!==null&&entry>0?"($"+fmt(Math.abs(signed)*entry)+")":undefined},
@@ -905,8 +739,8 @@ export default function AsterVenueAdapter(p:{
       actions={<HideDexPositionActions
        onTpSl={()=>setTpsl(r)}
        onClose={()=>void closePos(r,100)}
-       tpSlDisabled={busy||!identity?.mode||positionMode===null||entry===null||entry<=0}
-       closeDisabled={busy||!identity?.mode||positionMode===null}
+       tpSlDisabled={busy||!identity?.mode||entry===null||entry<=0}
+       closeDisabled={busy||!identity?.mode}
       />}
      />}
     </HideDexPositionCard>;
@@ -919,7 +753,7 @@ export default function AsterVenueAdapter(p:{
   onSubmit={e=>e.preventDefault()}
   selectors={{isPerp:kind==="perp",orderType,onOrderType:v=>{if(v==="MARKET"||v==="LIMIT")setOrderType(v);},
    availableOrderTypes:["MARKET","LIMIT"],marginMode,
-   onMarginMode:kind==="perp"&&identity?.mode&&!busy?next=>void changeMargin(next):undefined,
+   onMarginMode:kind==="perp"&&identity?.mode?next=>{setMarginMode(next);void changeMargin(next);}:undefined,
    leverage, maxLeverage, onLeverage:kind==="perp"&&identity?.mode?setLeverage:undefined,
    onLeverageCommit:kind==="perp"&&identity?.mode?next=>void changeLev(next):undefined,
    leverageDisabled:!identity?.mode||maxLeverage===null}}
@@ -936,58 +770,35 @@ export default function AsterVenueAdapter(p:{
    const coin=kind==="spot"&&side==="SELL"?spend:notional/marketPrice;
    setAmount(String(sizeUnit==="USDT"?Number(notional.toFixed(4)):Number(coin.toFixed(8))));
   }}}
-  advancedFields={kind==="perp"&&
-   <button type="button" aria-label="Aster Futures position, asset and STP modes"
-    onClick={()=>{setModeChoice(null);setModeError("");setModePanelOpen(true);setModeReload(v=>v+1);}}
-    className="w-full rounded-lg border border-brand-border bg-brand-overlay-subtle hover:bg-brand-overlay-normal px-2 py-1.5 flex justify-between gap-1 text-[10px] font-semibold text-brand-text">
-    <span>Aster Trading Modes</span>
-    <span className="text-brand-muted">{positionMode===null?"Verify mode":positionMode?"Hedge":"One-way"} · {multiAssetsMode===null?"—":multiAssetsMode?"Multi":"Single"}</span>
-   </button>}
-  options={{visible:kind==="perp",reduce:{checked:reduceOnly,onChange:setReduceOnly,disabled:positionMode!==false||!hasOpposite||busy},tpsl:{checked:false,onChange:()=>{},disabled:true}}}
+  options={{visible:kind==="perp",reduce:{checked:reduceOnly,onChange:setReduceOnly,disabled:!hasOpposite||busy},tpsl:{checked:false,onChange:()=>{},disabled:true}}}
   summary={{isPerp:kind==="perp",liquidation:"—",orderValue:orderValue!==null?"$"+fmt(orderValue):"—",margin:orderValue!==null&&leverage>0?"≈$"+fmt(orderValue/leverage):"—"}}
   place={{type:"button",side,busy,disabled:busy||!current||size===null||size<=0, onClick:()=>void order(),
    label:busy?"Processing…":!identity?"ENABLE TRADING":(kind==="spot"&&!spotMode||kind==="perp"&&!identity.mode)?"VERIFY ASTER ACCOUNT":"PLACE "+(kind==="spot"?(side==="BUY"?"BUY":"SELL"):(side==="BUY"?"LONG":"SHORT"))}}
  />;
- // The same original Spot/Perp toggle drives Aster's venue-specific pair
- // selection. If the other mode has no counterpart, open the real selector
- // instead of quietly trading a different token.
- const switchAsterMode=()=>{
-  const next:MarketKind=kind==="perp"?"spot":"perp";
-  const options=next==="spot"?spotMarkets:markets;
-  const target=options.find(m=>m.base===current?.base);
-  setKind(next);
-  setSelectedSymbol(target?.symbol??"");
-  if(!target)setSelectOpen(true);
-  onSelectSection("trade",next);
- };
- // ONE original HideDexOrderBookPanel renderer, reused in the shared
- // chart/orderbook switch, trade layout and markets view. These are layout
- // placements, not duplicate Aster-specific UI components.
- const renderAsterBook=(onPrice:(price:number)=>void,baseSymbol:string)=>
-  <HideDexOrderBookPanel
-   asks={depth?.asks??[]} bids={depth?.bids??[]}
-   midPrice={marketPrice} midLabel="Last Price" flashingPrices={bookFlashes}
-   sizeUnit="USD" baseSymbol={baseSymbol} onToggleSizeUnit={()=>{}}
-   onSelectPrice={onPrice}
-   formatPrice={n=>fmt(n,4)} formatSize={(price,size)=>"$"+fmt(price*size,2)}
-   group="1" groupOptions={["1"]} onGroup={()=>{}}/>;
  const tradeView=<>
   <HideDexUnifiedMarketHeader
    mobile={{logo:current?renderAssetLogo(current.base):null,ticker:current?.base??"ASTER",modeLabel:kind==="spot"?"Aster Spot":"Aster Perpetual",
     priceLabel:fmt(marketPrice),change24h:current?.change24h,onSelectMarket:()=>setSelectOpen(true),mode:kind,
-    switchMode:"toggle",onSwitchMode:switchAsterMode}}
+    switchMode:"toggle",onSwitchMode:()=>{setKind(kind==="perp"?"spot":"perp");onSelectSection("trade",kind==="perp"?"spot":"perp");}}}
    desktop={{logo:current?renderAssetLogo(current.base):null,ticker:current?.base??"ASTER",
     sublabel:kind==="spot"?"Aster Spot":"Aster Perpetual",onMarket:()=>setSelectOpen(true),view,onView:setView,marketInfoOpen:infoOpen,onMarketInfo:()=>setInfoOpen(v=>!v)}}
-   info={{ticker:current?.symbol??"—",mode:kind,priceLabel:"$"+fmt(marketPrice),change24h:current?.change24h,fundingRate:null,openInterestUsd:null,onSwitch:switchAsterMode}}
+   info={{ticker:current?.symbol??"—",mode:kind,priceLabel:"$"+fmt(marketPrice),change24h:current?.change24h,fundingRate:null,openInterestUsd:null,onSwitch:()=>{setKind(kind==="perp"?"spot":"perp");onSelectSection("trade",kind==="perp"?"spot":"perp");}}}
    showChartToolbar={view==="chart"}/>
   <HideDexUnifiedTradeCanvas
    marketView={<HideDexUnifiedMarketView view={view}
     chart={current?<TVChart key={"aster-"+current.symbol} symbol={current.base} marketCoin="" asterMarketSymbol={current.symbol} asterMarketKind={kind}
      currentPrice={marketPrice} change24h={current.change24h} volume24h={current.volume24h} tradeHistory={[]} toolbarHostId="market-chart-toolbar-host"/>:<div className="p-6 text-brand-muted text-xs">Aster public market data loading…</div>}
-    orderBook={renderAsterBook(v=>{setLimitPrice(String(v));setOrderType("LIMIT");},current?.base??"COIN")}
+    orderBook={<HideDexOrderBookPanel asks={depth?.asks??[]} bids={depth?.bids??[]} midPrice={marketPrice} midLabel="Last Price" flashingPrices={bookFlashes}
+     sizeUnit="USD" baseSymbol={current?.base??"COIN"} onToggleSizeUnit={()=>{}}
+     onSelectPrice={v=>{setLimitPrice(String(v));setOrderType("LIMIT");}}
+     formatPrice={n=>fmt(n,4)} formatSize={(price,size)=>"$"+fmt(price*size,2)} group="1" groupOptions={["1"]}
+     onGroup={()=>{}}/>}
    />}
    orderForm={placeForm}
-   orderBook={renderAsterBook(v=>{setLimitPrice(String(v));setOrderType("LIMIT");},current?.base??"COIN")}
+   orderBook={<HideDexOrderBookPanel asks={depth?.asks??[]} bids={depth?.bids??[]} midPrice={marketPrice} midLabel="Last Price" flashingPrices={bookFlashes}
+    sizeUnit="USD" baseSymbol={current?.base??"COIN"} onToggleSizeUnit={()=>{}}
+    onSelectPrice={v=>{setLimitPrice(String(v));setOrderType("LIMIT");}}
+    formatPrice={n=>fmt(n,4)} formatSize={(price,size)=>"$"+fmt(price*size,2)} group="1" groupOptions={["1"]} onGroup={()=>{}}/>}
    account={accountPanel}/>
  </>;
  return <div className="w-full min-w-0 text-brand-text pb-1" data-exchange="aster">
@@ -996,69 +807,7 @@ export default function AsterVenueAdapter(p:{
      title="Aster" message={notice} onClose={()=>setNotice("")}/>}
   {!notice&&accountError&&<p role="alert" className="p-2 text-xs text-rose-400">{accountError}</p>}
   {restoring&&<p className="p-2 text-xs text-brand-muted">Verifying encrypted Aster agent for this wallet…</p>}
-  {modePanelOpen&&<HideDexTradingAuthorizationSheet
-    title="Aster Futures Trading Modes"
-    onClose={()=>{if(!modeBusy){setModePanelOpen(false);setModeChoice(null);}}}
-    closeDisabled={modeBusy} primaryDisabled={!identity?.mode||modeLoading||busy||modeBusy||!modeChoice||
-      (modeChoice.type!=="stp"&&(positionRows===null||openOrders===null||positionRows.length>0||openOrders.length>0))}
-    primaryLabel={modeBusy?"VERIFYING WITH ASTER...":"CONFIRM MODE CHANGE"}
-    onPrimary={()=>void changeGlobalMode()}
-    description={<p className="text-xs text-brand-muted py-1">
-      Aster Futures account settings. Each choice submits ONE signed Aster request only after confirmation.
-      The current setting is read from Aster, never guessed or borrowed from Hyperliquid.
-      Cross/Isolated and leverage are controlled by the original selectors above the order form.
-    </p>}>
-    <div className="space-y-3 max-h-[56vh] overflow-y-auto py-2">
-     <div className="flex justify-end">
-      <button type="button" disabled={modeLoading||modeBusy||busy}
-       onClick={()=>{setModeChoice(null);setModeReload(v=>v+1);}}
-       className="text-[10px] rounded-lg border border-brand-border px-3 py-1.5 text-brand-sub disabled:opacity-40">
-       Refresh Aster Modes
-      </button>
-     </div>
-     {modeLoading&&<p role="status" className="text-xs text-brand-muted">Reading signed Aster account modes…</p>}
-     {modeError&&<p role="alert" className="text-xs text-rose-400">{modeError}</p>}
-     {([
-       {type:"position" as const,title:"Position Mode",
-        active:positionMode===null?"Unverified":positionMode?"Hedge":"One-way",
-        verified:positionMode!==null,
-        options:[{value:"false",label:"One-way"},{value:"true",label:"Hedge"}]},
-       {type:"assets" as const,title:"Asset Margin Mode",
-        active:multiAssetsMode===null?"Unverified":multiAssetsMode?"Multi-Assets":"Single-Asset",
-        verified:multiAssetsMode!==null,
-        options:[{value:"false",label:"Single-Asset"},{value:"true",label:"Multi-Assets"}]},
-       {type:"stp" as const,title:"Self-Trade Prevention",
-        active:stpMode===null?"Unverified":stpMode==="EXPIRE_TAKER"?"Expire Taker":
-          stpMode==="EXPIRE_MAKER"?"Expire Maker":"Expire Both",
-        verified:stpMode!==null,
-        options:[{value:"EXPIRE_TAKER",label:"Expire Taker"},
-         {value:"EXPIRE_MAKER",label:"Expire Maker"},
-         {value:"EXPIRE_BOTH",label:"Expire Both"}]}
-      ]).map(group=><div key={group.type} className="rounded-xl border border-brand-border p-3">
-       <div className="flex justify-between items-center gap-2 mb-2">
-        <span className="text-xs font-bold text-brand-text">{group.title}</span>
-        <span className="text-[10px] text-brand-muted">{group.active}</span>
-       </div>
-       <div className="flex flex-wrap gap-1.5">
-        {group.options.map(option=><button type="button" key={option.value}
-         disabled={!group.verified||modeLoading||modeBusy||busy}
-         aria-pressed={modeChoice?.type===group.type&&modeChoice.value===option.value}
-         onClick={()=>setModeChoice({type:group.type,value:option.value})}
-         className={"px-2.5 py-2 text-[10px] font-semibold rounded-lg border disabled:opacity-40 "+
-          (modeChoice?.type===group.type&&modeChoice.value===option.value?
-           "border-accent bg-accent/15 text-brand-text":"border-brand-border bg-brand-overlay-subtle text-brand-sub")}>
-         {option.label}
-        </button>)}
-       </div>
-      </div>)}
-     <p className="text-[10px] leading-relaxed text-brand-muted">
-       Position/Asset mode changes affect every Aster Futures market. Active positions
-       or open orders must be cleared first; HideDex will not cancel them automatically.
-       Hedge orders use explicit LONG/SHORT positionSide; reduce-only is not allowed in Hedge Mode.
-     </p>
-    </div>
-   </HideDexTradingAuthorizationSheet>}
-  {selectOpen&&<MarketSelector tokens={tokens} selectedSymbol={kind==="spot"&&current?current.base+"-SPOT":current?.base??""} externalPricesOnly
+  {selectOpen&&<MarketSelector tokens={tokens} selectedSymbol={kind==="spot"?current?.base+"-SPOT":current?.base??""} externalPricesOnly
     initialCategory={kind==="spot"?"spot":"perps"} onClose={()=>setSelectOpen(false)}
     onSelectToken={(symbol,mode)=>{
      const actual=(mode==="spot"?spotMarkets:markets).find(m=>m.base===(mode==="spot"?symbol.replace(/-SPOT$/,""):symbol));
@@ -1085,7 +834,13 @@ export default function AsterVenueAdapter(p:{
     asterMarket={{
      symbol:current.symbol,kind,price:marketPrice,maxLeverage:kind==="perp"?maxLeverage:null,
      accountSummary:accountPanel,
-     orderBook:renderAsterBook(v=>{setLimitPrice(String(v));setOrderType("LIMIT");onSelectSection("trade",kind);},current.base)
+     orderBook:<HideDexOrderBookPanel
+      asks={depth?.asks??[]} bids={depth?.bids??[]} midPrice={marketPrice} midLabel="Last Price" flashingPrices={bookFlashes}
+      sizeUnit="USD" baseSymbol={current.base} onToggleSizeUnit={()=>{}}
+      onSelectPrice={v=>{setLimitPrice(String(v));setOrderType("LIMIT");onSelectSection("trade",kind);}}
+      formatPrice={n=>fmt(n,4)} formatSize={(px,qty)=>"$"+fmt(px*qty,2)}
+      group="1" groupOptions={["1"]} onGroup={()=>{}}
+     />
     }}
    />}
   </>}
@@ -1114,13 +869,11 @@ export default function AsterVenueAdapter(p:{
          if(raw&&typeof raw.symbol==="string")await cancel(id,raw.symbol);
         }}
         onClosePosition={async(pos,pct)=>{
-         const raw=positionRows.find(r=>String(r.symbol)===pos.sourceCoin&&
-           (r.positionSide??"BOTH")===(positionMode===true?pos.type:"BOTH"));
+         const raw=positionRows.find(r=>String(r.symbol)===pos.sourceCoin);
          if(raw)await closePos(raw,pct);
         }}
         onSavePositionTpSl={async(pos,tp,sl)=>{
-         const raw=positionRows.find(r=>String(r.symbol)===pos.sourceCoin&&
-           (r.positionSide??"BOTH")===(positionMode===true?pos.type:"BOTH"));
+         const raw=positionRows.find(r=>String(r.symbol)===pos.sourceCoin);
          if(!raw)throw Error("Verified Aster position not found");
          await sendTrigger(tp,sl,raw);
         }}
