@@ -35,6 +35,7 @@ import {getAsterMarkets,getAsterDepth,type AsterMarket,type AsterLevel} from "..
 import {getAsterSpotMarkets,getAsterSpotDepth} from "../../lib/asterSpotData";
 import {restoreAsterSigner,authorizeAsterAgent,asterReadAccount,asterSignedWrite,asterSignedRead,asterSignedSpotRead,asterSignedSpotWrite,asterNumber,grantAsterWithdrawPermission,type AsterIdentity,type AsterProvider} from "../../lib/asterProV3";
 import {ASTER_CHAINS,asterDepositUsdt,asterWithdrawQuote,asterWithdrawUsdt,type AsterChainId} from "../../lib/asterFunding";
+import {readAsterChainPerpWallet,type AsterChainPerpWallet,formatAsterChainAmount} from "../../lib/asterChainReadOnlyAccount";
 
 type Section="dashboard"|"markets"|"trade"|"funds"|"orders"|"account";
 type MarketKind="spot"|"perp";
@@ -81,6 +82,10 @@ export default function AsterVenueAdapter(p:{
  const [shieldView,setShieldView]=useState(false);
  const [shieldDraftSide,setShieldDraftSide]=useState<"BUY"|"SELL">("BUY");
  const [shieldDraftCollateral,setShieldDraftCollateral]=useState("");
+ const [shieldWalletRead,setShieldWalletRead]=useState<AsterChainPerpWallet|null>(null);
+ const [shieldWalletError,setShieldWalletError]=useState("");
+ const [shieldWalletLoading,setShieldWalletLoading]=useState(false);
+ const [shieldWalletRevision,setShieldWalletRevision]=useState(0);
  const [selectOpen,setSelectOpen]=useState(false);
  const [view,setView]=useState<"chart"|"orderbook">("chart");
  const [infoOpen,setInfoOpen]=useState(false);
@@ -216,6 +221,33 @@ export default function AsterVenueAdapter(p:{
  },[leverageStorageKey]);
  useEffect(()=>{setKind(initialKind);setShieldView(false);},[initialKind]);
  useEffect(()=>{if(section!=="trade")setShieldView(false);},[section]);
+ // Aster's published RPC exposes account-level perpetual assets, NOT Shield
+ // spendable collateral. Keep it isolated from the Shield order execution path.
+ useEffect(()=>{
+  if(!shieldView||!/^0x[0-9a-fA-F]{40}$/.test(walletAddress)){
+   setShieldWalletRead(null);setShieldWalletError("");setShieldWalletLoading(false);
+   return;
+  }
+  let stopped=false;
+  let ongoing:AbortController|null=null;
+  const read=async()=>{
+   ongoing?.abort();
+   const ctrl=new AbortController();ongoing=ctrl;
+   setShieldWalletLoading(true);
+   try{
+    const received=await readAsterChainPerpWallet(walletAddress,ctrl.signal);
+    if(!stopped){setShieldWalletRead(received);setShieldWalletError("");}
+   }catch(e){
+    if(!stopped&&!ctrl.signal.aborted){
+     setShieldWalletRead(null);
+     setShieldWalletError(sourceError(e));
+    }
+   }finally{if(!stopped&&!ctrl.signal.aborted)setShieldWalletLoading(false);}
+  };
+  void read();
+  const timer=window.setInterval(()=>{void read();},30_000);
+  return()=>{stopped=true;ongoing?.abort();window.clearInterval(timer);};
+ },[shieldView,walletAddress,shieldWalletRevision]);
  useEffect(()=>{let cancelled=false;const poll=()=>getAsterMarkets().then(list=>{
   if(cancelled)return;setMarkets(list);setMarketError("");
   if(list.length&&!list.some(x=>x.symbol===selectedSymbol))setSelectedSymbol(list[0].symbol);
@@ -878,9 +910,36 @@ export default function AsterVenueAdapter(p:{
          <div className="font-bold text-brand-text">Unverified</div>
         </div>
        </div>
+       <div className="rounded-lg border border-brand-border p-3 space-y-2">
+        <div className="flex flex-wrap gap-2 items-center justify-between">
+         <p className="font-bold text-xs text-brand-text">Aster Chain Perp wallet (public RPC)</p>
+         <button type="button" disabled={shieldWalletLoading||!walletAddress} onClick={()=>setShieldWalletRevision(v=>v+1)}
+          className="rounded-lg border border-brand-border bg-brand-overlay-subtle px-2 py-1 text-[10px] font-bold text-brand-text disabled:opacity-40">
+          {shieldWalletLoading?"Loading…":"Refresh balance"}
+         </button>
+        </div>
+        {!walletAddress?
+         <p className="text-xs text-brand-muted">Connect your wallet to read its onchain Perp asset balances.</p>:
+         shieldWalletLoading&&!shieldWalletRead?
+          <p className="text-xs text-brand-muted">Reading Aster Chain public balance…</p>:
+         shieldWalletError?
+          <p role="alert" className="text-xs text-pnl-loss">Balance unavailable: {shieldWalletError}</p>:
+         shieldWalletRead?
+          shieldWalletRead.assets.length?
+           <div className="space-y-1">{shieldWalletRead.assets.map(a=>
+            <div key={a.asset} className="flex justify-between gap-2 font-mono text-xs text-brand-text">
+             <span>{a.asset}</span><span>{formatAsterChainAmount(a.balance)}</span>
+            </div>)}</div>:
+           <p className="text-xs text-brand-muted">Aster Chain reports no Perp wallet assets for this address.</p>:
+          <p className="text-xs text-brand-muted">Balance not yet verified.</p>}
+        <p className="text-[10px] text-brand-muted">
+         Source: Aster Chain public aster_getBalance RPC. These are Perp wallet asset balances, NOT
+         verified Shield collateral, available margin or spendable Shield funds.
+        </p>
+       </div>
        <p className="text-[11px] text-brand-muted">
-        Shield has no order book and uses individual isolated positions. Existing Aster Pro Perp
-        quotes, balances and positions are deliberately not shown here as Shield data.
+        Shield uses individual isolated positions, not the normal Aster order book.
+        Verified Shield margin and positions remain unavailable until the Shield-specific integration is supported.
        </p>
        <div className="rounded-lg border border-brand-border p-3">
         <div className="font-bold text-xs text-brand-text mb-1">Shield positions / TP-SL / Close</div>
