@@ -821,10 +821,10 @@ export default function AsterVenueAdapter(p:{
   <HideDexUnifiedMarketHeader
    mobile={{logo:current?renderAssetLogo(current.base):null,ticker:current?.base??"ASTER",modeLabel:kind==="spot"?"Aster Spot":"Aster Perpetual",
     priceLabel:fmt(marketPrice),change24h:current?.change24h,onSelectMarket:()=>setSelectOpen(true),mode:kind,
-    switchMode:"toggle",onSwitchMode:switchAsterMode}
+    switchMode:"toggle",onSwitchMode:switchAsterMode}}
    desktop={{logo:current?renderAssetLogo(current.base):null,ticker:current?.base??"ASTER",
     sublabel:kind==="spot"?"Aster Spot":"Aster Perpetual",onMarket:()=>setSelectOpen(true),view,onView:setView,marketInfoOpen:infoOpen,onMarketInfo:()=>setInfoOpen(v=>!v)}}
-   info={{ticker:current?.symbol??"—",mode:kind,priceLabel:"$"+fmt(marketPrice),change24h:current?.change24h,fundingRate:null,openInterestUsd:null,onSwitch:switchAsterMode}
+   info={{ticker:current?.symbol??"—",mode:kind,priceLabel:"$"+fmt(marketPrice),change24h:current?.change24h,fundingRate:null,openInterestUsd:null,onSwitch:switchAsterMode}}
    showChartToolbar={view==="chart"}/>
   <HideDexUnifiedTradeCanvas
    marketView={<HideDexUnifiedMarketView view={view}
