@@ -567,7 +567,8 @@ export default function Navbar({
             ) : (
               <button
                 onClick={() => setShowWalletModal(true)}
-                className="px-2.5 sm:px-4 py-1 sm:py-1.5 rounded-lg sm:rounded-xl bg-accent hover:opacity-90 text-brand-bg text-[10px] sm:text-xs font-bold transition-all active:scale-98 cursor-pointer select-none shrink-0"
+                className="px-2.5 sm:px-4 py-1 sm:py-1.5 rounded-lg sm:rounded-xl bg-accent hover:brightness-110 text-[10px] sm:text-xs font-bold transition-all active:scale-98 cursor-pointer select-none shrink-0 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                style={{color:"var(--accent-foreground, #101010)"}}
                 id="connect-wallet-btn"
               >
                 Connect

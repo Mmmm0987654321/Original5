@@ -369,6 +369,23 @@ const loadGoogleFont = (fontName: string) => {
   document.head.appendChild(link);
 };
 
+/** Choose readable button text against each theme's actual accent color.
+ * Themed cyan/indigo utility names are remapped to accent colors globally,
+ * so a fixed "white" foreground is not safe for Mono Black or gold themes.
+ */
+const readableAccentForeground = (hex: string): string => {
+  const match = /^#([0-9a-f]{6})$/i.exec(hex.trim());
+  if (!match) return "#101010";
+  const rgb = [0, 2, 4].map(i => parseInt(match[1].slice(i, i + 2), 16) / 255);
+  const luminance = rgb.reduce((sum, component, i) => {
+    const linear = component <= 0.04045 ? component / 12.92 :
+      ((component + 0.055) / 1.055) ** 2.4;
+    return sum + linear * [0.2126, 0.7152, 0.0722][i];
+  }, 0);
+  return (luminance + 0.05) / 0.05 >= 1.05 / (luminance + 0.05)
+    ? "#101010" : "#ffffff";
+};
+
 // Apply custom CSS variable settings to DOM
 export const applyPreferencesToDOM = (
   themeId: string,
@@ -405,6 +422,8 @@ export const applyPreferencesToDOM = (
   Object.entries(selectedTheme.variables).forEach(([key, value]) => {
     doc.style.setProperty(key, value);
   });
+  doc.style.setProperty("--accent-foreground",
+    readableAccentForeground(selectedTheme.variables["--accent-primary"] || "#FAFAFA"));
 
   // Toggle .light classes correctly
   if (themeId === "light" || themeId === "mono-light") {

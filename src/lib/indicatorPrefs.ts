@@ -74,7 +74,7 @@ export const CHART_COLOR_PRESETS = [
 ];
 
 const EMA_SLOT_PERIODS = [9, 21, 50, 100, 200, 400];
-/** Available moving-average slots; only the standard EMA(21) is enabled by default. */
+/** Available slots; show one standard Simple Moving Average (SMA 20) by default. */
 const MA_SLOT_PERIODS = [20, 50, 200, 9, 100, 300];
 
 const EMA_DEFAULT_COLORS = [
@@ -106,7 +106,7 @@ export const DEFAULT_RSI_ROWS: RsiBandRow[] = RSI_SLOT_PERIODS.map((period, i) =
 }));
 
 export const DEFAULT_EMA_ROWS: MaBandRow[] = EMA_SLOT_PERIODS.map((period, i) => ({
-  enabled: i === 1,
+  enabled: false,
   period,
   source: 'close',
   color: EMA_DEFAULT_COLORS[i] ?? '#eab308',
@@ -114,7 +114,7 @@ export const DEFAULT_EMA_ROWS: MaBandRow[] = EMA_SLOT_PERIODS.map((period, i) =>
 }));
 
 export const DEFAULT_MA_ROWS: MaBandRow[] = MA_SLOT_PERIODS.map((period, i) => ({
-  enabled: false,
+  enabled: i === 0,
   period,
   source: 'close',
   color: MA_DEFAULT_COLORS[i] ?? '#94a3b8',
@@ -1157,8 +1157,8 @@ export const DEFAULT_BOLL_COLORS: [string, string, string] = ['#60a5fa', '#e5e7e
 export const DEFAULT_INDICATOR_PREFS: WebIndicatorPrefs = {
   emaRows: DEFAULT_EMA_ROWS.map((r) => ({ ...r })),
   maRows: DEFAULT_MA_ROWS.map((r) => ({ ...r })),
-  emaVisible: true,
-  maVisible: false,
+  emaVisible: false,
+  maVisible: true,
   vwap: false,
   vwapVisible: true,
   vwapLength: 14,
@@ -1212,6 +1212,7 @@ const KEY = 'builderpad:indicatorPrefs';
 const VOL_OFF_MIGRATION = 'builderpad:volOff.v1';
 const INDICATOR_COLORS_MIGRATION = 'builderpad:indicatorColors.v1';
 const SINGLE_EMA_DEFAULT_MIGRATION = 'builderpad:singleEma21Default.v1';
+const SINGLE_SMA_DEFAULT_MIGRATION = 'builderpad:singleSma20Default.v1';
 
 /** Keep the untouched chart free of a second indicator/subpane by default. */
 function defaultVol(): boolean {
@@ -1416,6 +1417,44 @@ function migrateLegacyDefaultAverages(prefs: WebIndicatorPrefs, hadSaved: boolea
     };
     localStorage.setItem(KEY, JSON.stringify(next));
     localStorage.setItem(SINGLE_EMA_DEFAULT_MIGRATION, '1');
+    return next;
+  } catch {
+    return prefs;
+  }
+}
+
+/** Migrate only a pristine EMA(21) or older three-EMA/three-MA default.
+ * Keep explicitly customized indicator periods, colors, overlay combinations
+ * and auxiliary panes untouched. This runs once per browser profile.
+ */
+function migratePristineEmaToSma(prefs: WebIndicatorPrefs, hadSaved: boolean): WebIndicatorPrefs {
+  if (!hadSaved) return prefs;
+  try {
+    if (localStorage.getItem(SINGLE_SMA_DEFAULT_MIGRATION) === '1') return prefs;
+    const matchesRows = (rows: MaBandRow[], periods: number[], colors: string[], enabled: (i:number)=>boolean) =>
+      rows.length === periods.length && rows.every((r, i) =>
+        r.enabled === enabled(i) && r.period === periods[i] &&
+        r.source === 'close' && r.color.toLowerCase() === colors[i].toLowerCase() &&
+        (r.lineWidth ?? 1) === 1);
+    const oneEma = matchesRows(prefs.emaRows, EMA_SLOT_PERIODS, EMA_DEFAULT_COLORS, i => i === 1) &&
+      matchesRows(prefs.maRows, MA_SLOT_PERIODS, MA_DEFAULT_COLORS, () => false) &&
+      prefs.emaVisible && !prefs.maVisible;
+    const legacyMulti = matchesRows(prefs.emaRows, EMA_SLOT_PERIODS, EMA_DEFAULT_COLORS, i => i < 3) &&
+      matchesRows(prefs.maRows, MA_SLOT_PERIODS, MA_DEFAULT_COLORS, i => i < 3) &&
+      prefs.emaVisible && prefs.maVisible;
+    const hasOtherIndicator = prefs.vwap || prefs.boll || prefs.macd || prefs.rsi || prefs.cci ||
+      prefs.supertrend || prefs.extraIndicators.length > 0 || prefs.customIndicators.length > 0;
+    localStorage.setItem(SINGLE_SMA_DEFAULT_MIGRATION, '1');
+    if ((!oneEma && !legacyMulti) || hasOtherIndicator) return prefs;
+    const next: WebIndicatorPrefs = {
+      ...prefs,
+      emaRows: prefs.emaRows.map(r => ({...r, enabled: false})),
+      maRows: prefs.maRows.map((r, i) => ({...r, enabled: i === 0})),
+      emaVisible: false,
+      maVisible: true,
+      vol: false,
+    };
+    localStorage.setItem(KEY, JSON.stringify(next));
     return next;
   } catch {
     return prefs;
@@ -1802,7 +1841,10 @@ export function loadIndicatorPrefs(): WebIndicatorPrefs {
       indicatorSettings,
     };
     const volMigrated = migrateVolumeOff(loaded, true);
-    return migrateLegacyDefaultAverages(migrateLegacyIndicatorColors(volMigrated, true), true);
+    return migratePristineEmaToSma(
+      migrateLegacyDefaultAverages(migrateLegacyIndicatorColors(volMigrated, true), true),
+      true,
+    );
   } catch {
     return freshPrefs();
   }

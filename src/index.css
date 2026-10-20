@@ -11,6 +11,7 @@
   --bg-elevated: #162033;
   --border-brand: #223247; /* Border */
   --accent-primary: #00E878;
+  --accent-foreground: #101010;
   --accent-secondary: #003868;
   --text-primary: #FFFFFF;
   --text-secondary: #CBD5E1;
@@ -36,6 +37,7 @@
   --bg-elevated: #FFFFFF;
   --border-brand: #D9E3EE; /* Border */
   --accent-primary: #3B82F6;
+  --accent-foreground: #101010;
   --accent-secondary: #EFF6FF;
   --text-primary: #000000;
   --text-secondary: #334155;
