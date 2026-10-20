@@ -178,11 +178,20 @@ import*as React from"react";const HIDE_DEX_PAGE_TITLE="HideDex";const HIDE_DEX_D
 #hdx-lp .hidedex-public-footer-inner{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:15px 25px}
 #hdx-lp .hidedex-footer-brand{display:flex;flex-direction:column;gap:4px;font-weight:800;font-size:15px}
 #hdx-lp .hidedex-footer-brand small{font-weight:400;color:#53728f;font-size:12px}
-#hdx-lp .hidedex-footer-links{display:flex;flex-wrap:wrap;align-items:center;gap:10px 22px}
-#hdx-lp .hidedex-footer-links a{display:inline-flex;align-items:center;min-height:40px;color:#1b578f;font-size:14px;font-weight:650;text-decoration:none}
-#hdx-lp .hidedex-footer-links a:hover{color:#1656bd;text-decoration:underline}
-#hdx-lp .hidedex-footer-links a:focus-visible{outline:2px solid #2266c9;outline-offset:3px;border-radius:3px}
-@media(max-width:540px){#hdx-lp .hidedex-public-footer{padding:20px 17px 26px}#hdx-lp .hidedex-public-footer-inner{flex-direction:column;align-items:flex-start;gap:13px}#hdx-lp .hidedex-footer-links{gap:6px 18px}#hdx-lp .hidedex-footer-links a{font-size:13px;min-height:34px}}
+/* Five accessible footer options. Existing resource/legal/support URLs stay available inside native disclosure menus. */
+#hdx-lp .hidedex-footer-links{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;width:100%;max-width:1120px;align-items:start}
+#hdx-lp .hidedex-footer-links>.hidedex-footer-primary,#hdx-lp .hidedex-footer-links>.hidedex-footer-menu>summary{display:flex;align-items:center;justify-content:space-between;gap:6px;min-height:44px;width:100%;padding:10px 12px;border:1px solid #c5d7eb;border-radius:10px;background:#fff;color:#194f89;font-size:14px;font-weight:700;line-height:1.35;text-decoration:none;cursor:pointer}
+#hdx-lp .hidedex-footer-menu{position:relative;min-width:0}
+#hdx-lp .hidedex-footer-menu>summary{list-style:none;-webkit-tap-highlight-color:transparent}
+#hdx-lp .hidedex-footer-menu>summary::-webkit-details-marker{display:none}
+#hdx-lp .hidedex-footer-menu>summary::after{content:"⌄";display:inline-block;font-size:18px;font-weight:600;line-height:1;flex:none;transition:transform .15s ease}
+#hdx-lp .hidedex-footer-menu[open]>summary::after{transform:rotate(180deg)}
+#hdx-lp .hidedex-footer-menu-panel{position:absolute;top:calc(100% + 6px);left:0;z-index:8;display:grid;gap:2px;min-width:max(100%,225px);padding:8px;background:#fff;border:1px solid #c5d7eb;border-radius:12px;box-shadow:0 12px 24px rgba(18,49,84,.12);max-height:350px;overflow-y:auto}
+#hdx-lp .hidedex-footer-menu:last-child .hidedex-footer-menu-panel{left:auto;right:0}
+#hdx-lp .hidedex-footer-menu-panel a{display:block;padding:9px 11px;min-height:36px;color:#1b578f;font-size:13px;font-weight:600;line-height:1.4;text-decoration:none;border-radius:7px}
+#hdx-lp .hidedex-footer-links a:hover,#hdx-lp .hidedex-footer-menu>summary:hover{background:#e6f2ff;color:#1656bd}
+#hdx-lp .hidedex-footer-links a:focus-visible,#hdx-lp .hidedex-footer-menu>summary:focus-visible{outline:2px solid #2266c9;outline-offset:3px}
+@media(max-width:740px){#hdx-lp .hidedex-footer-links{grid-template-columns:1fr;gap:8px;max-width:520px}#hdx-lp .hidedex-footer-menu-panel,#hdx-lp .hidedex-footer-menu:last-child .hidedex-footer-menu-panel{position:static;min-width:0;max-height:none;box-shadow:none;border-radius:9px;margin-top:5px}#hdx-lp .hidedex-public-footer{padding:20px 17px 26px}#hdx-lp .hidedex-public-footer-inner{flex-direction:column;align-items:stretch;gap:14px}#hdx-lp .hidedex-social-buttons{width:100%;flex-wrap:nowrap;gap:6px}#hdx-lp .hidedex-social-buttons a{flex:1 1 0;min-width:0;padding:8px 5px;min-height:38px;font-size:12px;white-space:nowrap}}
 
 
 /* Responsive repair: the old two-column protocol-stage grid hid its left
@@ -251,24 +260,38 @@ import*as React from"react";const HIDE_DEX_PAGE_TITLE="HideDex";const HIDE_DEX_D
  <footer className="hidedex-public-footer" aria-label="HideDex information">
    <div className="hidedex-public-footer-inner">
      <div className="hidedex-footer-brand"><span>HideDex</span><small>© {new Date().getFullYear()} HideDex. Wallet-connected markets.</small></div>
-     <nav className="hidedex-footer-links" aria-label="Public and support pages">
-       <a href="/docs">Documentation</a>
-        <a href="/exchange-info">Exchange Information</a>
-        <a href="/exchange-api">API Reference</a>
-        <a href="/market-info">Market Information</a>
-        <a href="/fees">Trading Fees</a>
-        <a href="/whitepaper">Whitepaper</a>
-       <a href="/resources">Partners &amp; Resources</a>
-       <a href="/terms">Terms of Service</a>
-       <a href="/risk">Risk Disclosure</a>
-       <a href="/privacy">Privacy Policy</a>
-       <a href="/about">About HideDex</a>
-       <a href="/markets">Trading Markets</a>
-       <a href="/early-access">Early Access</a>
-       <a href="/faq">FAQ</a>
-       <a href="/contact">Contact</a>
-
-       <a href="mailto:hidedex.com@gmail.com?subject=HideDex%20Support">Email Support</a>
+     <nav className="hidedex-footer-links" aria-label="HideDex footer navigation">
+       <a className="hidedex-footer-primary" href="/markets">Trading Markets</a>
+       <a className="hidedex-footer-primary" href="/early-access">Early Access</a>
+       <details className="hidedex-footer-menu">
+         <summary>Resources</summary>
+         <div className="hidedex-footer-menu-panel">
+           <a href="/docs">Documentation</a>
+           <a href="/exchange-info">Exchange Information</a>
+           <a href="/exchange-api">API Reference</a>
+           <a href="/market-info">Market Information</a>
+           <a href="/fees">Trading Fees</a>
+           <a href="/whitepaper">Whitepaper</a>
+           <a href="/resources">Partners &amp; Resources</a>
+         </div>
+       </details>
+       <details className="hidedex-footer-menu">
+         <summary>Legal</summary>
+         <div className="hidedex-footer-menu-panel">
+           <a href="/terms">Terms of Service</a>
+           <a href="/risk">Risk Disclosure</a>
+           <a href="/privacy">Privacy Policy</a>
+         </div>
+       </details>
+       <details className="hidedex-footer-menu">
+         <summary>Help &amp; Company</summary>
+         <div className="hidedex-footer-menu-panel">
+           <a href="/about">About HideDex</a>
+           <a href="/faq">FAQ</a>
+           <a href="/contact">Contact</a>
+           <a href="mailto:hidedex.com@gmail.com?subject=HideDex%20Support">Email Support</a>
+         </div>
+       </details>
      </nav>
    </div>
  </footer>{"\n"}</div>{"\n\n\n"}</div>;}const HIDE_DEX_LOGO_DATA_URI="/IMG_20261014_171156.png";
