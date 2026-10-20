@@ -772,8 +772,13 @@ export default function AsterVenueAdapter(p:{
   }}}
   options={{visible:kind==="perp",reduce:{checked:reduceOnly,onChange:setReduceOnly,disabled:!hasOpposite||busy},tpsl:{checked:false,onChange:()=>{},disabled:true}}}
   summary={{isPerp:kind==="perp",liquidation:"—",orderValue:orderValue!==null?"$"+fmt(orderValue):"—",margin:orderValue!==null&&leverage>0?"≈$"+fmt(orderValue/leverage):"—"}}
-  place={{type:"button",side,busy,disabled:busy||!current||size===null||size<=0, onClick:()=>void order(),
-   label:busy?"Processing…":!identity?"ENABLE TRADING":(kind==="spot"&&!spotMode||kind==="perp"&&!identity.mode)?"VERIFY ASTER ACCOUNT":"PLACE "+(kind==="spot"?(side==="BUY"?"BUY":"SELL"):(side==="BUY"?"LONG":"SHORT"))}}
+  // Authorizing the trading agent must not require choosing a market or
+  // entering a nonzero order size. Validate order size only AFTER an agent
+  // exists; never trigger authorization automatically during restore.
+  place={{type:"button",side,busy,
+   disabled:busy||restoring||(identity!==null&&(!current||size===null||size<=0)),
+   onClick:()=>void order(),
+   label:busy?"Processing…":restoring?"RESTORING ASTER AGENT":!identity?"ENABLE TRADING":(kind==="spot"&&!spotMode||kind==="perp"&&!identity.mode)?"VERIFY ASTER ACCOUNT":"PLACE "+(kind==="spot"?(side==="BUY"?"BUY":"SELL"):(side==="BUY"?"LONG":"SHORT"))}}
  />;
  const tradeView=<>
   <HideDexUnifiedMarketHeader
