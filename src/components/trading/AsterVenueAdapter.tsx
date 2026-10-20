@@ -889,17 +889,19 @@ export default function AsterVenueAdapter(p:{
      walletDisplay={walletAddress?walletAddress.slice(0,6)+"…"+walletAddress.slice(-3):"Not connected"}
      hideBalances={hideBalance} onToggleBalances={()=>setHideBalance(v=>!v)}
      onCopyAddress={()=>{void navigator.clipboard.writeText(walletAddress)}} accountError={accountError||null}
-     depositLabel="Deposit" depositSubtitle="Fund Aster mainnet" withdrawLabel="Withdraw" withdrawSubtitle="Return to wallet"
+     depositLabel="Deposit" depositSubtitle="Add funds" withdrawLabel="Withdrawal" withdrawSubtitle="Send funds"
      onDeposit={()=>{setFundingModal("deposit");setNotice("");}}
      onWithdraw={()=>{setFundingModal("withdraw");setNotice("");}}
-     cards={[{label:"Perpetual Balance",value:hideBalance?"••••":available&&num(available.balance)!==null?fmt(num(available.balance))+" USDT":"—",
-       subtitle:"Aster exchange-reported",icon:<Wallet size={14}/>},
+     cards={[
+      {label:"Spot Available",value:hideBalance?"••••":verifiedSpotUsdt!==null?fmt(verifiedSpotUsdt)+" USDT":"—",
+       subtitle:"Aster Spot USDT, separately verified",icon:<Wallet size={14}/>},
+      {label:"Perpetual Balance",value:hideBalance?"••••":available&&num(available.balance)!==null?fmt(num(available.balance))+" USDT":"—",
+       subtitle:"Aster exchange-reported collateral",icon:<TrendingUp size={14}/>,iconTone:"text-success"},
       {label:"Available for Trade",value:hideBalance?"••••":free!==null?fmt(free)+" USDT":"—",
        subtitle:"Aster available margin",icon:<Unlock size={14}/>},
       {label:"Margin in Trade",value:hideBalance?"••••":num(futuresAccount?.totalPositionInitialMargin)!==null?fmt(num(futuresAccount?.totalPositionInitialMargin))+" USDT":"—",
-       subtitle:"Exchange-reported initial margin",icon:<Lock size={14}/>},
-      {label:"Spot Available",value:hideBalance?"••••":verifiedSpotUsdt!==null?fmt(verifiedSpotUsdt)+" USDT":"—",
-       subtitle:"Aster Spot USDT, separately verified",icon:<TrendingUp size={14}/>}]} />
+       subtitle:"Exchange-reported initial margin",icon:<Lock size={14}/>,iconTone:"text-amber-500"},
+     ]} />
     <HideDexAssetAllocation totalLabel="TOTAL" totalUnit="USDT"
       totalValue={hideBalance?"••••":combinedUsdt!==null?fmt(combinedUsdt):"—"}
       chartValues={hideBalance||combinedUsdt===null||combinedUsdt<=0?[]:[

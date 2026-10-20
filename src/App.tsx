@@ -4355,7 +4355,7 @@ export default function App() {
           )}
 
           {/* ACCOUNT & SETTINGS PAGE */}
-          {(selectedExchange === "hyperliquid" || selectedExchange === "lighter") && activeTab === ActiveTab.Profile && (
+          {(selectedExchange === "hyperliquid" || selectedExchange === "lighter" || selectedExchange === "aster") && activeTab === ActiveTab.Profile && (
             <AccountSettingsPanel
               walletConnected={walletConnected}
               onDisconnectWallet={handleDisconnectWallet}
