@@ -35,7 +35,6 @@ import {getAsterMarkets,getAsterDepth,type AsterMarket,type AsterLevel} from "..
 import {getAsterSpotMarkets,getAsterSpotDepth} from "../../lib/asterSpotData";
 import {restoreAsterSigner,authorizeAsterAgent,asterReadAccount,asterSignedWrite,asterSignedRead,asterSignedSpotRead,asterSignedSpotWrite,asterNumber,grantAsterWithdrawPermission,type AsterIdentity,type AsterProvider} from "../../lib/asterProV3";
 import {ASTER_CHAINS,asterDepositUsdt,asterWithdrawQuote,asterWithdrawUsdt,type AsterChainId} from "../../lib/asterFunding";
-import {readAsterChainPerpWallet,type AsterChainPerpWallet,formatAsterChainAmount} from "../../lib/asterChainReadOnlyAccount";
 
 type Section="dashboard"|"markets"|"trade"|"funds"|"orders"|"account";
 type MarketKind="spot"|"perp";
@@ -77,15 +76,6 @@ export default function AsterVenueAdapter(p:{
  const [spotMarketError,setSpotMarketError]=useState("");
  const [selectedSymbol,setSelectedSymbol]=useState("BTCUSDT");
  const [kind,setKind]=useState<MarketKind>(initialKind);
- // Shield is not a Futures V3 trade type. Keep its unverified surface fully
- // separate from normal Perp and Spot order submission and price/leverage data.
- const [shieldView,setShieldView]=useState(false);
- const [shieldDraftSide,setShieldDraftSide]=useState<"BUY"|"SELL">("BUY");
- const [shieldDraftCollateral,setShieldDraftCollateral]=useState("");
- const [shieldWalletRead,setShieldWalletRead]=useState<AsterChainPerpWallet|null>(null);
- const [shieldWalletError,setShieldWalletError]=useState("");
- const [shieldWalletLoading,setShieldWalletLoading]=useState(false);
- const [shieldWalletRevision,setShieldWalletRevision]=useState(0);
  const [selectOpen,setSelectOpen]=useState(false);
  const [view,setView]=useState<"chart"|"orderbook">("chart");
  const [infoOpen,setInfoOpen]=useState(false);
@@ -219,35 +209,7 @@ export default function AsterVenueAdapter(p:{
   }
   setConfirmedLeverage(parsed);
  },[leverageStorageKey]);
- useEffect(()=>{setKind(initialKind);setShieldView(false);},[initialKind]);
- useEffect(()=>{if(section!=="trade")setShieldView(false);},[section]);
- // Aster's published RPC exposes account-level perpetual assets, NOT Shield
- // spendable collateral. Keep it isolated from the Shield order execution path.
- useEffect(()=>{
-  if(!shieldView||!/^0x[0-9a-fA-F]{40}$/.test(walletAddress)){
-   setShieldWalletRead(null);setShieldWalletError("");setShieldWalletLoading(false);
-   return;
-  }
-  let stopped=false;
-  let ongoing:AbortController|null=null;
-  const read=async()=>{
-   ongoing?.abort();
-   const ctrl=new AbortController();ongoing=ctrl;
-   setShieldWalletLoading(true);
-   try{
-    const received=await readAsterChainPerpWallet(walletAddress,ctrl.signal);
-    if(!stopped){setShieldWalletRead(received);setShieldWalletError("");}
-   }catch(e){
-    if(!stopped&&!ctrl.signal.aborted){
-     setShieldWalletRead(null);
-     setShieldWalletError(sourceError(e));
-    }
-   }finally{if(!stopped&&!ctrl.signal.aborted)setShieldWalletLoading(false);}
-  };
-  void read();
-  const timer=window.setInterval(()=>{void read();},30_000);
-  return()=>{stopped=true;ongoing?.abort();window.clearInterval(timer);};
- },[shieldView,walletAddress,shieldWalletRevision]);
+ useEffect(()=>{setKind(initialKind);},[initialKind]);
  useEffect(()=>{let cancelled=false;const poll=()=>getAsterMarkets().then(list=>{
   if(cancelled)return;setMarkets(list);setMarketError("");
   if(list.length&&!list.some(x=>x.symbol===selectedSymbol))setSelectedSymbol(list[0].symbol);
@@ -519,13 +481,6 @@ export default function AsterVenueAdapter(p:{
   finally{setBusy(false);}
  };
  const order=async()=>{
-  // Defense in depth: a Shield selection must NEVER route to regular
-  // /fapi/v3/order or /api/v3/order, even if a stale handler runs.
-  if(shieldView){
-   setToastKind("error");
-   setNotice("Aster Shield trading is not supported by the verified V3 agent API. No order was sent.");
-   return;
-  }
   if(!walletAddress){onConnectWallet();return;}
   if(!identity){setAuthOpen(true);return;}
   const mode=kind==="spot"?spotMode:identity.mode;
@@ -863,122 +818,7 @@ export default function AsterVenueAdapter(p:{
     onPrimary={()=>void enable()} description={<p className="text-sm text-brand-sub">
      Sign once with the connected wallet on BNB Chain to register a fresh Aster Pro API trading agent. The key stays encrypted on this browser. Withdrawals are NOT authorized by this step. Signed balance verification is required before real orders.</p>}/>}
 
-  {section==="trade"&&<>
-   <div className="flex items-center gap-1.5 mb-2 px-1" aria-label="Aster trading product">
-    {(["perp","spot","shield"] as const).map(product=><button
-     type="button" key={product}
-     aria-pressed={product==="shield"?shieldView:!shieldView&&kind===product}
-     onClick={()=>{
-      if(product==="shield"){setShieldView(true);setSelectOpen(false);return;}
-      setShieldView(false);setKind(product);onSelectSection("trade",product);
-     }}
-     className={"rounded-lg border px-3 py-2 text-xs font-semibold transition-colors "+
-      ((product==="shield"?shieldView:!shieldView&&kind===product)
-       ?"border-accent bg-accent/15 text-brand-text"
-       :"border-brand-border bg-brand-surface text-brand-muted hover:text-brand-text")}>
-     {product==="shield"?"Shield (Read-only)":product==="perp"?"Perp":"Spot"}
-    </button>)}
-   </div>
-   {shieldView?
-    <section className="glass-panel rounded-2xl border border-brand-border bg-brand-surface p-3 sm:p-4 space-y-3" aria-label="Aster Shield order preparation">
-     <div className="flex items-center justify-between gap-3">
-      <h2 className="text-base font-bold text-brand-text">Aster Shield</h2>
-      <span className="text-[10px] uppercase tracking-wide rounded-lg border border-brand-border px-2 py-1 text-brand-muted">Trading unavailable</span>
-     </div>
-     <p role="status" className="text-xs text-brand-sub leading-relaxed">
-      Shield is a separate isolated-margin product. Its official order API and market-specific leverage limits
-      are not verified for the HideDex agent, so no Shield trade can be sent. Pro Perp orders will never be routed as Shield.
-     </p>
-     <div className="grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_minmax(220px,300px)] gap-3">
-      <div className="rounded-xl border border-brand-border bg-brand-bg/50 p-3 space-y-3">
-       <div className="text-xs font-bold text-brand-text">Shield market</div>
-       <div className="grid grid-cols-2 gap-2 text-[11px]">
-        <div className="rounded-lg border border-brand-border bg-brand-surface p-2">
-         <div className="text-brand-muted">Available pairs</div>
-         <div className="font-bold text-brand-text">Not verified</div>
-        </div>
-        <div className="rounded-lg border border-brand-border bg-brand-surface p-2">
-         <div className="text-brand-muted">Margin mode</div>
-         <div className="font-bold text-brand-text">Isolated</div>
-        </div>
-        <div className="rounded-lg border border-brand-border bg-brand-surface p-2">
-         <div className="text-brand-muted">Shield mark / last price</div>
-         <div className="font-bold text-brand-text">Unavailable</div>
-        </div>
-        <div className="rounded-lg border border-brand-border bg-brand-surface p-2">
-         <div className="text-brand-muted">Max leverage by symbol</div>
-         <div className="font-bold text-brand-text">Unverified</div>
-        </div>
-       </div>
-       <div className="rounded-lg border border-brand-border p-3 space-y-2">
-        <div className="flex flex-wrap gap-2 items-center justify-between">
-         <p className="font-bold text-xs text-brand-text">Aster Chain Perp wallet (public RPC)</p>
-         <button type="button" disabled={shieldWalletLoading||!walletAddress} onClick={()=>setShieldWalletRevision(v=>v+1)}
-          className="rounded-lg border border-brand-border bg-brand-overlay-subtle px-2 py-1 text-[10px] font-bold text-brand-text disabled:opacity-40">
-          {shieldWalletLoading?"Loading…":"Refresh balance"}
-         </button>
-        </div>
-        {!walletAddress?
-         <p className="text-xs text-brand-muted">Connect your wallet to read its onchain Perp asset balances.</p>:
-         shieldWalletLoading&&!shieldWalletRead?
-          <p className="text-xs text-brand-muted">Reading Aster Chain public balance…</p>:
-         shieldWalletError?
-          <p role="alert" className="text-xs text-pnl-loss">Balance unavailable: {shieldWalletError}</p>:
-         shieldWalletRead?
-          shieldWalletRead.assets.length?
-           <div className="space-y-1">{shieldWalletRead.assets.map(a=>
-            <div key={a.asset} className="flex justify-between gap-2 font-mono text-xs text-brand-text">
-             <span>{a.asset}</span><span>{formatAsterChainAmount(a.balance)}</span>
-            </div>)}</div>:
-           <p className="text-xs text-brand-muted">Aster Chain reports no Perp wallet assets for this address.</p>:
-          <p className="text-xs text-brand-muted">Balance not yet verified.</p>}
-        <p className="text-[10px] text-brand-muted">
-         Source: Aster Chain public aster_getBalance RPC. These are Perp wallet asset balances, NOT
-         verified Shield collateral, available margin or spendable Shield funds.
-        </p>
-       </div>
-       <p className="text-[11px] text-brand-muted">
-        Shield uses individual isolated positions, not the normal Aster order book.
-        Verified Shield margin and positions remain unavailable until the Shield-specific integration is supported.
-       </p>
-       <div className="rounded-lg border border-brand-border p-3">
-        <div className="font-bold text-xs text-brand-text mb-1">Shield positions / TP-SL / Close</div>
-        <div className="text-[11px] text-brand-muted">
-         No verified Shield account readback or execution connection. Existing Perp positions
-         must be managed in the Perp tab, not here.
-        </div>
-       </div>
-      </div>
-      <div className="rounded-xl border border-brand-border bg-brand-surface p-3 space-y-3">
-       <p className="text-xs font-bold text-brand-text">Shield order draft — not a live order</p>
-       <HideDexUnifiedOrderForm
-        connected onConnect={()=>{}}
-        onSubmit={e=>e.preventDefault()}
-        selectors={{
-         isPerp:true,orderType:"MARKET",onOrderType:()=>{},availableOrderTypes:[],
-         marginMode:"ISOLATED",disabledMarginModes:["CROSS","ISOLATED"],
-         leverage:1,maxLeverage:null,leverageDisabled:true
-        }}
-        side={{isPerp:true,side:shieldDraftSide,onSide:setShieldDraftSide,available:"Not verified"}}
-        basic={null}
-        advancedFields={<label className="flex flex-col gap-1.5 text-[11px] text-brand-muted font-semibold">
-         Draft collateral (USDT)
-         <input type="number" min="0" step="any" inputMode="decimal" value={shieldDraftCollateral}
-          onChange={e=>setShieldDraftCollateral(e.target.value)} placeholder="Amount (draft only)"
-          className="bg-brand-bg rounded-lg border border-brand-border px-3 py-2 text-brand-text font-mono outline-none focus:border-accent"/>
-         <span className="font-normal text-[10px]">No available balance, price, liquidation or leverage can be estimated without verified Shield data.</span>
-        </label>}
-        presets={{disabled:true,onSelect:()=>{}}}
-        options={{visible:true,tpsl:{checked:false,disabled:true,onChange:()=>{}}}}
-        summary={{isPerp:true,liquidation:"—",orderValue:"—",margin:"—"}}
-        place={{type:"button",side:shieldDraftSide,disabled:true,
-         label:"SHIELD TRADING UNAVAILABLE"}}
-       />
-      </div>
-     </div>
-    </section>
-    :tradeView}
-  </>}
+  {section==="trade"&&tradeView}
   {section==="markets"&&<>
    {kind==="spot"&&spotMarketError&&<p role="alert" className="py-2 px-3 text-xs text-brand-muted">{spotMarketError}</p>}
    {current&&<MarketsPanel
