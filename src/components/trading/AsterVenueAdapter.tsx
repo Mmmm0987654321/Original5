@@ -817,32 +817,6 @@ export default function AsterVenueAdapter(p:{
    account={accountPanel}/>
  </>;
  return <div className="w-full min-w-0 text-brand-text pb-1" data-exchange="aster">
-  {section==="trade"&&(
-   <nav aria-label="Aster trading mode" className="mb-3 flex min-w-0 items-center gap-1.5 rounded-xl border border-brand-border bg-brand-surface p-1.5">
-    {([
-     {id:"perp",label:"Perpetual"},
-     {id:"spot",label:"Spot"},
-     {id:"1001x",label:"1001x"},
-    ] as const).map(option=>{
-     const unavailable=option.id==="1001x";
-     const active=!unavailable&&option.id===kind;
-     return <button key={option.id} type="button" aria-current={active?"page":undefined}
-      disabled={busy||restoring||unavailable} aria-disabled={unavailable}
-      title={unavailable?"Aster 1001x is unavailable: verified live 1001x contract execution and account data are not connected.":undefined}
-      onClick={()=>{
-       if(busy||restoring||unavailable)return;
-       setSelectOpen(false);setAuthOpen(false);setInfoOpen(false);setTpsl(null);setFundingModal(null);
-       setKind(option.id);onSelectSection("trade",option.id);
-      }}
-      className={"min-w-0 flex-1 rounded-lg px-2 py-2.5 text-xs font-bold transition-colors disabled:opacity-60 "+
-       (active?"bg-brand-overlay-normal border border-accent text-brand-text":"border border-transparent text-brand-muted hover:bg-brand-overlay-subtle hover:text-brand-text")}>
-      {option.label}{unavailable&&<span className="ml-1 text-[9px] opacity-80">Unavailable</span>}
-     </button>;
-    })}
-   </nav>
-  )}
-  {/* Always keep the authentic Aster Pro/Spot chart, markets and account panels visible.
-      Never present an empty 1001x preview as a working execution venue. */}
   {marketError&&<p role="alert" className="p-3 mb-2 rounded-lg border border-rose-500/30 text-rose-400 text-xs">Aster mainnet public markets unavailable: {marketError}. No other exchange's data is substituted.</p>}
   {notice&&!authOpen&&<HideDexTradingToast type={busy?"pending":toastKind}
      title="Aster" message={notice} onClose={()=>setNotice("")}/>}
