@@ -33,6 +33,7 @@ interface LeftSidebarProps {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
   onOpenSettings: () => void;
+  onRequestPoints: () => void;
   walletAddress: string;
   balanceUSDC: number;
   selectedExchange?: "hyperliquid" | "lighter" | "aster";
@@ -49,6 +50,7 @@ export default function LeftSidebar({
   activeTab,
   setActiveTab,
   onOpenSettings,
+  onRequestPoints,
   walletAddress,
   balanceUSDC,
   selectedExchange = "hyperliquid",
@@ -68,14 +70,15 @@ export default function LeftSidebar({
   const menuItems = [
     { id: ActiveTab.Profile, label: "Account", icon: User, desc: "Manage profile & alerts" },
     { id: ActiveTab.Portfolio, label: "Fund", icon: Briefcase, desc: "Wallet & portfolio balance" },
-    { id: ActiveTab.Points, label: "Points", badge: "Upcoming", icon: Trophy, desc: "Rewards program upcoming" },
+    { id: ActiveTab.Points, label: "Points", badge: "Access", icon: Trophy, desc: "Your saved Early Access rewards" },
     { id: ActiveTab.Markets, label: "Market", icon: Compass, desc: "Global asset screener" },
     { id: ActiveTab.Perp, label: "Trade", icon: Activity, desc: "Leverage trading desk" },
   ].filter(item => !(item.id === ActiveTab.Profile && trustShieldMode === "ANONYMOUS"));
 
   const handleItemClick = (id: ActiveTab) => {
     if (id === ActiveTab.Points) {
-      // Upcoming only - click does nothing
+      onRequestPoints();
+      if (onCloseMobile) onCloseMobile();
       return;
     }
     setActiveTab(id);
@@ -148,7 +151,7 @@ export default function LeftSidebar({
                 key={idx}
                 onClick={() => handleItemClick(item.id)}
                 className={`w-full flex items-center rounded-lg text-left transition-all group relative ${
-                  item.id === ActiveTab.Points ? "cursor-default opacity-85" : "cursor-pointer"
+                  "cursor-pointer"
                 } ${
                   isCollapsed ? "justify-center p-2" : "gap-2.5 px-2.5 py-1.5"
                 } ${
@@ -169,7 +172,7 @@ export default function LeftSidebar({
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-extrabold leading-none">{item.label}</span>
                       {item.badge && (
-                        <span className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/25 ml-1">
+                        <span className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-brand-primary/10 text-brand-primary border border-brand-primary/25 ml-1">
                           {item.badge}
                         </span>
                       )}

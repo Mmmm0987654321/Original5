@@ -54,6 +54,7 @@ interface NavbarProps {
   onDisconnectWallet: () => void;
   topTokens: TokenMetadata[];
   onOpenSettings: () => void;
+  onRequestPoints: () => void;
   onOpenPrivacyMode: () => void;
   notificationsCount: number;
   onOpenNotifications: () => void;
@@ -82,6 +83,7 @@ export default function Navbar({
   onDisconnectWallet,
   topTokens = [],
   onOpenSettings,
+  onRequestPoints,
   onOpenPrivacyMode,
   notificationsCount,
   onOpenNotifications,
@@ -527,17 +529,18 @@ export default function Navbar({
                         )}
 
                         <div className="py-1">
-                          <div
-                            className="flex w-full items-center justify-between px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg sm:rounded-xl text-[11px] sm:text-xs text-gray-300 font-semibold cursor-default select-none opacity-80"
+                          <button type="button"
+                            onClick={() => { onRequestPoints(); setWalletDropdownOpen(false); }}
+                            className="flex w-full items-center justify-between px-2.5 py-1.5 sm:px-3 sm:py-2 rounded-lg sm:rounded-xl text-[11px] sm:text-xs text-gray-300 hover:text-brand-text hover:bg-brand-overlay-normal font-semibold cursor-pointer"
                           >
                             <div className="flex items-center gap-2">
                               <Trophy className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400" />
                               <span>Points Hub</span>
                             </div>
-                            <span className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-400 border border-amber-500/25">
-                              Upcoming
+                            <span className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-brand-primary/10 text-brand-primary border border-brand-primary/25">
+                              Open
                             </span>
-                          </div>
+                          </button>
                         </div>
 
                         <div className="border-t border-brand-border pt-1">

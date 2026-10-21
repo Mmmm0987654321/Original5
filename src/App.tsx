@@ -36,6 +36,7 @@ import MarketsPanel from "./components/dashboard/MarketsPanel";
 import SupportPanel from "./components/dashboard/SupportPanel";
 import LegalPanel from "./components/dashboard/LegalPanel";
 import LandingPage from "./components/dashboard/LandingPage";
+import HideDexPointsHub from "./components/dashboard/HideDexPointsHub";
 import AccountSettingsPanel from "./components/dashboard/AccountSettingsPanel";
 import { applyPreferencesToDOM } from "./components/trading/TradingPreferencesModal";
 import { WalletConnectModal } from "./components/common/WalletConnectModal";
@@ -186,6 +187,28 @@ const SUPABASE_URL = "https://nqlzjregtvjspescfqcn.supabase.co";
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY || "";
 
 const HIDEDEX_EARLY_ACCESS_API = `${SUPABASE_URL}/functions/v1/hidedex-early-access`;
+// On a refresh of an active workspace, restore PUBLIC navigation immediately.
+// Never use this UI preference as wallet authentication or Early Access approval.
+function isWorkspaceReload(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    const nav = window.performance.getEntriesByType("navigation")[0] as PerformanceNavigationTiming | undefined;
+    return nav?.type === "reload" && (
+      sessionStorage.getItem("hidedex_workspace_opened") === "1" ||
+      !!sessionStorage.getItem("hidedex_active_trading_wallet") ||
+      !!sessionStorage.getItem("hidedex_last_public_trading_tab")
+    );
+  } catch { return false; }
+}
+function safeReloadWorkspaceTab(): ActiveTab {
+  try {
+    const tab = sessionStorage.getItem("hidedex_last_public_trading_tab");
+    if (tab && Object.values(ActiveTab).includes(tab as ActiveTab) &&
+        tab !== ActiveTab.Landing && tab !== ActiveTab.Perp &&
+        tab !== ActiveTab.Points && tab !== ActiveTab.Analytics) return tab as ActiveTab;
+  } catch { /* ignored optional UI preference */ }
+  return ActiveTab.Markets;
+}
 
 
 function loadOwnerFavoritesWithMigration(owner: string): string[] {
@@ -449,7 +472,9 @@ export default function App() {
 
   // One verified, in-memory session per connected wallet. Never trust
   // localStorage, query strings or a public status GET to unlock the app.
-  const [requestedTab, setActiveTab] = useState<ActiveTab>(ActiveTab.Landing);
+  const [requestedTab, setActiveTab] = useState<ActiveTab>(
+    () => isWorkspaceReload() ? safeReloadWorkspaceTab() : ActiveTab.Landing
+  );
   const [selectedExchange, setSelectedExchange] = useState<"hyperliquid" | "lighter" | "aster">(() => {
     try { const s=sessionStorage.getItem("hidedex_exchange"); return s==="lighter"||s==="aster"?s:"hyperliquid"; }
     catch { return "hyperliquid"; }
@@ -459,7 +484,14 @@ export default function App() {
   }, [selectedExchange]);
   const [launchVerifiedWallet, setLaunchVerifiedWallet] = useState<string | null>(null);
   // Public terminal access is UI navigation, never Early Access approval.
-  const [publicWorkspaceOpened, setPublicWorkspaceOpened] = useState(false);
+  const [publicWorkspaceOpened, setPublicWorkspaceOpened] = useState(isWorkspaceReload);
+  const [pointsNotice, setPointsNotice] = useState("");
+  const [pointsChecking, setPointsChecking] = useState(false);
+  useEffect(() => {
+    if (!pointsNotice) return;
+    const timer = window.setTimeout(() => setPointsNotice(""), 5500);
+    return () => window.clearTimeout(timer);
+  }, [pointsNotice]);
   const [showPerpAccessSheet, setShowPerpAccessSheet] = useState(false);
   const [earlyAccessRequestedFromPerp, setEarlyAccessRequestedFromPerp] = useState(false);
   // Local storage remembers previously opened UX, never access authorization.
@@ -584,12 +616,18 @@ export default function App() {
     // Refresh does not request trading signatures or reopen Trust Shield.
   }, [walletConnected, walletAddress, lastTradingWallet, refreshTradingWallet, connectedAccess, launchVerifiedWallet]);
 
+  useEffect(() => {
+    if (requestedTab !== ActiveTab.Landing || !hasTradingAccess) return;
+    try { sessionStorage.removeItem("hidedex_workspace_opened"); } catch {}
+  }, [requestedTab, hasTradingAccess]);
+
   // Remember user-selected screens for a future public entry. This is only
   // navigation history; it cannot unlock Perpetual or authorize a trade.
   useEffect(() => {
     if (!hasTradingAccess || requestedTab === ActiveTab.Landing) return;
     try {
       sessionStorage.setItem("hidedex_last_public_trading_tab", requestedTab);
+      sessionStorage.setItem("hidedex_workspace_opened", "1");
       const wallet = walletAddress.trim().toLowerCase();
       if (walletConnected && /^0x[0-9a-f]{40}$/.test(wallet)) {
         localStorage.setItem("hidedex_last_trading_wallet", wallet);
@@ -2777,7 +2815,11 @@ export default function App() {
     }
 
     // Explicit disconnect ends this tab's trading-resume intent.
-    try { sessionStorage.removeItem("hidedex_active_trading_wallet"); } catch { /* optional UI hint */ }
+    try {
+      sessionStorage.removeItem("hidedex_active_trading_wallet");
+      sessionStorage.removeItem("hidedex_workspace_opened");
+      sessionStorage.removeItem("hidedex_last_public_trading_tab");
+    } catch { /* optional UI hints */ }
     setRefreshTradingWallet("");
     setLaunchVerifiedWallet(null);
     setWalletConnected(false);
@@ -3863,8 +3905,52 @@ export default function App() {
     setActiveTab(mode === "perp" ? ActiveTab.Perp : ActiveTab.Spot);
   };
 
+  const openPointsHub = async () => {
+    if (pointsChecking) return;
+    const wallet = walletAddress.trim().toLowerCase();
+    if (!walletConnected || !/^0x[0-9a-f]{40}$/.test(wallet)) {
+      setPointsNotice("Connect your wallet and join Early Access to open Points Hub.");
+      return;
+    }
+    setPointsChecking(true);
+    try {
+      const response = await fetch(HIDEDEX_EARLY_ACCESS_API, {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({action:"access",wallet}),
+      });
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok || data.wallet !== wallet ||
+          !["none","pending","granted"].includes(data.access_status)) {
+        setPointsNotice("Could not verify Early Access approval. Please try again.");
+        return;
+      }
+      if (!walletConnected || walletAddress.trim().toLowerCase() !== wallet) return;
+      setConnectedAccess({wallet,status:data.access_status,checkedAt:Date.now()});
+      setAccessLookupState("ready");
+      if (data.access_status !== "granted") {
+        setPointsNotice("Points Hub is for approved Early Access wallets. Join Early Access to unlock.");
+        return;
+      }
+      setPointsNotice("");
+      setPublicWorkspaceOpened(true);
+      setActiveTab(ActiveTab.Points);
+    } catch {
+      setPointsNotice("Connection failed. Please try again to check Early Access.");
+    } finally {
+      setPointsChecking(false);
+    }
+  };
+
   return (
     <div className="min-h-screen min-h-[100dvh] bg-brand-bg text-gray-100 flex flex-col justify-between selection:bg-[#F5D061]/20">
+      {pointsNotice && (
+        <div role="status" aria-live="polite"
+          className="fixed z-[310] top-[72px] left-3 right-3 sm:left-auto sm:right-5 sm:max-w-sm rounded-xl border border-brand-border bg-brand-surface px-4 py-3 shadow-xl text-brand-text text-xs font-semibold flex items-start gap-3">
+          <span className="flex-1">{pointsNotice}</span>
+          <button type="button" onClick={() => setPointsNotice("")}
+            aria-label="Dismiss notice" className="text-brand-muted hover:text-brand-text">✕</button>
+        </div>
+      )}
       {/* Header bar navigation (Hidden on Public Landing) */}
       {!isPublicLanding && (
         <Navbar
@@ -3888,6 +3974,7 @@ export default function App() {
           onDisconnectWallet={handleDisconnectWallet}
           topTokens={tokens.slice(0, 4)}
           onOpenSettings={() => setActiveTab(ActiveTab.Profile)}
+          onRequestPoints={() => { void openPointsHub(); }}
           onOpenPrivacyMode={() => setShowTrustShieldPopup(true)}
           notificationsCount={notifications.length}
           onOpenNotifications={() => setShowNotificationsDropdown(!showNotificationsDropdown)}
@@ -3945,6 +4032,7 @@ export default function App() {
             activeTab={activeTab}
             setActiveTab={setActiveTab}
             onOpenSettings={() => setActiveTab(ActiveTab.Profile)}
+            onRequestPoints={() => { void openPointsHub(); }}
             walletAddress={walletAddress}
             balanceUSDC={realAccountValueUsd}
             selectedExchange={selectedExchange}
@@ -4023,6 +4111,7 @@ export default function App() {
                   }
                 } catch { /* Default to Markets when storage is blocked. */ }
                 setPublicWorkspaceOpened(true);
+                try { sessionStorage.setItem("hidedex_workspace_opened", "1"); } catch {}
                 setEarlyAccessRequestedFromPerp(false);
                 setActiveTab(entryTab);
                 if (walletConnected && /^0x[0-9a-f]{40}$/.test(currentWallet)) {
@@ -4364,6 +4453,17 @@ export default function App() {
           {activeTab === ActiveTab.Legal && (
             <LegalPanel activeSection={selectedSubLegalTab} />
           )}
+
+          {/* Points is its own screen, never an overlay. Approval is rechecked on opening. */}
+          {activeTab === ActiveTab.Points && (hasPerpApproval
+            ? <HideDexPointsHub walletAddress={walletAddress}
+                apiUrl={HIDEDEX_EARLY_ACCESS_API}
+                onBack={() => setActiveTab(ActiveTab.Markets)}/>
+            : <div className="max-w-xl mx-auto p-6 text-sm text-brand-muted">
+                Points Hub requires approved Early Access.
+                <button type="button" onClick={() => setActiveTab(ActiveTab.Markets)}
+                  className="ml-3 text-brand-primary underline">Back to Markets</button>
+              </div>)}
 
           {/* ACCOUNT & SETTINGS PAGE */}
           {(selectedExchange === "hyperliquid" || selectedExchange === "lighter" || selectedExchange === "aster") && activeTab === ActiveTab.Profile && (
