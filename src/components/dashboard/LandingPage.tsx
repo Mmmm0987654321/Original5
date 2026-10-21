@@ -288,6 +288,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   }, [walletConnected, walletAddress]);
   const [earlyAccessPoints, setEarlyAccessPoints] = useState<number | null>(null);
   const [savedRegistrationVolume, setSavedRegistrationVolume] = useState<number | null>(null);
+  // An owner-awarded volume-tier credit is NOT verified exchange trading volume.
+  const [isManualRewardCredit, setIsManualRewardCredit] = useState(false);
   const [earlyAccessPointsStatus, setEarlyAccessPointsStatus] = useState<"pending_verification" | "verified" | null>(null);
   // The public X post reference shows only the connected wallet's last ten hex characters.
   // Signed enrollment still preserves its independent server-issued verification code.
@@ -327,6 +329,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       setEarlyAccessPoints(savedPoints !== null && Number.isFinite(savedPoints) ? savedPoints : null);
       const savedVolume = record.volume_total_usd === null || record.volume_total_usd === undefined ? null : Number(record.volume_total_usd);
       setSavedRegistrationVolume(savedVolume !== null && Number.isFinite(savedVolume) ? savedVolume : null);
+      setIsManualRewardCredit(record.volume_source === "promotional_tier_credit");
       setEarlyAccessPointsStatus(record.points_status === "verified" ? "verified" : "pending_verification");
       setXVerificationStatus(record.x_verification_status === "verified" || record.x_verification_status === "rejected" ? record.x_verification_status : "pending");
       setRegisteredXUsername(typeof record.x_username === "string" ? record.x_username : null);
@@ -336,6 +339,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       setEarlyAccessQueuePosition(null);
       setEarlyAccessPoints(null);
       setSavedRegistrationVolume(null);
+      setIsManualRewardCredit(false);
       setEarlyAccessPointsStatus(null);
       setXVerificationStatus(null);
       setRegisteredXUsername(null);
@@ -349,6 +353,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     setEarlyAccessError("");
     setEarlyAccessPoints(null);
     setSavedRegistrationVolume(null);
+    setIsManualRewardCredit(false);
     setEarlyAccessPointsStatus(null);
     setXVerificationStatus(null);
     setRegisteredXUsername(null);
@@ -407,6 +412,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         setEarlyAccessQueuePosition(null);
         setEarlyAccessPoints(null);
         setSavedRegistrationVolume(null);
+        setIsManualRewardCredit(false);
         setEarlyAccessPointsStatus(null);
         setXVerificationStatus(null);
         setRegisteredXUsername(null);
@@ -748,7 +754,7 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
                 <div className="hidedex-ea-points p-4" aria-live="polite">
                   {walletConnected && (earlyAccessState === "pending" || earlyAccessState === "granted") && (
                     <div className="mb-3 pb-3 border-b border-[#344257]">
-                      <div className="text-[10px] uppercase font-semibold tracking-wider text-[#b6c4d7]">Volume at verification · Hyperliquid + Lighter</div>
+                      <div className="text-[10px] uppercase font-semibold tracking-wider text-[#b6c4d7]">{isManualRewardCredit ? "Promotional volume-tier credit · not exchange volume" : "Volume at verification · Hyperliquid + Lighter"}</div>
                       <div className="mt-1 text-xl font-mono font-black text-white">
                         {savedRegistrationVolume === null ? "Pending verification" : formatVolumeDisplay(savedRegistrationVolume)}
                       </div>
@@ -771,7 +777,7 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
                   </div>
                   <p className="mt-1 text-[11px] leading-relaxed text-[#b6c4d7]">
                     {walletConnected && (earlyAccessState === "pending" || earlyAccessState === "granted")
-                      ? "Volume and points are saved once after registration; they do not increase on reconnect."
+                      ? (isManualRewardCredit ? "Owner-awarded points and a promotional volume-tier credit; real Hyperliquid/Lighter trading volume is unchanged." : "Volume and points are saved once after registration; they do not increase on reconnect.")
                       : "Your volume is checked before registration. Free Points are awarded once after you submit X + Gmail."}
                   </p>
                 </div>
