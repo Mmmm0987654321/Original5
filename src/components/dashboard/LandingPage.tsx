@@ -293,8 +293,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     useState<number | null>(null);
   const [earlyAccessBusy, setEarlyAccessBusy] = useState(false);
   const [earlyAccessStep, setEarlyAccessStep] = useState<"gmail" | "x" | "submit">("gmail");
-  // Trading approval is separate from completing the Gmail/X enrollment steps.
-  const [earlyAccessRegistrationComplete, setEarlyAccessRegistrationComplete] = useState(false);
   const earlyAccessActiveWalletRef = useRef("");
   // UX history is stored per connected wallet, NOT an authorization credential.
   useEffect(() => {
@@ -337,12 +335,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
   const applyEarlyAccessRecord = (record: any) => {
     const status = record?.access_status;
-    // Every saved applicant has a queue_position field (possibly null). A
-    // whitelist-only approved wallet has no application yet.
-    const registered = record?.registration_complete === true ||
-      (record?.registration_complete !== false &&
-        Object.prototype.hasOwnProperty.call(record ?? {}, "queue_position"));
-    setEarlyAccessRegistrationComplete(registered);
     if (status === "granted" || status === "pending") {
       setEarlyAccessState(status);
       setEarlyAccessQueuePosition(Number.isFinite(Number(record.queue_position)) ? Number(record.queue_position) : null);
@@ -350,14 +342,10 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       setEarlyAccessPoints(savedPoints !== null && Number.isFinite(savedPoints) ? savedPoints : null);
       const savedVolume = record.volume_total_usd === null || record.volume_total_usd === undefined ? null : Number(record.volume_total_usd);
       setSavedRegistrationVolume(savedVolume !== null && Number.isFinite(savedVolume) ? savedVolume : null);
-      setIsManualRewardCredit(record.points_source === "manual_admin_award" || record.volume_source === "promotional_tier_credit");
+      setIsManualRewardCredit(record.volume_source === "promotional_tier_credit");
       setEarlyAccessPointsStatus(record.points_status === "verified" ? "verified" : "pending_verification");
       setXVerificationStatus(record.x_verification_status === "verified" || record.x_verification_status === "rejected" ? record.x_verification_status : "pending");
       setRegisteredXUsername(typeof record.x_username === "string" ? record.x_username : null);
-      if (!registered && typeof record.x_username === "string") {
-        // Prepopulate owner-approved X handle without blocking later edits.
-        setEarlyAccessX(current => current.trim() ? current : record.x_username.replace(/^@/, ""));
-      }
       setXCopyFeedback(null);
     } else {
       setEarlyAccessState("none");
@@ -375,7 +363,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const checkEarlyAccessStatus = useCallback(async (targetWallet: string) => {
     if (!targetWallet) return;
     setEarlyAccessState("checking");
-    setEarlyAccessRegistrationComplete(false);
     setEarlyAccessError("");
     setEarlyAccessPoints(null);
     setSavedRegistrationVolume(null);
@@ -439,7 +426,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       earlyAccessActiveWalletRef.current = "";
       if (!walletConnected) {
         setEarlyAccessStep("gmail");
-        setEarlyAccessRegistrationComplete(false);
         setEarlyAccessState("idle");
         setEarlyAccessQueuePosition(null);
         setEarlyAccessPoints(null);
@@ -464,7 +450,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     // Never display another wallet's cached volume, account details or in-progress form.
     if (earlyAccessActiveWalletRef.current !== walletAddress.toLowerCase()) {
       setEarlyAccessStep("gmail");
-      setEarlyAccessRegistrationComplete(false);
       setEarlyAccessEmail("");
       setEarlyAccessX("");
       setWalletVolume({hyperliquid:null,lighter:null,total:null,loading:true,error:null});
@@ -864,9 +849,82 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
                   </section>
                 )}
 
+                {/* Status checks when wallet is connected */}
+                {walletConnected && (
+                  <>
+                    {/* Checking status */}
+                    {earlyAccessState === "checking" && (
+                      <div className="flex items-center gap-2 py-3 px-1 text-xs text-gray-500 dark:text-gray-400">
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-500" />
+                        <span>{t("checking_early_access")}</span>
+                      </div>
+                    )}
+
+                    {/* Status check error: Retry button */}
+                    {earlyAccessState === "error" && (
+                      <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-left space-y-2">
+                        <div className="text-[11px] font-black uppercase tracking-wider text-rose-600 dark:text-rose-400">
+                          Status Check Error
+                        </div>
+                        <p className="text-xs text-gray-300 dark:text-gray-300">
+                          Unable to verify your Early Access status right now.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => void checkEarlyAccessStatus(walletAddress)}
+                          className="hidedex-ea-secondary rounded-lg bg-black px-3 py-1.5 text-xs font-bold text-white hover:bg-gray-800 dark:bg-[#0B0D10] dark:text-white dark:hover:bg-gray-200 transition-colors cursor-pointer"
+                        >
+                          Retry Status
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Privacy-first waitlist status: the queue number is not shown. */}
+                    {earlyAccessState === "pending" && (
+                      <div
+                        className="hidedex-ea-pending rounded-xl border p-4 text-left space-y-2"
+                        style={{ background: "#111720", borderColor: "#33465e" }}
+                      >
+                        <div className="flex items-center gap-2">
+                          <span aria-hidden="true" className="inline-block w-2 h-2 shrink-0 rounded-full bg-[#61a9ff]" />
+                          <span className="text-[13px] sm:text-sm font-bold tracking-[.02em]" style={{ color: "#e5efff" }}>
+                            You're on the waitlist
+                          </span>
+                        </div>
+                        <p className="text-sm font-medium leading-relaxed" style={{ color: "#cbd7e7" }}>
+                          Your application has been received. We'll let you know when access is granted.
+                        </p>
+                        <p className="text-xs leading-relaxed" style={{ color: "#a7bad0" }}>
+                          Your position in the waitlist is hidden.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Approved wallet: high-contrast, centered status. */}
+                    {earlyAccessState === "granted" && (
+                      <div className="rounded-2xl border p-4 sm:p-5 space-y-3 text-center" style={{background:"#09221d",borderColor:"#245d50"}}>
+                        <div className="flex items-center justify-center gap-2">
+                          <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-[#38dfaa]" aria-hidden="true" />
+                          <h3 className="text-[17px] sm:text-lg font-black tracking-wide uppercase" style={{color:"#7cf3cc"}}>
+                            {t("access_granted")}
+                          </h3>
+                        </div>
+                        <p className="mx-auto max-w-[300px] text-[13px] sm:text-sm leading-relaxed font-medium" style={{color:"#e4f5f0"}}>
+                          Your wallet is approved. You can now start trading on HideDex.
+                        </p>
+                        <button type="button" onClick={() => void handleLaunchApp()} disabled={earlyAccessBusy}
+                          className="hidedex-ea-action w-full rounded-xl px-4 py-3.5 text-sm font-extrabold tracking-wide text-white cursor-pointer disabled:opacity-70"
+                          aria-label="Start trading with your approved wallet">
+                          {earlyAccessBusy ? "Opening Trading…" : "START TRADING"}
+                        </button>
+                      </div>
+                    )}
+                  </>
+                )}
+
+
                 {/* Change only the content below the fixed volume and points area. */}
-                {(!walletConnected || earlyAccessState === "none" ||
-                  (earlyAccessState === "granted" && !earlyAccessRegistrationComplete)) && (
+                {(!walletConnected || earlyAccessState === "none") && (
                   <section className="hidedex-ea-form space-y-4 pt-1" aria-label="Early Access signup steps">
                     <div className="flex items-center gap-3 pb-1">
                       <span className="shrink-0 text-[10px] font-extrabold tracking-[.15em] text-[#8eadd0] uppercase">Join the waitlist</span>
@@ -957,81 +1015,6 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
                     )}
                   </section>
                 )}
-                {/* Status checks when wallet is connected */}
-                {walletConnected && (
-                  <>
-                    {/* Checking status */}
-                    {earlyAccessState === "checking" && (
-                      <div className="flex items-center gap-2 py-3 px-1 text-xs text-gray-500 dark:text-gray-400">
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-500" />
-                        <span>{t("checking_early_access")}</span>
-                      </div>
-                    )}
-
-                    {/* Status check error: Retry button */}
-                    {earlyAccessState === "error" && (
-                      <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-left space-y-2">
-                        <div className="text-[11px] font-black uppercase tracking-wider text-rose-600 dark:text-rose-400">
-                          Status Check Error
-                        </div>
-                        <p className="text-xs text-gray-300 dark:text-gray-300">
-                          Unable to verify your Early Access status right now.
-                        </p>
-                        <button
-                          type="button"
-                          onClick={() => void checkEarlyAccessStatus(walletAddress)}
-                          className="hidedex-ea-secondary rounded-lg bg-black px-3 py-1.5 text-xs font-bold text-white hover:bg-gray-800 dark:bg-[#0B0D10] dark:text-white dark:hover:bg-gray-200 transition-colors cursor-pointer"
-                        >
-                          Retry Status
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Privacy-first waitlist status: the queue number is not shown. */}
-                    {earlyAccessState === "pending" && (
-                      <div
-                        className="hidedex-ea-pending rounded-xl border p-4 text-left space-y-2"
-                        style={{ background: "#111720", borderColor: "#33465e" }}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span aria-hidden="true" className="inline-block w-2 h-2 shrink-0 rounded-full bg-[#61a9ff]" />
-                          <span className="text-[13px] sm:text-sm font-bold tracking-[.02em]" style={{ color: "#e5efff" }}>
-                            You're on the waitlist
-                          </span>
-                        </div>
-                        <p className="text-sm font-medium leading-relaxed" style={{ color: "#cbd7e7" }}>
-                          Your application has been received. We'll let you know when access is granted.
-                        </p>
-                        <p className="text-xs leading-relaxed" style={{ color: "#a7bad0" }}>
-                          Your position in the waitlist is hidden.
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Approved wallet: high-contrast, centered status. */}
-                    {earlyAccessState === "granted" && (
-                      <div className="rounded-2xl border p-4 sm:p-5 space-y-3 text-center" style={{background:"#09221d",borderColor:"#245d50"}}>
-                        <div className="flex items-center justify-center gap-2">
-                          <span className="inline-block h-2.5 w-2.5 shrink-0 rounded-full bg-[#38dfaa]" aria-hidden="true" />
-                          <h3 className="text-[17px] sm:text-lg font-black tracking-wide uppercase" style={{color:"#7cf3cc"}}>
-                            {t("access_granted")}
-                          </h3>
-                        </div>
-                        <p className="mx-auto max-w-[300px] text-[13px] sm:text-sm leading-relaxed font-medium" style={{color:"#e4f5f0"}}>
-                          Your wallet is approved. You can now start trading on HideDex.
-                        </p>
-                        <button type="button" onClick={() => void handleLaunchApp()} disabled={earlyAccessBusy}
-                          className="hidedex-ea-action w-full rounded-xl px-4 py-3.5 text-sm font-extrabold tracking-wide text-white cursor-pointer disabled:opacity-70"
-                          aria-label="Start trading with your approved wallet">
-                          {earlyAccessBusy ? "Opening Trading…" : "START TRADING"}
-                        </button>
-                      </div>
-                    )}
-                  </>
-                )}
-
-
-
               </div>
             </div>
           </div>
