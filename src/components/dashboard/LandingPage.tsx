@@ -294,6 +294,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const [earlyAccessBusy, setEarlyAccessBusy] = useState(false);
   const [earlyAccessStep, setEarlyAccessStep] = useState<"gmail" | "x" | "submit">("gmail");
   const earlyAccessActiveWalletRef = useRef("");
+  const [xPostOpenedFor, setXPostOpenedFor] = useState("");
   // UX history is stored per connected wallet, NOT an authorization credential.
   useEffect(() => {
     if (!walletConnected || !walletAddress) return;
@@ -476,6 +477,24 @@ Early Access is open www.Hidedex.com 
 
 Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
 
+  // Opening an X intent is a UI prerequisite, not verification that anything was posted.
+  const xPostHandle = earlyAccessX.trim().replace(/^@/, "").toLowerCase();
+  const xPostHandleValid = /^[a-z0-9_]{1,15}$/.test(xPostHandle);
+  const xPostIntentKey = walletConnected && walletAddress && xPostHandleValid
+    ? walletAddress.toLowerCase() + "|" + xPostHandle : "";
+  const xPostPreviouslyOpened = Boolean(xPostIntentKey && (
+    xPostOpenedFor === xPostIntentKey ||
+    (() => { try { return sessionStorage.getItem("hidedex_ea_x_post_opened") === xPostIntentKey; }
+      catch { return false; } })()
+  ));
+  const markXPostOpened = () => {
+    if (!xPostIntentKey || !activeProofCode) return;
+    setXPostOpenedFor(xPostIntentKey);
+    try { sessionStorage.setItem("hidedex_ea_x_post_opened", xPostIntentKey); }
+    catch { /* X URL still opens. */ }
+    setEarlyAccessError("");
+  };
+
   // Only Submit registers, through the existing wallet signature.
   const handleEarlyAccessSubmit = async (e?: { preventDefault: () => void }) => {
     e?.preventDefault();
@@ -492,6 +511,11 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
 
     if (!xTrimmed) {
       setEarlyAccessError("Please enter your X / Twitter username.");
+      return;
+    }
+    if (!xPostPreviouslyOpened) {
+      setEarlyAccessError("Open Post on X before submitting.");
+      setEarlyAccessStep("x");
       return;
     }
 
@@ -512,8 +536,23 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
       });
       applyEarlyAccessRecord(record);
     } catch (err: unknown) {
+      // Backgrounded WalletConnect browsers may lose the HTTP response after
+      // a signed registration is saved. Reconcile using actual server status.
+      try {
+        const latest = await callEarlyAccess({action:"status",wallet:normalized});
+        const registered = latest?.registration_complete === true ||
+          (latest?.registration_complete !== false &&
+           Object.prototype.hasOwnProperty.call(latest ?? {}, "queue_position"));
+        if (registered && earlyAccessActiveWalletRef.current === normalized) {
+          applyEarlyAccessRecord(latest);
+          setEarlyAccessError("");
+          return;
+        }
+      } catch { /* Remain on review if status cannot be checked. */ }
       const msg = err instanceof Error ? err.message : "Unable to submit Early Access right now.";
-      setEarlyAccessError(msg);
+      setEarlyAccessError(/aborted|aborterror|timeout|connection/i.test(msg)
+        ? "Wallet or network request was interrupted. If you approved the signature, tap Check Registration; otherwise retry Submit."
+        : msg);
     } finally {
       setEarlyAccessBusy(false);
     }
@@ -973,15 +1012,32 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
                           value={earlyAccessX}
                           onChange={(e) => { setEarlyAccessX(e.target.value); setEarlyAccessError(""); }}
                           className="hidedex-ea-input w-full rounded-xl border border-[#35465b] bg-[#12151B] px-3 py-2.5 text-white outline-none" />
-                        <p className="text-[11px] text-[#a9bfd7]">X verification can finish later. It does not block signup.</p>
+                        <p className="text-[11px] text-[#a9bfd7]">
+                          Open your prefilled X post, then return. X verification stays separate.
+                        </p>
+                        {xPostHandleValid && xPostText && (
+                          <a href={"https://twitter.com/intent/tweet?text=" + encodeURIComponent(xPostText)}
+                            target="_blank" rel="noopener noreferrer" onClick={markXPostOpened}
+                            className="hidedex-ea-action inline-flex w-full items-center justify-center gap-2 rounded-xl px-3 py-3 text-xs font-bold text-white">
+                            Post on X <ExternalLink className="w-4 h-4"/>
+                          </a>
+                        )}
+                        {xPostPreviouslyOpened && (
+                          <p className="text-[11px] text-[#7cf3cc]">X post page opened. Next is ready; X review is separate.</p>
+                        )}
                         <div className="grid grid-cols-2 gap-2">
                           <button type="button" className="hidedex-ea-secondary rounded-xl px-3 py-3 text-xs font-semibold"
                             onClick={() => { setEarlyAccessError(""); setEarlyAccessStep("gmail"); }}>Back</button>
-                          <button type="button" className="hidedex-ea-action rounded-xl px-3 py-3 text-xs font-bold text-white"
+                          <button type="button" disabled={!xPostHandleValid || !xPostPreviouslyOpened}
+                            className="hidedex-ea-action rounded-xl px-3 py-3 text-xs font-bold text-white disabled:opacity-50 disabled:cursor-not-allowed"
                             onClick={() => {
                               const handle = earlyAccessX.trim().replace(/^@/,"");
                               if (!/^[a-zA-Z0-9_]{1,15}$/.test(handle)) {
                                 setEarlyAccessError("Enter a valid X username to continue.");
+                                return;
+                              }
+                              if (!xPostPreviouslyOpened) {
+                                setEarlyAccessError("Open Post on X before continuing.");
                                 return;
                               }
                               setEarlyAccessError("");
@@ -1011,7 +1067,15 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
                       </form>
                     )}
                     {earlyAccessError && (
-                      <p role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-2.5 text-xs text-rose-300">{earlyAccessError}</p>
+                      <div role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-2.5 text-xs text-rose-300 space-y-2">
+                        <p>{earlyAccessError}</p>
+                        {walletConnected && earlyAccessStep === "submit" && (
+                          <button type="button" disabled={earlyAccessBusy} onClick={() => void checkEarlyAccessStatus(walletAddress)}
+                            className="hidedex-ea-secondary rounded-lg px-3 py-2 text-xs font-semibold text-white disabled:opacity-50">
+                            Check Registration
+                          </button>
+                        )}
+                      </div>
                     )}
                   </section>
                 )}
