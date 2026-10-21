@@ -112,6 +112,30 @@ const HIDEDEX_EARLY_ACCESS_STYLES = `
 @media (max-width:767px) {
   #hidedex-early-access .hidedex-ea-panel { border:none!important; }
 }
+
+/* Redesigned mobile-first Early Access onboarding. Localized to modal only. */
+#hidedex-early-access .hidedex-ea-panel{background:radial-gradient(ellipse at 25% 0%,#13273c 0%,#0a1019 34%,#070a10 74%)!important;border:1px solid #273c51!important;scrollbar-color:#32465b transparent}
+#hidedex-early-access .hidedex-ea-eyebrow{font-size:10px;color:#83b8f9!important;letter-spacing:.15em;font-weight:800}
+#hidedex-early-access .hidedex-ea-title{font-size:clamp(25px,5.5vw,31px)!important;line-height:1.15;letter-spacing:-.045em}
+#hidedex-early-access .hidedex-ea-subtitle{font-size:13px!important;line-height:1.5!important;max-width:355px}
+#hidedex-early-access .hidedex-ea-volume{background:linear-gradient(145deg,#101b29,#0c111b)!important;border:1px solid #2b425c!important;border-radius:18px!important}
+#hidedex-early-access .hidedex-ea-stat{background:#0a1018!important;border:1px solid #283e56!important;border-radius:13px!important;min-width:0;min-height:113px}
+#hidedex-early-access .hidedex-ea-venue-name{color:#f2f7ff!important;font-size:12px!important;font-weight:750;line-height:1.3;white-space:normal;overflow-wrap:break-word}
+#hidedex-early-access .hidedex-ea-venue-logo{width:28px;height:28px;flex:none;display:flex;align-items:center;justify-content:center;border-radius:9px;background:#182334;border:1px solid #36506c}
+#hidedex-early-access .hidedex-ea-venue-logo img{width:22px;height:22px;object-fit:contain;border-radius:5px}
+#hidedex-early-access .hidedex-ea-stat-value{color:#f3f8ff!important;font-size:clamp(16px,4.2vw,19px)!important;line-height:1.25;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-weight:750;letter-spacing:-.035em;overflow-wrap:anywhere}
+#hidedex-early-access .hidedex-ea-total-card{background:linear-gradient(90deg,#102c2e,#102129)!important;border:1px solid #235957!important;border-radius:13px!important}
+#hidedex-early-access .hidedex-ea-total{color:#85eed1!important;font-weight:800;font-size:clamp(16px,4.3vw,20px)!important;white-space:normal;overflow-wrap:anywhere;letter-spacing:-.035em}
+#hidedex-early-access .hidedex-ea-points{background:linear-gradient(115deg,#101c29,#10151f)!important;border:1px solid #2e435e!important;border-radius:18px!important}
+#hidedex-early-access .hidedex-ea-reward-value{font-size:clamp(17px,4.5vw,21px)!important;line-height:1.3;letter-spacing:-.025em;overflow-wrap:anywhere;font-family:Inter,system-ui,sans-serif;font-weight:800}
+#hidedex-early-access .hidedex-ea-input{min-height:49px!important;font-size:14px!important;border-radius:12px!important;padding:12px 14px!important}
+#hidedex-early-access .hidedex-ea-label{font-size:12px!important;line-height:1.4;font-weight:700}
+#hidedex-early-access .hidedex-ea-action{min-height:46px;font-size:13px!important;letter-spacing:.012em!important;border-radius:12px!important}
+#hidedex-early-access .hidedex-ea-secondary{background:#162338!important;color:#dbeaff!important;-webkit-text-fill-color:#dbeaff!important;border:1px solid #395473!important}
+#hidedex-early-access .hidedex-ea-close{background:#132031!important;border:1px solid #2d455f!important;border-radius:12px!important}
+#hidedex-early-access .hidedex-ea-close:hover{background:#20314a!important;color:#fff!important}
+@media(min-width:768px){#hidedex-early-access .hidedex-ea-panel{box-shadow:0 25px 80px #0009!important}}
+@media(max-width:767px){#hidedex-early-access .hidedex-ea-panel{border:0!important;border-radius:0!important}}
 `;
 
 const SUPABASE_URL = "https://nqlzjregtvjspescfqcn.supabase.co";
@@ -589,7 +613,7 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
         >
           <style>{HIDEDEX_EARLY_ACCESS_STYLES}</style>
           <div
-            className="hidedex-ea-panel relative w-screen h-[100dvh] max-w-none max-h-none rounded-none overflow-y-auto overscroll-contain bg-[#0B0D10] p-6 text-white dark:bg-[#090B0F] dark:text-white md:w-full md:max-w-[380px] md:h-auto md:max-h-[85dvh] md:rounded-[20px] md:p-5 md:dark:bg-[#0B0D10] md:shadow-2xl"
+            className="hidedex-ea-panel relative w-screen h-[100dvh] max-w-none max-h-none rounded-none overflow-y-auto overscroll-contain bg-[#090d14] px-5 pt-6 pb-[max(32px,env(safe-area-inset-bottom))] text-white md:w-full md:max-w-[500px] md:h-auto md:max-h-[89dvh] md:rounded-[24px] md:p-6 md:shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Inner Content Container */}
@@ -598,19 +622,21 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
               <button
                 type="button"
                 onClick={closeEarlyAccess}
-                className="hidedex-ea-close absolute right-4 top-4 rounded-full p-2 text-gray-500 hover:bg-gray-800 hover:text-white dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white transition-colors"
+                className="hidedex-ea-close absolute right-4 top-5 p-2 text-[#c2d0e1] transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#74aaff]"
                 aria-label="Close"
               >
                 <X className="w-5 h-5" />
               </button>
 
               {/* Modal Title */}
-              <div className="mb-4 pr-8 text-left">
-                <h2 className="hidedex-ea-title text-xl font-black tracking-tight text-white dark:text-white">
-                  {t("early_access")}
-                </h2>
-                <p className="hidedex-ea-subtitle mt-1 text-xs text-gray-600 dark:text-gray-400">
-                  {t("join_early_access")}
+              <div className="hidedex-ea-header mb-5 pr-10 text-left">
+                <p className="hidedex-ea-eyebrow mb-2 flex items-center gap-2 uppercase">
+                  <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#71e4c5]" aria-hidden="true"/>
+                  HideDex / Early Access
+                </p>
+                <h2 className="hidedex-ea-title font-black text-white">{t("early_access")}</h2>
+                <p className="hidedex-ea-subtitle mt-2 text-[#b8c8dd]">
+                  {t("join_early_access")} · Connect your wallet to check your exchange volume and join the waitlist.
                 </p>
               </div>
 
@@ -630,7 +656,7 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
                         setEarlyAccessError(err instanceof Error ? err.message : "Unable to disconnect wallet.");
                       }
                     }}
-                    className="shrink-0 rounded-md border border-[#c2cfdf] bg-[#e8eef6] px-2.5 py-1.5 text-[10px] font-semibold text-[#273850] hover:bg-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#90b7fa]"
+                    className="hidedex-ea-secondary shrink-0 rounded-lg px-2.5 py-1.5 text-[11px] font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#90b7fa]"
                   >
                     Disconnect
                   </button>
@@ -641,75 +667,72 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
               <div className="space-y-4 text-left">
                 {/* Live wallet volume is a pre-registration step ONLY. */}
                 {(earlyAccessState === "none" || (!walletConnected && earlyAccessState === "idle")) && (
-                <div className="hidedex-ea-volume rounded-xl border border-gray-800 bg-[#12151B] p-3 dark:border-gray-800 dark:bg-[#12151B]">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-                      Wallet Volume
-                    </span>
+                <section className="hidedex-ea-volume p-4" aria-label="Exchange wallet volume">
+                  <div className="flex items-center justify-between gap-3 mb-3">
+                    <div className="min-w-0">
+                      <p className="text-[10px] uppercase tracking-[.15em] font-bold text-[#80a4c9]">VOLUME SNAPSHOT</p>
+                      <h3 className="mt-1 text-[15px] font-bold tracking-tight text-[#eff5ff]">Your trading activity</h3>
+                    </div>
                     {walletConnected && walletAddress && (
-                      <button
-                        type="button"
+                      <button type="button"
                         onClick={() => void fetchWalletVolumes(walletAddress)}
                         disabled={walletVolume.loading}
-                        className="flex items-center gap-1 text-[10px] font-medium text-gray-500 hover:text-white dark:text-gray-400 dark:hover:text-white transition-colors cursor-pointer disabled:opacity-50"
-                        title="Refresh Volume"
-                      >
-                        <RefreshCw className={`w-3 h-3 ${walletVolume.loading ? "animate-spin" : ""}`} />
-                        <span>Refresh</span>
+                        className="hidedex-ea-secondary shrink-0 inline-flex items-center gap-1.5 rounded-lg px-2.5 py-2 text-[11px] font-semibold disabled:opacity-50"
+                        aria-label="Refresh wallet trading volume" title="Refresh Volume">
+                        <RefreshCw className={`w-3.5 h-3.5 ${walletVolume.loading ? "animate-spin" : ""}`}/>
+                        Refresh
                       </button>
                     )}
                   </div>
-
-                  <div className="grid grid-cols-3 gap-2">
-                    {/* Hyperliquid */}
-                    <div className="hidedex-ea-stat rounded-lg bg-[#0B0D10] p-2.5 border border-gray-800/80 dark:bg-[#0B0D10] dark:border-gray-800/80 text-left">
-                      <div className="hidedex-ea-stat-title text-[9px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider truncate">
-                        HL VOLUME
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div className="hidedex-ea-stat p-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="hidedex-ea-venue-logo" aria-hidden="true">
+                          <img src="https://www.google.com/s2/favicons?domain=hyperliquid.xyz&sz=64"
+                            width={22} height={22} alt="" decoding="async"/>
+                        </span>
+                        <span className="hidedex-ea-venue-name">Hyperliquid</span>
                       </div>
-                      <div className="mt-1 text-xs font-mono font-bold text-white dark:text-white truncate">
-                        {!walletConnected
-                          ? "—"
-                          : walletVolume.loading && walletVolume.hyperliquid === null
-                          ? "—"
+                      <div className="hidedex-ea-stat-value mt-3">
+                        {!walletConnected ? "—"
+                          : walletVolume.loading && walletVolume.hyperliquid === null ? "—"
                           : formatVolumeDisplay(walletVolume.hyperliquid)}
                       </div>
+                      <p className="mt-1 text-[10px] text-[#8199b1]">Lifetime volume</p>
                     </div>
-
-                    {/* Lighter */}
-                    <div className="hidedex-ea-stat rounded-lg bg-[#0B0D10] p-2.5 border border-gray-800/80 dark:bg-[#0B0D10] dark:border-gray-800/80 text-left">
-                      <div className="hidedex-ea-stat-title text-[9px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider truncate">
-                        LIGHTER
+                    <div className="hidedex-ea-stat p-3">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="hidedex-ea-venue-logo" aria-hidden="true">
+                          <img src="https://www.google.com/s2/favicons?domain=lighter.exchange&sz=64"
+                            width={22} height={22} alt="" decoding="async"/>
+                        </span>
+                        <span className="hidedex-ea-venue-name">Lighter</span>
                       </div>
-                      <div className="mt-1 text-xs font-mono font-bold text-white dark:text-white truncate">
-                        {!walletConnected
-                          ? "—"
-                          : walletVolume.loading && walletVolume.lighter === null
-                          ? "—"
+                      <div className="hidedex-ea-stat-value mt-3">
+                        {!walletConnected ? "—"
+                          : walletVolume.loading && walletVolume.lighter === null ? "—"
                           : formatVolumeDisplay(walletVolume.lighter)}
                       </div>
-                    </div>
-
-                    {/* Total Volume */}
-                    <div className="hidedex-ea-stat rounded-lg bg-[#0B0D10] p-2.5 border border-gray-800/80 dark:bg-[#0B0D10] dark:border-gray-800/80 text-left">
-                      <div className="hidedex-ea-stat-title text-[9px] font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider truncate">
-                        TOTAL VOLUME
-                      </div>
-                      <div className="hidedex-ea-total mt-1 text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 truncate">
-                        {!walletConnected
-                          ? "—"
-                          : walletVolume.loading && walletVolume.total === null
-                          ? "—"
-                          : formatVolumeDisplay(walletVolume.total)}
-                      </div>
+                      <p className="mt-1 text-[10px] text-[#8199b1]">Lifetime volume</p>
                     </div>
                   </div>
-
+                  <div className="hidedex-ea-total-card mt-2.5 flex items-center justify-between gap-3 px-3.5 py-3">
+                    <div className="min-w-0">
+                      <p className="text-[10px] uppercase tracking-[.09em] font-bold text-[#94d9ce]">Total Volume</p>
+                      <p className="mt-0.5 text-[10px] text-[#aac1cf]">Hyperliquid + Lighter</p>
+                    </div>
+                    <div className="hidedex-ea-total text-right font-mono min-w-0">
+                      {!walletConnected ? "—"
+                        : walletVolume.loading && walletVolume.total === null ? "—"
+                        : formatVolumeDisplay(walletVolume.total)}
+                    </div>
+                  </div>
                   {!walletConnected && (
-                    <p className="hidedex-ea-muted mt-2 text-[10px] text-gray-500 dark:text-gray-400 text-left">
-                      Connect your wallet to calculate your trading volume.
+                    <p className="hidedex-ea-muted mt-3 text-[11px] leading-relaxed">
+                      Connect a wallet below to view your trading volume.
                     </p>
                   )}
-                </div>
+                </section>
                 )}
 
                 {earlyAccessState === "none" && walletConnected && !walletVolume.loading &&
@@ -722,10 +745,10 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
                 {/* Always show the FREE POINTS section, but never expose any
                     numeric award before a successful wallet-signed signup.
                     Reconnect shows ONLY the points saved by the server. */}
-                <div className="hidedex-ea-points rounded-xl border border-[#344257] bg-[#0c1018] p-3.5" aria-live="polite">
+                <div className="hidedex-ea-points p-4" aria-live="polite">
                   {walletConnected && (earlyAccessState === "pending" || earlyAccessState === "granted") && (
                     <div className="mb-3 pb-3 border-b border-[#344257]">
-                      <div className="text-[10px] uppercase font-semibold tracking-wider text-[#b6c4d7]">Volume at verification · HL + Lighter</div>
+                      <div className="text-[10px] uppercase font-semibold tracking-wider text-[#b6c4d7]">Volume at verification · Hyperliquid + Lighter</div>
                       <div className="mt-1 text-xl font-mono font-black text-white">
                         {savedRegistrationVolume === null ? "Pending verification" : formatVolumeDisplay(savedRegistrationVolume)}
                       </div>
@@ -737,7 +760,7 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
                       One-time reward
                     </span>
                   </div>
-                  <div className="mt-2 text-xl font-mono font-black text-white">
+                  <div className="hidedex-ea-reward-value mt-2 text-[#f0f6ff]">
                     {walletConnected && (earlyAccessState === "pending" || earlyAccessState === "granted")
                       ? earlyAccessPointsStatus === "verified" && earlyAccessPoints !== null
                         ? `${earlyAccessPoints.toFixed(1)} Points`
@@ -880,8 +903,13 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
                         void handleEarlyAccessSubmit(e);
                       }
                     }}
-                    className="space-y-3.5 pt-1"
+                    className="hidedex-ea-form space-y-4 pt-1"
                   >
+                    <div className="flex items-center gap-3 pb-1">
+                      <span className="shrink-0 text-[10px] font-extrabold tracking-[.15em] text-[#8eadd0] uppercase">Join the waitlist</span>
+                      <span className="h-px flex-1 bg-[#2a3e52]" aria-hidden="true"/>
+                      <span className="shrink-0 text-[10px] text-[#829bb6]">3 simple steps</span>
+                    </div>
                     {/* Step 1: X / Twitter Username and transparent manual proof instructions */}
                     <div>
                       <div className="flex items-center gap-1.5 mb-1">
