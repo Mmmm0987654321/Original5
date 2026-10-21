@@ -287,7 +287,7 @@ export default function Navbar({
   };
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-brand-border bg-brand-bg/90 backdrop-blur-md">
+    <header className="sticky top-0 z-40 w-full border-b border-brand-border bg-brand-bg/90 backdrop-blur-md pt-[env(safe-area-inset-top,0px)]">
       <div className="relative w-full flex h-14 items-center justify-between px-1.5 md:px-2.5">
         
         {/* Keep the brand visible even when sensitive account details are hidden. */}
