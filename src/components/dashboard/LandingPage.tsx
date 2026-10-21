@@ -7,7 +7,7 @@
  * Official Support: hidedex.com@gmail.com
  */
 
-import React, { useState, useEffect, useCallback, useId } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import PublicInfoPage, { type PublicInfoSection } from "./PublicInfoPage";
 import { 
   TrendingUp, 
@@ -35,7 +35,6 @@ import {
   Award,
   Terminal,
   RefreshCw,
-  HelpCircle,
   Mail,
   X
 } from "lucide-react";
@@ -169,6 +168,19 @@ const formatVolumeDisplay = (val: number | null): string => {
   }).format(val);
 };
 
+// Exact match to the server's fixed Early Access volume tiers; previews are not grants.
+const estimateEarlyAccessPoints = (volume: number): number => {
+  if (volume >= 50000000) return 12;
+  if (volume >= 30000000) return 8;
+  if (volume >= 20000000) return 7;
+  if (volume >= 15000000) return 6;
+  if (volume >= 10000000) return 5;
+  if (volume >= 5000000) return 3;
+  if (volume >= 1000000) return 2;
+  if (volume >= 100000) return 1;
+  return volume > 0 ? 0.1 : 0;
+};
+
 interface LandingPageProps {
   tokens: TokenMetadata[];
   setActiveTab: (tab: ActiveTab) => void;
@@ -280,6 +292,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const [earlyAccessQueuePosition, setEarlyAccessQueuePosition] =
     useState<number | null>(null);
   const [earlyAccessBusy, setEarlyAccessBusy] = useState(false);
+  const [earlyAccessStep, setEarlyAccessStep] = useState<"gmail" | "x" | "submit">("gmail");
+  const earlyAccessActiveWalletRef = useRef("");
   // UX history is stored per connected wallet, NOT an authorization credential.
   useEffect(() => {
     if (!walletConnected || !walletAddress) return;
@@ -296,7 +310,6 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const [xVerificationStatus, setXVerificationStatus] = useState<"pending" | "verified" | "rejected" | null>(null);
   const [registeredXUsername, setRegisteredXUsername] = useState<string | null>(null);
   const [xCopyFeedback, setXCopyFeedback] = useState<"copied" | "error" | null>(null);
-  const [showXProofHelp, setShowXProofHelp] = useState(false);
 
   const [walletVolume, setWalletVolume] = useState<WalletVolumeState>({
     hyperliquid: null,
@@ -360,10 +373,11 @@ export const LandingPage: React.FC<LandingPageProps> = ({
     setXCopyFeedback(null);
     try {
       const record = await callEarlyAccess({action:"status",wallet:targetWallet.toLowerCase()});
+      if (earlyAccessActiveWalletRef.current !== targetWallet.toLowerCase()) return "idle" as EarlyAccessAccessState;
       applyEarlyAccessRecord(record);
       return record?.access_status as EarlyAccessAccessState;
     } catch {
-      setEarlyAccessState("error");
+      if (earlyAccessActiveWalletRef.current === targetWallet.toLowerCase()) setEarlyAccessState("error");
       return "error" as EarlyAccessAccessState;
     }
   }, []);
@@ -388,6 +402,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       const totalVol: number | null =
         hlVol !== null && lighterVol !== null ? hlVol + lighterVol : null;
 
+      if (earlyAccessActiveWalletRef.current !== targetWallet.toLowerCase()) return;
       setWalletVolume({
         hyperliquid: hlVol,
         lighter: lighterVol,
@@ -396,6 +411,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
         error: null,
       });
     } catch {
+      if (earlyAccessActiveWalletRef.current !== targetWallet.toLowerCase()) return;
       setWalletVolume((prev) => ({
         ...prev,
         loading: false,
@@ -407,7 +423,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   // Parallel wallet-first flow on connection / modal open
   useEffect(() => {
     if (!isEarlyAccessOpen || !walletConnected || !walletAddress) {
+      earlyAccessActiveWalletRef.current = "";
       if (!walletConnected) {
+        setEarlyAccessStep("gmail");
         setEarlyAccessState("idle");
         setEarlyAccessQueuePosition(null);
         setEarlyAccessPoints(null);
@@ -428,21 +446,25 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       return;
     }
 
-    // Registration status comes FIRST. Never re-fetch/show live volume for saved applicants.
-    let active = true;
-    void checkEarlyAccessStatus(walletAddress).then(status => {
-      if (active && status === "none") void fetchWalletVolumes(walletAddress);
-    });
-    return () => { active = false; };
+    // Resolve real exchange volume immediately on connect, in parallel with saved registration.
+    // Never display another wallet's cached volume, account details or in-progress form.
+    if (earlyAccessActiveWalletRef.current !== walletAddress.toLowerCase()) {
+      setEarlyAccessStep("gmail");
+      setEarlyAccessEmail("");
+      setEarlyAccessX("");
+      setWalletVolume({hyperliquid:null,lighter:null,total:null,loading:true,error:null});
+    }
+    earlyAccessActiveWalletRef.current = walletAddress.toLowerCase();
+    void checkEarlyAccessStatus(walletAddress);
+    void fetchWalletVolumes(walletAddress);
   }, [isEarlyAccessOpen, walletConnected, walletAddress, checkEarlyAccessStatus, fetchWalletVolumes]);
 
   const activeProofCode = walletConnected && /^0x[0-9a-f]{40}$/i.test(walletAddress)
     ? `HDX-${walletAddress.slice(-10).toLowerCase()}` : null;
-  const formReadyForXPost = Boolean(activeProofCode);
   // Preserve the owner's last approved post text and whitespace.
-  const makeXPost = (code: string) => `Hidedex  Perp is Coming .
+  const makeXPost = (code: string) => `HideDex Perp is Coming for Everyone.
 
-Get Free 0.1 to 10 points
+Get Free 0.1 to 12 points
 
 For now access being given few people soon, but don't worry, you will get it soon.
 
@@ -671,8 +693,7 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
 
               {/* Modal Content - Complete Form & Volume Shell */}
               <div className="space-y-4 text-left">
-                {/* Live wallet volume is a pre-registration step ONLY. */}
-                {(earlyAccessState === "none" || (!walletConnected && earlyAccessState === "idle")) && (
+                {/* Keep the original volume design visible for everyone, including after enrolment. */}
                 <section className="hidedex-ea-volume p-4" aria-label="Exchange wallet volume">
                   <div className="flex items-center justify-between gap-3 mb-3">
                     <div className="min-w-0">
@@ -733,13 +754,47 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
                         : formatVolumeDisplay(walletVolume.total)}
                     </div>
                   </div>
+                  {walletConnected && (
+                    <div className="hidedex-ea-points mt-3 rounded-xl p-3" aria-live="polite">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-bold tracking-wider text-[#e5edf9] uppercase">Free Points</span>
+                        <span className="text-[10px] text-[#a3b8d0]">
+                          {earlyAccessState === "pending" || earlyAccessState === "granted" ? "Saved reward" : "Volume-based estimate"}
+                        </span>
+                      </div>
+                      <div className="hidedex-ea-reward-value mt-1 text-[#f0f6ff]">
+                        {earlyAccessState === "checking" || earlyAccessState === "idle" ? "Checking…"
+                          : earlyAccessState === "pending" || earlyAccessState === "granted"
+                            ? earlyAccessPointsStatus === "verified" && earlyAccessPoints !== null
+                              ? earlyAccessPoints.toFixed(1) + " Points"
+                              : "Pending verification"
+                            : walletVolume.total !== null
+                              ? estimateEarlyAccessPoints(walletVolume.total).toFixed(1) + " Points"
+                              : "Pending volume"}
+                      </div>
+                      <p className="mt-1 text-[10px] leading-relaxed text-[#b6c4d7]">
+                        {earlyAccessState === "pending" || earlyAccessState === "granted"
+                          ? isManualRewardCredit
+                            ? "Admin-awarded points. The promotional tier credit below is not actual trading volume."
+                            : "Saved points from registration; reconnecting does not award extra points."
+                          : "Estimated from live exchange volume; final points are saved after submission."}
+                      </p>
+                      {xVerificationStatus === "verified" && registeredXUsername && (
+                        <p className="mt-2 text-[10px] text-[#7cf3cc]">X {registeredXUsername} · Verified</p>
+                      )}
+                      {isManualRewardCredit && savedRegistrationVolume !== null && (
+                        <p className="mt-2 text-[10px] text-[#80d9c9]">
+                          Promotional tier credit: {formatVolumeDisplay(savedRegistrationVolume)} (not exchange volume)
+                        </p>
+                      )}
+                    </div>
+                  )}
                   {!walletConnected && (
                     <p className="hidedex-ea-muted mt-3 text-[11px] leading-relaxed">
                       Connect a wallet below to view your trading volume.
                     </p>
                   )}
                 </section>
-                )}
 
                 {earlyAccessState === "none" && walletConnected && !walletVolume.loading &&
                   (walletVolume.hyperliquid === null || walletVolume.lighter === null) && (
@@ -748,80 +803,52 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
                     </p>
                   )}
 
-                {/* Always show the FREE POINTS section, but never expose any
-                    numeric award before a successful wallet-signed signup.
-                    Reconnect shows ONLY the points saved by the server. */}
-                <div className="hidedex-ea-points p-4" aria-live="polite">
-                  {walletConnected && (earlyAccessState === "pending" || earlyAccessState === "granted") && (
-                    <div className="mb-3 pb-3 border-b border-[#344257]">
-                      <div className="text-[10px] uppercase font-semibold tracking-wider text-[#b6c4d7]">{isManualRewardCredit ? "Promotional volume-tier credit · not exchange volume" : "Volume at verification · Hyperliquid + Lighter"}</div>
-                      <div className="mt-1 text-xl font-mono font-black text-white">
-                        {savedRegistrationVolume === null ? "Pending verification" : formatVolumeDisplay(savedRegistrationVolume)}
-                      </div>
+
+                {/* The original Free Points card stays in place until wallet connection. */}
+                {!walletConnected && (
+                  <div className="hidedex-ea-points p-4" aria-live="polite">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[11px] font-bold tracking-wider text-[#e5edf9] uppercase">Free Points</span>
+                      <span className="rounded-md border border-[#344257] px-2 py-0.5 text-[10px] font-medium text-[#b6c4d7]">One-time reward</span>
                     </div>
-                  )}
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[11px] font-bold tracking-wider text-[#e5edf9] uppercase">Free Points</span>
-                    <span className="rounded-md border border-[#344257] px-2 py-0.5 text-[10px] font-medium text-[#b6c4d7]">
-                      One-time reward
-                    </span>
+                    <div className="hidedex-ea-reward-value mt-2 text-[#f0f6ff]">Submit to unlock</div>
+                    <p className="mt-1 text-[11px] leading-relaxed text-[#b6c4d7]">
+                      Connect a wallet to check your volume. After signup, your points will be saved once.
+                    </p>
                   </div>
-                  <div className="hidedex-ea-reward-value mt-2 text-[#f0f6ff]">
-                    {walletConnected && (earlyAccessState === "pending" || earlyAccessState === "granted")
-                      ? earlyAccessPointsStatus === "verified" && earlyAccessPoints !== null
-                        ? `${earlyAccessPoints.toFixed(1)} Points`
-                        : "Pending verification"
-                      : earlyAccessState === "checking" && walletConnected
-                      ? "Checking enrollment…"
-                      : "Submit to unlock"}
-                  </div>
-                  <p className="mt-1 text-[11px] leading-relaxed text-[#b6c4d7]">
-                    {walletConnected && (earlyAccessState === "pending" || earlyAccessState === "granted")
-                      ? (isManualRewardCredit ? "Owner-awarded points and a promotional volume-tier credit; real Hyperliquid/Lighter trading volume is unchanged." : "Volume and points are saved once after registration; they do not increase on reconnect.")
-                      : "Your volume is checked before registration. Free Points are awarded once after you submit X + Gmail."}
-                  </p>
-                </div>
+                )}
 
-
-                {/* Existing registrants see their persisted proof ID and review state. */}
-                {walletConnected && (earlyAccessState === "pending" || earlyAccessState === "granted") && activeProofCode && (
+                {/* After enrolment, show compact verification; never ask verified X users to post again. */}
+                {walletConnected && (earlyAccessState === "pending" || earlyAccessState === "granted") && xVerificationStatus !== "verified" && activeProofCode && (
                   <section className="rounded-xl border border-[#35465b] bg-[#101722] p-3.5 space-y-3" aria-label="X account verification">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center justify-between gap-2">
                       <h3 className="text-xs font-bold tracking-wide text-[#e6efff]">X Account Verification</h3>
-                      <span className={xVerificationStatus === "verified" ? "text-[10px] font-bold px-2 py-1 rounded-lg border border-emerald-500/40 text-emerald-300 bg-emerald-500/10" :
-                        xVerificationStatus === "rejected" ? "text-[10px] font-bold px-2 py-1 rounded-lg border border-rose-500/40 text-rose-300 bg-rose-500/10" :
-                        "text-[10px] font-bold px-2 py-1 rounded-lg border border-amber-400/30 text-amber-200 bg-amber-400/10"}>
-                        {xVerificationStatus === "verified" ? "Verified" : xVerificationStatus === "rejected" ? "Needs review" : "Pending manual review"}
+                      <span className={xVerificationStatus === "verified"
+                        ? "text-[10px] font-bold px-2 py-1 rounded-lg border border-emerald-500/40 text-emerald-300 bg-emerald-500/10"
+                        : "text-[10px] font-bold px-2 py-1 rounded-lg border border-amber-400/30 text-amber-200 bg-amber-400/10"}>
+                        {xVerificationStatus === "verified" ? "Verified" : xVerificationStatus === "rejected" ? "Needs review" : "Pending review"}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <div className="flex-1 min-w-0 border border-[#35465b] bg-[#0B0D10] rounded-lg px-3 py-2">
-                        <span className="text-[9px] text-[#a8b6c7] block mb-0.5">Registered X username</span>
-                        <span className="font-semibold text-xs text-white truncate block">{registeredXUsername || "—"}</span>
+                    <div className="border border-[#35465b] bg-[#0B0D10] rounded-lg px-3 py-2">
+                      <span className="text-[10px] text-[#a8b6c7] block">Registered X username</span>
+                      <span className="font-semibold text-xs text-white">{registeredXUsername || "—"}</span>
+                    </div>
+                    {xVerificationStatus !== "verified" && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <button type="button" onClick={() => { void copyXVerificationPost(); }} disabled={!xPostText}
+                          className="hidedex-ea-action flex items-center justify-center gap-1.5 rounded-lg px-2 py-3 text-xs font-bold text-white disabled:opacity-50">
+                          {xCopyFeedback === "copied" ? <Check className="w-3.5 h-3.5"/> : <Copy className="w-3.5 h-3.5"/>}
+                          {xCopyFeedback === "copied" ? "Copied" : "Copy Post"}
+                        </button>
+                        <a href={"https://twitter.com/intent/tweet?text=" + encodeURIComponent(xPostText)}
+                          target="_blank" rel="noopener noreferrer"
+                          className="flex items-center justify-center gap-1.5 rounded-lg border border-[#45668a] bg-[#172b43] px-2 py-3 text-xs font-bold text-white">
+                          Post on X <ExternalLink className="w-3.5 h-3.5"/>
+                        </a>
                       </div>
-                      <button type="button" onClick={() => { void copyXVerificationPost(); }} disabled={!xPostText}
-                        className="hidedex-ea-action inline-flex items-center justify-center gap-1.5 shrink-0 rounded-lg bg-[#2269c9] border border-[#3c7cdc] px-3 py-3 text-xs text-white font-bold disabled:opacity-50"
-                        aria-label="Copy unique X verification post">
-                        {xCopyFeedback === "copied" ? <Check className="w-3.5 h-3.5"/> : <Copy className="w-3.5 h-3.5"/>}
-                        {xCopyFeedback === "copied" ? "Copied" : "Copy Post"}
-                      </button>
-                    </div>
-                    <div className="text-[11px] leading-5 text-[#c6d4e7] space-y-1">
-                      <p>1. Copy the short post below.</p>
-                      <p>2. Publish from <strong className="text-white">{registeredXUsername}</strong> on X. Keep your wallet-derived HDX ID unchanged.</p>
-                      <p>3. HideDex will review it manually. Your waitlist position and verified-volume points are separate.</p>
-                    </div>
-                    <div className="border border-[#35465b] bg-[#070c13] rounded-lg p-2.5">
-                      <div className="text-[10px] text-[#b6c4d7] mb-1">Unique ID: <span className="font-mono font-bold text-white">{activeProofCode}</span></div>
-                      <textarea readOnly aria-label="Verification post text" rows={3} value={xPostText}
-                        className="w-full bg-transparent text-xs text-[#e6efff] resize-none outline-none leading-relaxed select-text"/>
-                    </div>
-                    <a href={"https://twitter.com/intent/tweet?text=" + encodeURIComponent(xPostText)}
-                       target="_blank" rel="noopener noreferrer"
-                       className="inline-flex gap-1.5 items-center justify-center w-full rounded-xl border border-[#45668a] bg-[#172b43] text-white font-bold text-xs py-2.5 hover:bg-[#20416b]">
-                       Post on X <ExternalLink className="w-3.5 h-3.5"/>
-                    </a>
-                    {xCopyFeedback === "error" && <p role="alert" className="text-xs text-amber-300">Copy was blocked. Long-press the post text to copy.</p>}
+                    )}
+                    {xCopyFeedback === "error" && xVerificationStatus !== "verified" &&
+                      <p role="alert" className="text-xs text-amber-300">Copy is unavailable in this browser. Use Post on X.</p>}
                   </section>
                 )}
 
@@ -898,133 +925,98 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
                   </>
                 )}
 
-                {/* Show Steps 2 & 3 and Submit Button when not connected OR when wallet is connected but not yet submitted (earlyAccessState === "none") */}
+
+                {/* Change only the content below the fixed volume and points area. */}
                 {(!walletConnected || earlyAccessState === "none") && (
-                  <form
-                    onSubmit={(e) => {
-                      if (!walletConnected) {
-                        e.preventDefault();
-                        handleEarlyAccessConnect();
-                      } else {
-                        void handleEarlyAccessSubmit(e);
-                      }
-                    }}
-                    className="hidedex-ea-form space-y-4 pt-1"
-                  >
+                  <section className="hidedex-ea-form space-y-4 pt-1" aria-label="Early Access signup steps">
                     <div className="flex items-center gap-3 pb-1">
                       <span className="shrink-0 text-[10px] font-extrabold tracking-[.15em] text-[#8eadd0] uppercase">Join the waitlist</span>
                       <span className="h-px flex-1 bg-[#2a3e52]" aria-hidden="true"/>
-                      <span className="shrink-0 text-[10px] text-[#829bb6]">3 simple steps</span>
+                      <span className="shrink-0 text-[10px] text-[#829bb6]">
+                        {!walletConnected ? "Step 1 of 3" : earlyAccessStep === "gmail" ? "Step 2 of 3" : "Step 3 of 3"}
+                      </span>
                     </div>
-                    {/* Step 1: X / Twitter Username and transparent manual proof instructions */}
-                    <div>
-                      <div className="flex items-center gap-1.5 mb-1">
-                        <label htmlFor="hidedex-x-username" className="hidedex-ea-label text-xs font-semibold text-gray-300">
-                          1. X / Twitter Username <span className="text-emerald-500">*</span>
-                        </label>
-                        <button type="button" title="How X verification works" aria-label="About X account verification"
-                          aria-expanded={showXProofHelp} onClick={() => setShowXProofHelp(v => !v)}
-                          className="text-[#8db8ef] hover:text-white rounded-full p-0.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#8db8ef]">
-                          <HelpCircle className="w-3.5 h-3.5"/>
+
+                    {!walletConnected ? (
+                      <div className="space-y-3">
+                        <div className="hidedex-ea-label text-sm font-bold text-white">1. Connect Wallet</div>
+                        <button type="button" onClick={handleEarlyAccessConnect}
+                          className="hidedex-ea-action w-full rounded-xl px-4 py-3 text-sm font-bold text-white">
+                          {t("connect_wallet")}
                         </button>
                       </div>
-                      {showXProofHelp && (
-                        <p className="mb-2 rounded-lg border border-[#39506e] bg-[#172234] px-2.5 py-2 text-[11px] leading-relaxed text-[#cbdcf2]">
-                          To verify your X username, publish the unique HDX post from the account entered here.
-                          HideDex checks it manually; until then X status is Pending.
-                          Joining the waitlist and verified-volume points do not depend on X approval.
-                          The X post alone never authorizes trading.
-                        </p>
-                      )}
-                      <div className="flex gap-2 items-stretch">
-                        <input id="hidedex-x-username" type="text" autoComplete="off" placeholder="@your_handle"
+                    ) : earlyAccessStep === "gmail" ? (
+                      <div className="space-y-3">
+                        <label htmlFor="hidedex-ea-gmail" className="hidedex-ea-label block text-xs font-semibold text-white">
+                          2. Gmail Address <span className="text-emerald-500">*</span>
+                        </label>
+                        <input id="hidedex-ea-gmail" type="email" autoComplete="email" placeholder="name@gmail.com"
+                          value={earlyAccessEmail}
+                          onChange={(e) => { setEarlyAccessEmail(e.target.value); setEarlyAccessError(""); }}
+                          className="hidedex-ea-input w-full rounded-xl border border-[#35465b] bg-[#12151B] px-3 py-2.5 text-white outline-none" />
+                        <button type="button" className="hidedex-ea-action w-full rounded-xl px-4 py-3 text-xs font-bold text-white"
+                          onClick={() => {
+                            const email = earlyAccessEmail.trim().toLowerCase();
+                            if (!/^[^\s@]+@gmail\.com$/.test(email)) {
+                              setEarlyAccessError("Enter a valid Gmail address to continue.");
+                              return;
+                            }
+                            setEarlyAccessError("");
+                            setEarlyAccessStep("x");
+                          }}>
+                          Next: X Username <ChevronRight className="inline-block w-4 h-4 ml-1"/>
+                        </button>
+                      </div>
+                    ) : earlyAccessStep === "x" ? (
+                      <div className="space-y-3">
+                        <label htmlFor="hidedex-ea-x" className="hidedex-ea-label block text-xs font-semibold text-white">
+                          3. X / Twitter Username <span className="text-emerald-500">*</span>
+                        </label>
+                        <input id="hidedex-ea-x" type="text" autoComplete="off" placeholder="@your_handle"
                           value={earlyAccessX}
-                          onChange={(e) => { setEarlyAccessX(e.target.value); if (earlyAccessError) setEarlyAccessError(""); }}
-                          className="hidedex-ea-input flex-1 min-w-0 rounded-xl border border-gray-800 bg-[#12151B] px-3 py-2.5 text-xs text-white placeholder:text-gray-400 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500"/>
-                        {formReadyForXPost && earlyAccessState === "none" && (
-                          <button type="button" onClick={() => { void copyXVerificationPost(); }}
-                            title="Copy your wallet's X post without signing or registering"
-                            className="hidedex-ea-action inline-flex shrink-0 items-center justify-center gap-1.5 rounded-xl bg-[#216bd3] px-3 py-2 text-[11px] font-bold text-white">
-                            {xCopyFeedback === "copied" ? <Check className="w-3.5 h-3.5"/> : <Copy className="w-3.5 h-3.5"/>}
-                            {xCopyFeedback === "copied" ? "Copied" : "Copy Post"}
+                          onChange={(e) => { setEarlyAccessX(e.target.value); setEarlyAccessError(""); }}
+                          className="hidedex-ea-input w-full rounded-xl border border-[#35465b] bg-[#12151B] px-3 py-2.5 text-white outline-none" />
+                        <p className="text-[11px] text-[#a9bfd7]">X verification can finish later. It does not block signup.</p>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button type="button" className="hidedex-ea-secondary rounded-xl px-3 py-3 text-xs font-semibold"
+                            onClick={() => { setEarlyAccessError(""); setEarlyAccessStep("gmail"); }}>Back</button>
+                          <button type="button" className="hidedex-ea-action rounded-xl px-3 py-3 text-xs font-bold text-white"
+                            onClick={() => {
+                              const handle = earlyAccessX.trim().replace(/^@/,"");
+                              if (!/^[a-zA-Z0-9_]{1,15}$/.test(handle)) {
+                                setEarlyAccessError("Enter a valid X username to continue.");
+                                return;
+                              }
+                              setEarlyAccessError("");
+                              setEarlyAccessStep("submit");
+                            }}>
+                            Next <ChevronRight className="inline-block w-4 h-4 ml-1"/>
                           </button>
-                        )}
+                        </div>
                       </div>
-                    </div>
-                    {walletConnected && earlyAccessState === "none" && xPostText && (
-                      <div className="rounded-xl border border-[#35465b] bg-[#101722] p-3 space-y-2">
-                        <textarea readOnly aria-label="Your X post" rows={3} value={xPostText}
-                          className="w-full bg-transparent text-xs leading-relaxed text-[#e6efff] resize-none outline-none select-text" />
-                        <a href={"https://twitter.com/intent/tweet?text=" + encodeURIComponent(xPostText)}
-                           target="_blank" rel="noopener noreferrer"
-                           className="inline-flex items-center justify-center gap-1.5 w-full rounded-lg border border-[#45668a] bg-[#172b43] text-xs font-bold text-white py-2">
-                          Post on X <ExternalLink className="w-3.5 h-3.5"/>
-                        </a>
-                      </div>
+                    ) : (
+                      <form onSubmit={(e) => { void handleEarlyAccessSubmit(e); }} className="space-y-3">
+                        <div className="text-sm font-bold text-white">Ready to join</div>
+                        <div className="rounded-xl border border-[#35465b] bg-[#101722] p-3 text-[11px] text-[#cbdcf2] space-y-2">
+                          <p><span className="text-[#91acc7]">Wallet:</span> {walletAddress.slice(0, 6)}…{walletAddress.slice(-4)}</p>
+                          <p><span className="text-[#91acc7]">Gmail:</span> {earlyAccessEmail.trim()}</p>
+                          <p><span className="text-[#91acc7]">X:</span> @{earlyAccessX.trim().replace(/^@/,"")}</p>
+                          <p className="text-[#a7b9cc]">One free wallet-ownership signature is required to save your registration. X verification is separate.</p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button type="button" onClick={() => setEarlyAccessStep("x")} disabled={earlyAccessBusy}
+                            className="hidedex-ea-secondary rounded-xl px-3 py-3 text-xs font-semibold disabled:opacity-60">Back</button>
+                          <button type="submit" disabled={earlyAccessBusy}
+                            className="hidedex-ea-action rounded-xl px-3 py-3 text-xs font-bold text-white disabled:opacity-60">
+                            {earlyAccessBusy ? "Submitting…" : "Submit"}
+                          </button>
+                        </div>
+                      </form>
                     )}
-                    {xCopyFeedback === "error" && earlyAccessState === "none" && (
-                      <p role="alert" className="text-xs text-amber-300">Copy blocked by browser. Long-press the post to copy.</p>
-                    )}
-
-                    {/* Step 2: Gmail Address */}
-                    <div>
-                      <label className="hidedex-ea-label block text-xs font-semibold text-gray-300 dark:text-gray-300 mb-1">
-                        2. Gmail Address <span className="text-emerald-500">*</span>
-                      </label>
-                      <input
-                        type="email"
-                        placeholder="name@gmail.com"
-                        value={earlyAccessEmail}
-                        onChange={(e) => {
-                          setEarlyAccessEmail(e.target.value);
-                          if (earlyAccessError) setEarlyAccessError("");
-                        }}
-                        className="hidedex-ea-input w-full rounded-xl border border-gray-800 bg-[#12151B] px-3 py-2.5 text-xs text-white placeholder:text-gray-400 outline-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 dark:border-gray-800 dark:bg-[#12151B] dark:text-white dark:placeholder:text-gray-500"
-                      />
-                    </div>
-
-                    {/* Step 3: Connect wallet / ownership proof */}
-                    <div>
-                      <label className="hidedex-ea-label block text-xs font-semibold text-gray-300 dark:text-gray-300 mb-1">
-                        3. Wallet Address <span className="text-emerald-500">*</span>
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <input type="text" readOnly aria-label="Connected wallet for registration"
-                          placeholder="Use Connect Wallet below"
-                          value={walletConnected && walletAddress
-                            ? walletAddress.slice(0, 6) + "..." + walletAddress.slice(-4)
-                            : ""}
-                          className="hidedex-ea-input flex-1 min-w-0 rounded-xl border border-gray-800 bg-[#12151B] px-3 py-2.5 text-xs font-mono text-gray-300 outline-none dark:border-gray-800 dark:bg-[#12151B] dark:text-gray-300" />
-                        {walletConnected && walletAddress && (
-                          <span className="shrink-0 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-1 text-[10px] font-semibold text-emerald-400">Connected</span>
-                        )}
-                      </div>
-                      <p className="mt-1 text-[10px] leading-relaxed text-[#b6c4d7]">
-                        One wallet can enroll once. Enrollment requires a free wallet-ownership signature.
-                      </p>
-                    </div>
-
-                    {/* Error Message */}
                     {earlyAccessError && (
-                      <div className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-2.5 text-xs text-rose-600 dark:text-rose-400">
-                        {earlyAccessError}
-                      </div>
+                      <p role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-2.5 text-xs text-rose-300">{earlyAccessError}</p>
                     )}
-
-                    {/* Submit Button */}
-                    <button
-                      type={walletConnected ? "submit" : "button"}
-                      onClick={!walletConnected ? handleEarlyAccessConnect : undefined}
-                      disabled={walletConnected && earlyAccessBusy}
-                      className="hidedex-ea-action w-full rounded-xl bg-black py-3 text-xs font-black uppercase tracking-wider text-white shadow-lg transition-transform active:scale-[0.99] hover:bg-gray-900 disabled:opacity-60 dark:bg-[#0B0D10] dark:text-white dark:hover:bg-gray-800 cursor-pointer"
-                    >
-                      {!walletConnected
-                        ? t("connect_wallet")
-                        : earlyAccessBusy
-                        ? "Submitting..."
-                        : t("submit_early_access")}
-                    </button>
-                  </form>
+                  </section>
                 )}
               </div>
             </div>
