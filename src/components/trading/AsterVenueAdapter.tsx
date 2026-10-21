@@ -10,6 +10,7 @@ import HideDexUnifiedMarketHeader from "./HideDexUnifiedMarketHeader";
 import HideDexUnifiedMarketView from "./HideDexUnifiedMarketView";
 import HideDexUnifiedTradeCanvas from "./HideDexUnifiedTradeCanvas";
 import HideDexUnifiedOrderForm from "./HideDexUnifiedOrderForm";
+import Aster1001xPanel from "./Aster1001xPanel";
 import HideDexOrderBookPanel from "./HideDexOrderBookPanel";
 import HideDexUnifiedAccountPanel from "./HideDexUnifiedAccountPanel";
 import TradingAccountTabBar,{type TradingTabId} from "./TradingAccountTabBar";
@@ -77,6 +78,9 @@ export default function AsterVenueAdapter(p:{
  const [spotMarketError,setSpotMarketError]=useState("");
  const [selectedSymbol,setSelectedSymbol]=useState("BTCUSDT");
  const [kind,setKind]=useState<MarketKind>(initialKind);
+ // 1001x never shares Aster Pro V3 signed execution or account balances.
+ const [mode1001x,setMode1001x]=useState(false);
+ useEffect(()=>{if(section!=="trade")setMode1001x(false);},[section]);
  const [selectOpen,setSelectOpen]=useState(false);
  const [view,setView]=useState<"chart"|"orderbook">("chart");
  const [infoOpen,setInfoOpen]=useState(false);
@@ -817,6 +821,34 @@ export default function AsterVenueAdapter(p:{
    account={accountPanel}/>
  </>;
  return <div className="w-full min-w-0 text-brand-text pb-1" data-exchange="aster">
+  {section==="trade"&&(
+   <nav aria-label="Aster trading mode" className="mb-3 flex min-w-0 items-center gap-1.5 rounded-xl border border-brand-border bg-brand-surface p-1.5">
+    {([
+     {id:"perp",label:"Perpetual"},
+     {id:"spot",label:"Spot"},
+     {id:"1001x",label:"1001x"},
+    ] as const).map(option=>{
+     const active=mode1001x?option.id==="1001x":option.id===kind;
+     return <button key={option.id} type="button" aria-current={active?"page":undefined}
+      disabled={busy||restoring}
+      onClick={()=>{
+       if(busy||restoring)return;
+       setSelectOpen(false);setAuthOpen(false);setInfoOpen(false);setTpsl(null);setFundingModal(null);
+       if(option.id==="1001x"){setMode1001x(true);return;}
+       setMode1001x(false);setKind(option.id);onSelectSection("trade",option.id);
+      }}
+      className={"min-w-0 flex-1 rounded-lg px-2 py-2.5 text-xs font-bold transition-colors disabled:opacity-60 "+
+       (active?"bg-brand-overlay-normal border border-accent text-brand-text":"border border-transparent text-brand-muted hover:bg-brand-overlay-subtle hover:text-brand-text")}>
+      {option.label}{option.id==="1001x"&&<span className="ml-1 text-[9px] opacity-70">Preview</span>}
+     </button>;
+    })}
+   </nav>
+  )}
+  {mode1001x && section==="trade"
+   ? <Aster1001xPanel walletAddress={walletAddress} perpTradingApproved={perpTradingApproved}
+       onConnectWallet={onConnectWallet}
+       onReturnToPro={()=>{setMode1001x(false);setKind("perp");onSelectSection("trade","perp");}}/>
+   : <>
   {marketError&&<p role="alert" className="p-3 mb-2 rounded-lg border border-rose-500/30 text-rose-400 text-xs">Aster mainnet public markets unavailable: {marketError}. No other exchange's data is substituted.</p>}
   {notice&&!authOpen&&<HideDexTradingToast type={busy?"pending":toastKind}
      title="Aster" message={notice} onClose={()=>setNotice("")}/>}
@@ -1029,5 +1061,6 @@ export default function AsterVenueAdapter(p:{
      priceOnly
      onSave={async(tp,sl)=>{await sendTrigger(tp,sl);}}
     />}
+  </>}
  </div>;
 }
