@@ -759,7 +759,9 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
                       <div className="flex items-center justify-between gap-2">
                         <span className="text-[11px] font-bold tracking-wider text-[#e5edf9] uppercase">Free Points</span>
                         <span className="text-[10px] text-[#a3b8d0]">
-                          {earlyAccessState === "pending" || earlyAccessState === "granted" ? "Saved reward" : "Volume-based estimate"}
+                          {earlyAccessState === "pending" || earlyAccessState === "granted"
+                            ? isManualRewardCredit ? "Early Access bonus" : "Saved reward"
+                            : "Volume-based estimate"}
                         </span>
                       </div>
                       <div className="hidedex-ea-reward-value mt-1 text-[#f0f6ff]">
@@ -775,17 +777,12 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
                       <p className="mt-1 text-[10px] leading-relaxed text-[#b6c4d7]">
                         {earlyAccessState === "pending" || earlyAccessState === "granted"
                           ? isManualRewardCredit
-                            ? "Admin-awarded points. The promotional tier credit below is not actual trading volume."
+                            ? "One-time Early Access bonus points."
                             : "Saved points from registration; reconnecting does not award extra points."
                           : "Estimated from live exchange volume; final points are saved after submission."}
                       </p>
                       {xVerificationStatus === "verified" && registeredXUsername && (
                         <p className="mt-2 text-[10px] text-[#7cf3cc]">X {registeredXUsername} · Verified</p>
-                      )}
-                      {isManualRewardCredit && savedRegistrationVolume !== null && (
-                        <p className="mt-2 text-[10px] text-[#80d9c9]">
-                          Promotional tier credit: {formatVolumeDisplay(savedRegistrationVolume)} (not exchange volume)
-                        </p>
                       )}
                     </div>
                   )}
