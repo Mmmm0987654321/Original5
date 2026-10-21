@@ -38,7 +38,7 @@ export default function HideDexPerformanceAreaChart({
         -webkit-tap-highlight-color:transparent;
       }
     `}</style>
-    <ResponsiveContainer width="100%" height="100%">
+    <ResponsiveContainer key={period} width="100%" height="100%">
       <AreaChart accessibilityLayer={false} data={[...data]}
         margin={{top:10,right:10,left:-20,bottom:0}}>
         <XAxis dataKey="timestamp"
@@ -63,7 +63,7 @@ export default function HideDexPerformanceAreaChart({
           }}
           tick={{fontSize:9,fill:"var(--text-muted)"}} tickLine={false}
           axisLine={false} width={50}/>
-        <Tooltip content={({active,payload}:any)=>{
+        <Tooltip isAnimationActive={false} content={({active,payload}:any)=>{
           if(!active||!payload?.length)return null;
           const point=payload[0]?.payload as Point|undefined;
           if(!point||!Number.isFinite(point.value))return null;

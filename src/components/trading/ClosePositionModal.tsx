@@ -124,7 +124,7 @@ export default function ClosePositionModal({
         <div className="flex items-start justify-between">
           <div>
             <h3 id="close-position-title" className="text-lg sm:text-xl font-bold text-brand-text tracking-tight">Close Position</h3>
-            <p className="text-xs text-brand-sub mt-0.5 font-normal">Close at market price. Final execution price may vary.</p>
+            <p className="text-xs text-brand-sub mt-0.5 font-normal">Market close · Final fill price may differ.</p>
           </div>
           <button
             onClick={onClose}
@@ -188,7 +188,7 @@ export default function ClosePositionModal({
           </div>
         </div>
 
-        {/* Order Type & Execution Price Form Fields */}
+        {/* Brief execution details; final fill is confirmed by the market. */}
         <div className="grid grid-cols-2 gap-3">
           <div className="space-y-1.5">
             <label className="text-[10px] text-brand-muted font-bold uppercase tracking-wider block">
@@ -200,10 +200,10 @@ export default function ClosePositionModal({
           </div>
           <div className="space-y-1.5">
             <label className="text-[10px] text-brand-muted font-bold uppercase tracking-wider block">
-              Execution Price
+              Fill Price
             </label>
             <div className="bg-brand-surface border border-brand-border rounded-xl py-2.5 px-3 text-xs sm:text-sm font-medium text-brand-sub truncate shadow-inner">
-              Market price at execution
+              At market fill
             </div>
           </div>
         </div>
@@ -214,7 +214,7 @@ export default function ClosePositionModal({
             <span className="text-[10px] text-brand-muted font-bold uppercase tracking-wider">
               Closing Size
             </span>
-            <span className="text-brand-profit font-bold text-xs font-mono">
+            <span className="text-brand-text font-bold text-xs font-mono">
               {safeClosePercent}% ({closingSize.toLocaleString(undefined, { maximumFractionDigits: 5 })} {cleanSym || position.symbol})
             </span>
           </div>
@@ -229,9 +229,9 @@ export default function ClosePositionModal({
               value={safeClosePercent}
               onChange={(e) => setClosePercent(Number(e.target.value))}
               disabled={isSubmitting}
-              className="w-full h-2 rounded-full appearance-none cursor-pointer bg-brand-overlay-active accent-emerald-500 focus:outline-none disabled:opacity-50"
+              className="w-full h-2 rounded-full appearance-none cursor-pointer bg-brand-overlay-active accent-brand-primary focus:outline-none disabled:opacity-50"
               style={{
-                background: `linear-gradient(to right, rgb(16 185 129) 0%, rgb(16 185 129) ${safeClosePercent}%, rgba(255, 255, 255, 0.08) ${safeClosePercent}%, rgba(255, 255, 255, 0.08) 100%)`,
+                background: `linear-gradient(to right, var(--accent-primary, #18c29c) 0%, var(--accent-primary, #18c29c) ${safeClosePercent}%, rgba(255, 255, 255, 0.08) ${safeClosePercent}%, rgba(255, 255, 255, 0.08) 100%)`,
               }}
             />
           </div>
@@ -246,7 +246,7 @@ export default function ClosePositionModal({
                 onClick={() => setClosePercent(pct)}
                 className={`py-1 px-1 rounded-lg text-[10px] sm:text-[11px] font-mono font-bold transition-all cursor-pointer text-center ${
                   safeClosePercent === pct
-                    ? "bg-brand-profit/20 text-brand-profit border border-brand-profit/40 shadow-xs"
+                    ? "bg-brand-primary/15 text-brand-primary border border-brand-primary/40 shadow-xs"
                     : "bg-brand-surface border border-brand-border text-brand-sub hover:text-brand-text hover:bg-brand-overlay-normal"
                 } disabled:opacity-50`}
               >
@@ -257,7 +257,7 @@ export default function ClosePositionModal({
         </div>
 
         {/* Summary Metric Area */}
-        <div className="bg-brand-surface border border-brand-border rounded-2xl p-3.5 sm:p-4 space-y-2 text-xs font-mono text-brand-sub">
+        <div className="bg-brand-surface border border-brand-border rounded-2xl p-3.5 sm:p-4 space-y-2 text-xs font-sans text-brand-sub">
           <div className="flex items-center justify-between text-brand-sub">
             <span>Closing Amount</span>
             <span className="font-bold text-brand-text">
@@ -266,7 +266,7 @@ export default function ClosePositionModal({
           </div>
 
           <div className="flex items-center justify-between text-brand-sub">
-            <span>Unrealized PnL (estimate)</span>
+            <span>Estimated PnL</span>
             <span className={`font-bold ${estimatedPnl >= 0 ? "text-pnl-profit" : "text-pnl-loss"}`}>
               {hasPnl ? (estimatedPnl >= 0 ? "+" : "")+"$"+estimatedPnl.toFixed(2) : "—"}
             </span>
@@ -275,15 +275,15 @@ export default function ClosePositionModal({
 
           <div className="flex items-center justify-between text-brand-muted">
             <span className="flex items-center gap-1">
-              Trading Fee <HelpCircle className="w-3 h-3 text-brand-muted" />
+              Trading fee <HelpCircle className="w-3 h-3 text-brand-muted" />
             </span>
-            <span className="text-brand-muted">Charged at execution</span>
+            <span className="text-brand-muted">Confirmed after fill</span>
           </div>
 
           <div className="flex items-center justify-between pt-2 border-t border-brand-divider/30">
             <span className="text-brand-sub">{showReleasedInitialMargin?
-              "Est. Initial Margin Released":"Est. Proceeds (before fees)"}</span>
-            <span className="font-bold text-brand-profit text-sm">
+              "Margin requirement released (est.)":"Estimated close value*"}</span>
+            <span className="font-bold text-brand-text text-sm">
               {showReleasedInitialMargin ?
                 "≈$"+(estimatedMarginRequirement! * closeFraction).toFixed(2)+" USDC" :
                 hasMargin && hasPnl ? "$"+estReceive.toFixed(2)+" USDC" : "—"}
@@ -293,8 +293,8 @@ export default function ClosePositionModal({
         </div>
 
         <p className="text-[11px] text-brand-muted leading-snug">{showReleasedInitialMargin
-          ? "Estimated margin requirement released is not a cash payout. Cross collateral stays pooled; available balance, PnL and fees reconcile after the real fill."
-          : "Estimates use current reference price and verified data when available; final fill price, fees and proceeds can differ."}</p>
+          ? "*Margin requirement released is not a cash payout. Final balances settle after fill."
+          : "*Estimate only, not guaranteed cash proceeds. Actual PnL, released collateral and fees settle after the fill."}</p>
 
         {/* Error Notification */}
         {errorMsg && (
@@ -318,7 +318,7 @@ export default function ClosePositionModal({
             type="button"
             onClick={handleConfirmClose}
             disabled={isSubmitting}
-            className="py-3.5 px-4 bg-gradient-to-r from-[#ff0055] to-[#ff2a6d] hover:from-[#ff1a66] hover:to-[#ff3d7a] text-white font-black text-xs sm:text-sm uppercase tracking-wider rounded-2xl shadow-lg shadow-rose-500/25 transition-all cursor-pointer text-center active:scale-[0.99] disabled:opacity-50 flex items-center justify-center gap-1.5"
+            className="py-3.5 px-4 bg-brand-loss/15 hover:bg-brand-loss/25 border border-brand-loss/50 text-brand-loss font-bold text-xs sm:text-sm uppercase tracking-wider rounded-xl transition-colors cursor-pointer text-center disabled:opacity-50 flex items-center justify-center gap-1.5"
           >
             {isSubmitting ? (
               <>

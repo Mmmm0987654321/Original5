@@ -59,6 +59,7 @@ import AnalyticsPanel, { DailyFillVolumeBars } from "./AnalyticsPanel";
 import { hasPrivacyPassword, verifyPrivacyPassword, clearPrivacyPassword } from "../../lib/privacyPassword";
 import { getOfficialTokenLogoCandidates } from "../../lib/tokenLogoData";
 import { useLanguage } from "../../lib/LanguageContext";
+import { HIDEDEX_FUNDS_ACTIVITY_START_MS, isHideDexFundsCutoffActive } from "../../lib/hidedexFundsActivityCutoff";
 import { 
   type PnlTimeseries,
   lastPnlHistoryValue,
@@ -250,6 +251,14 @@ export default function PortfolioPanel({
 }: PortfolioPanelProps) {
   
   const { t } = useLanguage();
+  // Display-only analytics cutoff activates at midnight IST even if the tab stays open.
+  const [fundsCutoffActive, setFundsCutoffActive] = useState(isHideDexFundsCutoffActive);
+  useEffect(() => {
+    if (isHideDexFundsCutoffActive()) { setFundsCutoffActive(true); return; }
+    const delayMs = Math.max(0, HIDEDEX_FUNDS_ACTIVITY_START_MS - Date.now());
+    const timer = window.setTimeout(() => setFundsCutoffActive(true), delayMs + 50);
+    return () => window.clearTimeout(timer);
+  }, []);
   const hyperliquidAccountModeLabel =
     !tradingStateReady || !accountModeKnown
       ? "--"
@@ -852,12 +861,13 @@ export default function PortfolioPanel({
   const selectedPerformanceEntry = pnlTimeseries?.[performancePeriod] ?? null;
 
   const selectedNetPnl = useMemo(() => {
-    if (!selectedPerformanceEntry?.pnlHistory) return null;
+    // Exchange cumulative PnL includes the period before the requested reset.
+    if (fundsCutoffActive || !selectedPerformanceEntry?.pnlHistory) return null;
     if (performancePeriod === "allTime") {
       return lastPnlHistoryValue(selectedPerformanceEntry.pnlHistory);
     }
     return windowPnlHistoryDelta(selectedPerformanceEntry.pnlHistory);
-  }, [selectedPerformanceEntry, performancePeriod]);
+  }, [selectedPerformanceEntry, performancePeriod, fundsCutoffActive]);
 
   const selectedPerformanceVolume = useMemo(() => {
     if (!selectedPerformanceEntry?.vlm) return null;
@@ -877,12 +887,13 @@ export default function PortfolioPanel({
       if (!Array.isArray(item) || item.length < 2) continue;
       const t = Number(item[0]);
       const v = Number(item[1]);
-      if (Number.isFinite(t) && Number.isFinite(v)) {
+      if (Number.isFinite(t) && Number.isFinite(v) &&
+          (!fundsCutoffActive || t >= HIDEDEX_FUNDS_ACTIVITY_START_MS)) {
         points.push({ timestamp: t, value: v });
       }
     }
     return points;
-  }, [selectedPerformanceEntry]);
+  }, [selectedPerformanceEntry, fundsCutoffActive]);
 
   return (
     <div className="space-y-3 sm:space-y-4 text-brand-text font-sans bg-brand-bg px-3 pt-2 pb-2 sm:p-4 sm:pb-8 rounded-3xl max-w-4xl mx-auto w-full" id="funds-dashboard-master">
@@ -1031,11 +1042,12 @@ export default function PortfolioPanel({
                 sensitiveHidden={shouldHideBalances}
               /></>}
               chart={<HideDexPerformanceAreaChart
+                key={performancePeriod + (fundsCutoffActive ? "-reset" : "-normal")}
                 period={performancePeriod}
                 data={pnlTimeseries ? equityChartData : []}
                 label="Equity"
                 hidden={shouldHideBalances}
-                emptyMessage="No performance history yet"
+                emptyMessage={fundsCutoffActive ? "No equity samples since 22 Oct 2026, 00:00 IST" : "No performance history yet"}
               />}
             />
 

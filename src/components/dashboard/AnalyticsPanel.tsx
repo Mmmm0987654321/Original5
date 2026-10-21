@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { Activity, ReceiptText, BarChart3, TrendingUp } from "lucide-react";
 import type { PnlTimeseries } from "../../lib/hyperliquid";
+import { HIDEDEX_FUNDS_ACTIVITY_START_MS, isHideDexFundsCutoffActive } from "../../lib/hidedexFundsActivityCutoff";
 
 type Period = "day" | "week" | "month" | "allTime";
 type Market = "all" | "spot" | "perps";
@@ -42,9 +43,11 @@ export default function AnalyticsPanel({
   const parsedCombinedVolume = rawCombinedVolume == null ? NaN : Number(rawCombinedVolume);
   const combinedVolume = Number.isFinite(parsedCombinedVolume) ? parsedCombinedVolume : null;
   const combinedPnl = portfolioPnl;
+  const cutoffActive = isHideDexFundsCutoffActive();
   const stats = useMemo(() => {
     const days = period === "day" ? 1 : period === "week" ? 7 : period === "month" ? 30 : null;
-    const cutoff = days === null ? 0 : Date.now() - days * 86400000;
+    const periodCutoff = days === null ? 0 : Date.now() - days * 86400000;
+    const cutoff = isHideDexFundsCutoffActive() ? Math.max(periodCutoff, HIDEDEX_FUNDS_ACTIVITY_START_MS) : periodCutoff;
     const rows = (Array.isArray(fills) ? fills : []).filter((item) => {
       if (!item || typeof item !== "object") return false;
       const f = item as Record<string, unknown>;
@@ -85,27 +88,28 @@ export default function AnalyticsPanel({
     }
     return {
       count: rows.length,
-      volume: rows.length > 0 && volumeCount === rows.length ? volume : null,
-      pnl: rows.length > 0 && pnlCount === rows.length ? pnl : null,
-      fee: feeCount > 0 ? fee : null,
-      orders: rows.length > 0 && ordersComplete ? orders.size : null
+      volume: rows.length > 0 && volumeCount === rows.length ? volume : cutoffActive && !loading && !failed && rows.length === 0 ? 0 : null,
+      pnl: rows.length > 0 && pnlCount === rows.length ? pnl : cutoffActive && !loading && !failed && rows.length === 0 ? 0 : null,
+      fee: feeCount > 0 ? fee : cutoffActive && !loading && !failed && rows.length === 0 ? 0 : null,
+      orders: rows.length > 0 && ordersComplete ? orders.size : cutoffActive && !loading && !failed && rows.length === 0 ? 0 : null
     };
-  }, [fills, period, market]);
+  }, [fills, period, market, cutoffActive, loading, failed]);
 
   // The official combined PnL/volume matches Hyperliquid Portfolio's period.
   // A Spot/Perps breakdown is only a recent-fill sample, not lifetime portfolio stats.
   const combined = market === "all";
-  const displayVolume = combined ? combinedVolume : stats.volume;
-  const displayPnl = combined ? combinedPnl : market === "perps" ? stats.pnl : null;
+  // Exchange-wide period totals include pre-reset history; post-reset cards only use timestamped fills.
+  const displayVolume = cutoffActive ? stats.volume : combined ? combinedVolume : stats.volume;
+  const displayPnl = cutoffActive ? stats.pnl : combined ? combinedPnl : market === "perps" ? stats.pnl : null;
   const cards = venueStats ? [
-    { title: venueStats.pnlLabel ?? "Trading PnL", value: venueStats.pnl === null ? "--" : signedUsd(venueStats.pnl), Icon: TrendingUp },
-    { title: venueStats.volumeLabel ?? "Total Volume", value: venueStats.volume === null ? "--" : usd(venueStats.volume), Icon: BarChart3 },
-    { title: venueStats.feesLabel ?? "Fees (USDC · loaded)", value: venueStats.fees === null ? "--" : usd(venueStats.fees), Icon: ReceiptText },
-    { title: venueStats.ordersLabel ?? "Executed orders (loaded)", value: venueStats.orders === null ? "--" : venueStats.orders.toLocaleString(), Icon: Activity }
+    { title: cutoffActive ? "PnL (since reset)" : venueStats.pnlLabel ?? "Trading PnL", value: cutoffActive || venueStats.pnl === null ? "--" : signedUsd(venueStats.pnl), Icon: TrendingUp },
+    { title: cutoffActive ? "Volume (since reset)" : venueStats.volumeLabel ?? "Total Volume", value: cutoffActive || venueStats.volume === null ? "--" : usd(venueStats.volume), Icon: BarChart3 },
+    { title: cutoffActive ? "Fees (since reset)" : venueStats.feesLabel ?? "Fees (USDC · loaded)", value: cutoffActive || venueStats.fees === null ? "--" : usd(venueStats.fees), Icon: ReceiptText },
+    { title: cutoffActive ? "Orders (since reset)" : venueStats.ordersLabel ?? "Executed orders (loaded)", value: cutoffActive || venueStats.orders === null ? "--" : venueStats.orders.toLocaleString(), Icon: Activity }
   ] : [
-    { title: combined ? "Net PnL" : market === "spot" ? "Spot PnL (unavailable)" : "Closed PnL (loaded)",
+    { title: cutoffActive ? "Closed PnL (loaded)" : combined ? "Net PnL" : market === "spot" ? "Spot PnL (unavailable)" : "Closed PnL (loaded)",
       value: displayPnl === null ? "--" : signedUsd(displayPnl), Icon: TrendingUp },
-    { title: combined ? "Total Volume" : "Volume (loaded)",
+    { title: cutoffActive ? "Volume (since reset)" : combined ? "Total Volume" : "Volume (loaded)",
       value: displayVolume === null ? "--" : usd(displayVolume), Icon: BarChart3 },
     { title: "Fees (USDC · loaded)",
       value: stats.fee === null ? "--" : (stats.fee < 0 ? "-" : "") + usd(stats.fee), Icon: ReceiptText },
@@ -129,6 +133,7 @@ export default function AnalyticsPanel({
           </div>
         ))}
       </div>}
+      {cutoffActive && <p className="text-[10px] text-brand-muted">Since 22 Oct 2026, 00:00 IST · verified loaded fills only. Existing balances and open positions remain unchanged.</p>}
       {failed && <p role="status" className="text-[10px] text-brand-muted">Recent fill history is temporarily unavailable.</p>}
     </div>
   );
@@ -148,9 +153,11 @@ export function DailyFillVolumeBars({
   unavailableMessage?: string;
   sourceLabel?: string;
 }) {
+  const resetActive = isHideDexFundsCutoffActive();
   const bars = useMemo(() => {
     const days = period === "day" ? 1 : period === "week" ? 7 : period === "month" ? 30 : null;
-    const cutoff = days === null ? 0 : Date.now() - days * 86400000;
+    const periodCutoff = days === null ? 0 : Date.now() - days * 86400000;
+    const cutoff = resetActive ? Math.max(periodCutoff, HIDEDEX_FUNDS_ACTIVITY_START_MS) : periodCutoff;
     const byDay = new Map<string, number>();
     for (const input of fills) {
       if (!input || typeof input !== "object") continue;
@@ -163,17 +170,17 @@ export function DailyFillVolumeBars({
         ? reportedUsd : px * sz;
       if (!Number.isFinite(timestamp) || timestamp <= 0 || timestamp < cutoff ||
           !Number.isFinite(amount) || amount < 0) continue;
-      const day = new Date(timestamp).toISOString().slice(0, 10);
+      const day = new Date(timestamp + (resetActive ? 19800000 : 0)).toISOString().slice(0, 10);
       byDay.set(day, (byDay.get(day) ?? 0) + amount);
     }
     return [...byDay].map(([day, amount]) => ({ day, amount }))
       .sort((a, b) => a.day.localeCompare(b.day));
-  }, [fills, period]);
+  }, [fills, period, resetActive]);
   const max = Math.max(1, ...bars.map(x => x.amount));
   return (
     <section id="funds-daily-volume" className="bg-brand-surface border border-brand-border/60 rounded-xl sm:rounded-2xl p-3 sm:p-4 shadow-xs space-y-3">
       <h3 className="text-brand-text text-[11px] sm:text-xs font-bold uppercase tracking-wider">
-        Daily Trading Volume <span className="text-brand-muted font-normal">(UTC · {sourceLabel})</span>
+        Daily Trading Volume <span className="text-brand-muted font-normal">({resetActive ? "IST" : "UTC"} · {sourceLabel})</span>
       </h3>
       {sensitiveHidden ? (
         <p className="text-xs text-brand-muted">Hidden by privacy settings.</p>

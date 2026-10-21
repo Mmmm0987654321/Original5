@@ -4,7 +4,7 @@ import React from "react";
  * No signing, market data, order execution or exchange state is implemented here.
  */
 export function HideDexTradeGrid({children}:{children:React.ReactNode}) {
-  return <div className="grid grid-cols-12 gap-1.5 md:gap-2 mb-1.5 items-stretch">{children}</div>;
+  return <div id="terminal-trade-grid" className="grid grid-cols-12 gap-1.5 md:gap-2 mb-1.5 items-stretch w-full min-w-0" style={{display:"grid"}}>{children}</div>;
 }
 export function HideDexOrderForm({children}:{children:React.ReactNode}) {
   return <div id="terminal-order-form"
