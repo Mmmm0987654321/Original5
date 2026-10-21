@@ -3864,7 +3864,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-brand-bg text-gray-100 flex flex-col justify-between selection:bg-[#F5D061]/20">
+    <div className="min-h-screen min-h-[100dvh] bg-brand-bg text-gray-100 flex flex-col justify-between selection:bg-[#F5D061]/20">
       {/* Header bar navigation (Hidden on Public Landing) */}
       {!isPublicLanding && (
         <Navbar
@@ -3964,7 +3964,7 @@ export default function App() {
 
 
         {/* Main Panel content viewport */}
-        <main ref={mainContentRef} className={`flex-grow w-full overflow-y-auto ${isPublicLanding ? "p-0 pb-0" : "p-1.5 pb-16"} bg-brand-bg`}>
+        <main ref={mainContentRef} className={`flex-grow w-full overflow-y-auto ${isPublicLanding ? "p-0 pb-0" : "p-1.5 pb-[calc(4rem+env(safe-area-inset-bottom,0px))] md:pb-16"} bg-brand-bg`}>
           
           {/* LANDING / HOME DASHBOARD PAGE */}
           {activeTab === ActiveTab.Landing && resumingTradingSession && (
@@ -4430,7 +4430,7 @@ export default function App() {
 
       {/* Mobile Sticky Bottom Navigation (Hidden on Public Landing) */}
       {!isPublicLanding && (
-        <div className="md:hidden fixed bottom-1.5 left-1.5 right-1.5 z-40 h-12 bg-brand-bg/95 backdrop-blur-lg border border-brand-border rounded-lg px-2 flex items-center justify-between shadow-[0_4px_20px_rgb(0,0,0,0.6)]">
+        <div className="md:hidden fixed bottom-[max(6px,env(safe-area-inset-bottom,0px))] left-1.5 right-1.5 z-40 h-12 bg-brand-bg/95 backdrop-blur-lg border border-brand-border rounded-lg px-2 flex items-center justify-between shadow-[0_4px_20px_rgb(0,0,0,0.6)]">
           {/* Market */}
           <button
             onClick={() => setActiveTab(ActiveTab.Markets)}
