@@ -6,7 +6,8 @@ type Profile = {referral_code:string;applied_referral_code:string|null;total_inv
 type Props = {walletAddress:string;walletConnected:boolean;onConnectWallet:()=>void;onSignMessage:(message:string)=>Promise<string>;onEarlyAccess:()=>void;onBack:()=>void};
 
 const API="https://nqlzjregtvjspescfqcn.supabase.co/functions/v1/hidedex-referrals";
-const CODE_PATTERN=/^HDX-[A-Z2-9]{8}$/;
+const CODE_PATTERN=/^(?:[0-9]{6}|HDX-[A-Z2-9]{8})$/;
+const SESSION_PREFIX="hidedex_referral_auth_v1_";
 const pendingReferralKey="hidedex_pending_invite_code";
 async function callApi(data:Record<string,unknown>):Promise<any>{
  const response=await fetch(API,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(data),cache:"no-store"});
@@ -27,32 +28,61 @@ export default function HideDexReferralPage({walletAddress,walletConnected,onCon
    return CODE_PATTERN.test(code)?code:"";
   } catch {return "";}
  });
- const [busy,setBusy]=useState(false);
+ const [busy,setBusy]=useState(walletConnected);
  const [error,setError]=useState("");
  const [message,setMessage]=useState("");
- useEffect(()=>{setToken("");setProfile(null);setError("");setMessage("");},[wallet]);
  const refresh=async(sessionToken:string)=>{
   const result=await callApi({action:"profile",wallet,token:sessionToken});
   setProfile(result as Profile);
  };
+ // One ownership signature creates a 12-hour, wallet-scoped session.
+ // Re-entering this page and refreshing the browser only require one profile read.
  const verify=async()=>{
-  if(busy||!walletConnected||!/^0x[a-f0-9]{40}$/.test(wallet))return;
+  if(!walletConnected||!/^0x[a-f0-9]{40}$/.test(wallet))return;
   setError("");setMessage("");setBusy(true);
   try{
+   let cachedToken="";
+   try{
+    const saved=JSON.parse(sessionStorage.getItem(SESSION_PREFIX+wallet)||"null");
+    if(typeof saved?.token==="string" && /^[a-f0-9]{64}$/.test(saved.token)
+       && Number(saved.expiresAt)>Date.now()+30000)cachedToken=saved.token;
+   }catch{ /* No accessible previous session. */ }
+   if(cachedToken){
+    try{
+     await refresh(cachedToken);
+     setToken(cachedToken);
+     return;
+    }catch(err){
+     if(!(err instanceof Error)||!/verify this wallet again/i.test(err.message))throw err;
+     try{sessionStorage.removeItem(SESSION_PREFIX+wallet);}catch{}
+    }
+   }
+   // A connected wallet address alone is NOT proof of ownership.
+   // Start the one necessary signature directly, without another Verify button.
    const challenge=await callApi({action:"challenge",wallet});
    const signature=await onSignMessage(challenge.message);
-   // Invalidate a proof if the connected account changed while signing.
    if(walletAddress.trim().toLowerCase()!==wallet)throw new Error("Wallet changed during verification");
    const session=await callApi({action:"authenticate",wallet,signature});
-   if(typeof session.token!=="string")throw new Error("Wallet verification did not complete");
+   if(typeof session.token!=="string" || !/^[a-f0-9]{64}$/.test(session.token))
+    throw new Error("Wallet verification did not complete");
+   try{
+    sessionStorage.setItem(SESSION_PREFIX+wallet,JSON.stringify({
+      token:session.token,expiresAt:Date.now()+Math.min(43200,Number(session.expires_in_seconds)||43200)*1000
+    }));
+   }catch{}
    setToken(session.token);
    await refresh(session.token);
-  }catch(e){setError(e instanceof Error?e.message:"Could not verify wallet");}
+  }catch(e){setError(e instanceof Error?e.message:"Could not load referrals");}
   finally{setBusy(false);}
  };
+ useEffect(()=>{
+   setProfile(null);setToken("");setError("");setMessage("");
+   if(walletConnected && /^0x[a-f0-9]{40}$/.test(wallet)) void verify();
+   // This effect depends only on the connected wallet identity, not render callbacks.
+ },[wallet,walletConnected]);
  const apply=async()=>{
   const code=input.trim().toUpperCase();
-  if(!CODE_PATTERN.test(code)){setError("Enter a valid HDX referral code.");return;}
+  if(!CODE_PATTERN.test(code)){setError("Enter a valid 6-digit referral code.");return;}
   if(!token||busy)return;
   setBusy(true);setError("");setMessage("");
   try{
@@ -64,7 +94,7 @@ export default function HideDexReferralPage({walletAddress,walletConnected,onCon
   finally{setBusy(false);}
  };
  const ownCode=profile?.referral_code??"";
- const shareLink=ownCode?window.location.origin+"/?ref="+encodeURIComponent(ownCode):"";
+ const shareLink=ownCode?"https://hidedex.com/?ref="+encodeURIComponent(ownCode):"";
  const copy=async(value:string)=>{
   try{await navigator.clipboard.writeText(value);setError("");setMessage("Copied to clipboard.");}
   catch{setError("Copy unavailable. Select the code manually.");}
@@ -80,8 +110,12 @@ export default function HideDexReferralPage({walletAddress,walletConnected,onCon
      : !profile
      ? <div className="rounded-xl border border-brand-border bg-brand-surface p-5 space-y-3">
          <div className="flex items-center gap-2 text-brand-text font-semibold text-sm"><ShieldCheck size={17}/> Secure referral dashboard</div>
-         <p className="text-xs leading-relaxed text-brand-muted">Verify wallet ownership once to view or apply referrals. The signature is free and does not authorize trading or transfer tokens.</p>
-         <button type="button" onClick={()=>void verify()} disabled={busy} className="inline-flex items-center gap-2 bg-brand-primary text-black font-semibold rounded-lg px-4 py-2.5 text-xs disabled:opacity-50">{busy&&<Loader2 size={14} className="animate-spin"/>}Verify Wallet</button>
+         <p className="text-xs leading-relaxed text-brand-muted">{busy?"Opening your referral dashboard…":"Your referral dashboard uses your connected wallet. A free signature is needed only when no valid verification session exists."}</p>
+         {busy
+          ? <div role="status" className="inline-flex items-center gap-2 text-brand-primary text-xs font-semibold"><Loader2 size={15} className="animate-spin"/> Connecting securely…</div>
+          : error && !/join hidedex|registration/i.test(error)
+            ? <button type="button" onClick={()=>void verify()} className="rounded-lg bg-brand-primary px-4 py-2.5 text-xs font-semibold text-black">Retry</button>
+            : null}
          {error.toLowerCase().includes("join hidedex")||error.toLowerCase().includes("registration")?<button type="button" onClick={onEarlyAccess} className="ml-2 border border-brand-border px-3 py-2.5 rounded-lg text-xs">Join Early Access</button>:null}
        </div>
      : <>
@@ -99,7 +133,7 @@ export default function HideDexReferralPage({walletAddress,walletConnected,onCon
         {profile.applied_referral_code
          ? <p className="text-xs text-brand-sub flex items-center gap-2"><CheckCircle2 size={15} className="text-brand-primary"/> Applied: <strong className="font-mono text-brand-text">{profile.applied_referral_code}</strong></p>
          : <><p className="text-xs text-brand-muted">Joined without a referral? You can add one now. You can apply only one code to this wallet.</p>
-           <div className="flex gap-2"><input type="text" aria-label="Referral code" value={input} onChange={e=>setInput(e.target.value.toUpperCase().slice(0,12))} placeholder="HDX-XXXXXXXX" maxLength={12}
+           <div className="flex gap-2"><input type="text" aria-label="Referral code" value={input} onChange={e=>setInput(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g,"").slice(0,12))} placeholder="6-digit code" maxLength={12} inputMode="numeric"
               className="flex-1 min-w-0 rounded-lg bg-brand-bg border border-brand-border px-3 py-2.5 font-mono text-sm text-brand-text outline-none focus:border-brand-primary"/>
              <button type="button" onClick={()=>void apply()} disabled={busy||!CODE_PATTERN.test(input.trim().toUpperCase())} className="rounded-lg bg-brand-primary text-black font-semibold px-4 text-xs disabled:opacity-50">Apply</button></div></>}
        </div>
@@ -112,7 +146,7 @@ export default function HideDexReferralPage({walletAddress,walletConnected,onCon
         </div>)}</div>}
         {profile.total_invited>profile.shown_invites&&<p className="text-[11px] text-brand-muted">Showing the most recent {profile.shown_invites} invites.</p>}
        </div>
-       <p className="text-[11px] leading-relaxed text-brand-muted">Qualification requires verified recorded trading volume of at least $100. Referral bonuses are not yet configured; this page does not promise or issue extra points.</p>
+       <p className="text-[11px] leading-relaxed text-brand-muted">Qualification requires at least $100 in verified recorded trading volume. Extra referral points are not currently configured.</p>
       </>}
    {(error||message)&&<p role="status" aria-live="polite" className="rounded-lg border border-brand-border bg-brand-surface px-3 py-2 text-xs text-brand-sub">{error||message}</p>}
  </section>;

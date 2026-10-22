@@ -540,7 +540,7 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
       let referralCode = "";
       try {
         const pending=(sessionStorage.getItem("hidedex_pending_invite_code")||"").trim().toUpperCase();
-        if (/^HDX-[A-Z2-9]{8}$/.test(pending)) referralCode=pending;
+        if (/^(?:[0-9]{6}|HDX-[A-Z2-9]{8})$/.test(pending)) referralCode=pending;
       } catch { /* Registration still works without browser storage. */ }
       const record = await callEarlyAccess({
         action:"join",wallet:normalized,signature,
@@ -549,6 +549,16 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
       });
       if (record?.referral_applied === true) {
         try { sessionStorage.removeItem("hidedex_pending_invite_code"); } catch {}
+      }
+      // The signed registration already proves wallet ownership. Cache its
+      // short-lived referral session to avoid a second signature later.
+      if (typeof record?.referral_token === "string" && /^[0-9a-f]{64}$/.test(record.referral_token)) {
+        try {
+          sessionStorage.setItem("hidedex_referral_auth_v1_" + normalized, JSON.stringify({
+            token:record.referral_token,
+            expiresAt:Date.now() + Math.min(43200, Number(record.referral_token_expires_in_seconds)||43200)*1000
+          }));
+        } catch { /* Referrals can still be opened using a fresh wallet proof. */ }
       }
       applyEarlyAccessRecord(record);
     } catch (err: unknown) {

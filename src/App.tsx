@@ -492,7 +492,7 @@ export default function App() {
   useEffect(() => {
     try {
       const code=(new URLSearchParams(window.location.search).get("ref")||"").trim().toUpperCase();
-      if (/^HDX-[A-Z2-9]{8}$/.test(code)) sessionStorage.setItem("hidedex_pending_invite_code",code);
+      if (/^(?:[0-9]{6}|HDX-[A-Z2-9]{8})$/.test(code)) sessionStorage.setItem("hidedex_pending_invite_code",code);
     } catch { /* Browsers without session storage can still type a code. */ }
   }, []);
   const [pointsChecking, setPointsChecking] = useState(false);
