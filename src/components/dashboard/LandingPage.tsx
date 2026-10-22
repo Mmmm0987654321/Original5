@@ -467,20 +467,14 @@ export const LandingPage: React.FC<LandingPageProps> = ({
 
   const activeProofCode = walletConnected && /^0x[0-9a-f]{40}$/i.test(walletAddress)
     ? `HDX-${walletAddress.slice(-10).toLowerCase()}` : null;
-  // Preserve the owner's last approved post text and whitespace.
-  const makeXPost = (code: string) => `HideDex Perp is Coming for Everyone.
-
-Get Free 0.1 to 12 points
-
-For now access being given few people soon, but don't worry, you will get it soon.
-
-
-
-Early Access is open www.Hidedex.com 
-
-
-
-Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
+  // Compact, verified-length X template shared by Copy Post and Post on X.
+  // Keep room for the dynamically derived wallet proof code and X's URL rules.
+  const makeXPost = (code: string) => [
+    "HideDex Early Access is open.",
+    "Get 0.1–12 free points (eligibility applies).",
+    "Join: https://hidedex.com",
+    `Code: ${code}`
+  ].join("\n\n");
 
   // Opening an X intent is a UI prerequisite, not verification that anything was posted.
   const xPostHandle = earlyAccessX.trim().replace(/^@/, "").toLowerCase();
@@ -701,6 +695,7 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
       {!embeddedEarlyAccessPage && <HideDexLandingPage
         onEarlyAccess={() => setIsEarlyAccessOpen(true)}
         onLaunchApp={handleLaunchApp}
+        onOpenPoints={() => setActiveTab(ActiveTab.Points)}
       />}
 
       {/* EARLY ACCESS FULLSCREEN (MOBILE) / MODAL (DESKTOP) */}

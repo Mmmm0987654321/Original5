@@ -1088,7 +1088,7 @@ export default function App() {
     setConnectedAccess(null);
     setActiveTab(tab => publicWorkspaceOpened
       ? (tab === ActiveTab.Perp ? ActiveTab.Spot : tab)
-      : ActiveTab.Landing);
+      : (tab === ActiveTab.Points ? ActiveTab.Points : ActiveTab.Landing));
   }, [walletConnected, walletAddress]);
 
   useEffect(() => {
@@ -1197,6 +1197,19 @@ export default function App() {
     setActiveTab(mode === "spot" ? ActiveTab.Spot : ActiveTab.Perp);
   };
 
+  // Markets keeps its compact preview on narrow phones. Tablet, desktop and
+  // browser Desktop Site use the original complete order-entry terminal.
+  // Match the CSS md (768px) breakpoint and mount ONE renderer, not both.
+  const [wideTradingViewport, setWideTradingViewport] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 768px)");
+    const sync = () => setWideTradingViewport(mq.matches);
+    sync();
+    mq.addEventListener("change", sync);
+    return () => mq.removeEventListener("change", sync);
+  }, []);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [showWalletModal, setShowWalletModal] = useState(false);
   const [customAddressInput, setCustomAddressInput] = useState("");
@@ -4177,7 +4190,7 @@ export default function App() {
           )}
 
           {/* MARKETS TABLE SCREEN */}
-          {activeTab === ActiveTab.Markets && selectedExchange === "hyperliquid" && (
+          {activeTab === ActiveTab.Markets && selectedExchange === "hyperliquid" && !wideTradingViewport && (
             <MarketsPanel 
               tokens={tokens} 
               onSelectToken={(sym) => setSelectedSymbol(sym)} 
@@ -4217,11 +4230,13 @@ export default function App() {
           )}
 
           {/* SPOT & PERPETUAL TRADING VIEW TERMINAL */}
-          {(activeTab === ActiveTab.Spot || activeTab === ActiveTab.Perp) && selectedExchange === "hyperliquid" && currentToken && (
+          {(activeTab === ActiveTab.Spot || activeTab === ActiveTab.Perp ||
+              (activeTab === ActiveTab.Markets && wideTradingViewport)) &&
+              selectedExchange === "hyperliquid" && currentToken && (
             <RedesignedTerminal
               key="trading-terminal"
               symbol={selectedSymbol}
-              isPerp={activeTab === ActiveTab.Perp}
+              isPerp={activeTab === ActiveTab.Perp || (activeTab === ActiveTab.Markets && hasPerpApproval)}
               perpTradingApproved={hasPerpApproval}
               pricePreset={selectedPricePreset}
               onPricePresetConsumed={() => setSelectedPricePreset(undefined)}
