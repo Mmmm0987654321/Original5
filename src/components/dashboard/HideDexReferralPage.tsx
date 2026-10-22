@@ -11,18 +11,17 @@ import {
 
 type Props={
  walletAddress:string;walletConnected:boolean;onConnectWallet:()=>void;
- onSignMessage:(message:string)=>Promise<string>;
  onEarlyAccess:()=>void;onBack:()=>void;
 };
 const pendingKey="hidedex_pending_invite_code";
-const authKey=(wallet:string)=>"hidedex_referral_auth_v1_"+wallet;
 
 /** Read-only invite overview opens directly after wallet connection.
- * No wallet signatures happen on mount. Attribution and user mutations remain
- * protected by existing signed Early Access join or an explicit Apply signature.
+ * No referral-specific wallet signatures are requested, including on Apply.
+ * Referrals are only confirmed with a pre-existing authenticated session or
+ * the signed Early Access registration flow; otherwise a code stays pending.
  */
 export default function HideDexReferralPage({
- walletAddress,walletConnected,onConnectWallet,onSignMessage,onEarlyAccess,onBack
+ walletAddress,walletConnected,onConnectWallet,onEarlyAccess,onBack
 }:Props){
  const wallet=walletAddress.trim().toLowerCase();
  const valid=walletConnected&&/^0x[a-f0-9]{40}$/.test(wallet);
@@ -59,25 +58,6 @@ export default function HideDexReferralPage({
   setProfile(result);
   return result;
  };
- const getVerifiedSession=async():Promise<string>=>{
-  let token=hidedexReferralSession(wallet);
-  if(token)return token;
-  // Only an explicitly initiated referral mutation needs a new signature.
-  const challenge=await hidedexReferralCall({action:"challenge",wallet});
-  const signature=await onSignMessage(challenge.message);
-  if(walletAddress.trim().toLowerCase()!==wallet)
-   throw new Error("Wallet changed during verification.");
-  const response=await hidedexReferralCall({action:"authenticate",wallet,signature});
-  if(typeof response?.token!=="string"||!/^[a-f0-9]{64}$/.test(response.token))
-   throw new Error("Wallet verification could not finish.");
-  token=response.token;
-  try{
-   sessionStorage.setItem(authKey(wallet),JSON.stringify({
-    token,expiresAt:Date.now()+Math.min(43200,Number(response.expires_in_seconds)||43200)*1000
-   }));
-  }catch{}
-  return token;
- };
 
  const apply=async()=>{
   const code=input.trim().toUpperCase();
@@ -85,7 +65,16 @@ export default function HideDexReferralPage({
   if(!valid||busy)return;
   setBusy(true);setError("");setMessage("");
   try{
-   const token=await getVerifiedSession();
+   // Connecting a wallet is not proof of ownership. Referral pages never
+   // request a signature; pending codes are completed on a signed Early Access
+   // event or through a verified session that already exists.
+   const token=hidedexReferralSession(wallet);
+   if(!token){
+    try{sessionStorage.setItem(pendingKey,code);}
+    catch{setError("Browser storage is unavailable. Apply the referral during signed Early Access registration.");return;}
+    setMessage("Referral saved as pending. It will link after verified Early Access registration.");
+    return;
+   }
    await hidedexReferralCall({action:"apply",wallet,token,referral_code:code});
    try{sessionStorage.removeItem(pendingKey);}catch{}
    await refresh();
@@ -137,13 +126,13 @@ export default function HideDexReferralPage({
         {profile.applied_referral_code
          ? <p className="text-xs text-brand-sub inline-flex items-center gap-1.5"><CheckCircle2 size={15} className="text-brand-primary"/> Applied: <strong className="font-mono text-brand-text">{profile.applied_referral_code.startsWith("HDX-")?profile.applied_referral_code.slice(4):profile.applied_referral_code}</strong></p>
          : <>
-          <p className="text-xs text-brand-muted">Joined without a referral? Add one here. One code per wallet.</p>
+          <p className="text-xs text-brand-muted">Joined without a referral? Enter a code. It applies immediately with an existing verified session, otherwise stays pending until verified enrollment.</p>
           <div className="flex gap-2">
            <input aria-label="Referral code" value={input} onChange={e=>setInput(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g,"").slice(0,12))}
              placeholder="Referral code" maxLength={12} className="flex-1 min-w-0 rounded-lg bg-brand-bg border border-brand-border px-3 py-2.5 font-mono text-sm text-brand-text outline-none focus:border-brand-primary"/>
            <button type="button" disabled={busy||!HIDEDEX_INVITE_CODE.test(input.trim().toUpperCase())} onClick={()=>void apply()}
              className="rounded-lg bg-brand-primary px-4 text-black text-xs font-semibold disabled:opacity-50">
-            {busy?<Loader2 size={15} className="animate-spin"/>:"Apply"}
+            {busy?<Loader2 size={15} className="animate-spin"/>:hidedexReferralSession(wallet)?"Apply":"Save"}
            </button>
           </div>
          </>}

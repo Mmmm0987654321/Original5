@@ -4510,14 +4510,6 @@ export default function App() {
               walletAddress={walletAddress}
               walletConnected={walletConnected}
               onConnectWallet={() => setShowWalletModal(true)}
-              onSignMessage={async (message:string):Promise<string> => {
-                const provider = await getTradingSetupProvider();
-                const signer = await new BrowserProvider(provider as any).getSigner();
-                if (!walletConnected || getAddress(await signer.getAddress()) !== getAddress(walletAddress)) {
-                  throw new Error("Connected wallet does not match signing wallet.");
-                }
-                return signer.signMessage(message);
-              }}
               onEarlyAccess={() => {
                 setEarlyAccessRequestedFromPerp(false);
                 setActiveTab(ActiveTab.EarlyAccess);
