@@ -59,6 +59,8 @@ export interface BuilderFeePopupProps {
    * request/confirmation is active.
    */
   onRunningChange?: (running: boolean) => void;
+  /** Opens the existing Funds screen, without initiating a deposit. */
+  onOpenFunds?: () => void;
 }
 
 type StepUiState = "pending" | "signing" | "done";
@@ -78,6 +80,7 @@ export default function BuilderFeePopup({
   onClose,
   onComplete,
   onRunningChange,
+  onOpenFunds,
 }: BuilderFeePopupProps) {
   const [stepStates, setStepStates] = useState<Record<SeamlessStepId, StepUiState>>({
     agent: "pending",
@@ -88,6 +91,7 @@ export default function BuilderFeePopup({
   const [inspecting, setInspecting] = useState(false);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [depositRequired, setDepositRequired] = useState(false);
   const [hasSignedAny, setHasSignedAny] = useState(false);
   const [showAccountModeStep, setShowAccountModeStep] = useState(false);
   const [awaitingConfirm, setAwaitingConfirm] = useState(false);
@@ -152,6 +156,7 @@ export default function BuilderFeePopup({
     cancelledRef.current = false;
 
     setError(null);
+    setDepositRequired(false);
     setHasSignedAny(false);
 
     setStepStates({
@@ -365,8 +370,10 @@ export default function BuilderFeePopup({
             setHasSignedAny(true);
             markStep(step, "signing");
           } else if (phase === "done") {
+            // A completed step is not cancellation: continue the remaining
+            // required approvals in this same guided run. runSeamlessSetupStepwise
+            // itself yields if WalletConnect still has a pending request.
             markStep(step, "done");
-            singleStepStopRef.current = true;
           }
         },
       });
@@ -434,6 +441,14 @@ export default function BuilderFeePopup({
         return;
       }
 
+      // A newly created, unfunded account cannot approve an API wallet yet.
+      // This is an account-prerequisite notice, not a failed wallet signature.
+      if (/must deposit before performing actions/i.test(msg)) {
+        setError(null);
+        setDepositRequired(true);
+        onRunningChangeRef.current?.(false);
+        return;
+      }
       // Other wallet error: reconcile first
       const recovered = await reconcileAfterWalletError();
       if (recovered === "complete" || cancelledRef.current) {
@@ -481,6 +496,31 @@ export default function BuilderFeePopup({
 
   if (!isOpen) return null;
 
+  if (depositRequired) {
+    return <div className="fixed inset-0 z-[180] flex items-center justify-center p-5" role="presentation">
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={handleClose}/>
+      <div role="dialog" aria-modal="true" aria-labelledby="hidedex-deposit-needed"
+        className="relative w-full max-w-sm rounded-2xl border border-brand-border bg-brand-surface p-5 shadow-2xl text-brand-text">
+        <button type="button" onClick={handleClose} aria-label="Close"
+          className="absolute right-4 top-4 p-1.5 text-brand-muted hover:text-brand-text"><X size={18}/></button>
+        <div className="flex items-center gap-3 pr-7">
+          <span className="flex h-10 w-10 items-center justify-center rounded-xl border border-brand-primary/30 bg-brand-primary/10 text-brand-primary"><ShieldCheck size={20}/></span>
+          <h2 id="hidedex-deposit-needed" className="text-lg font-bold">First Deposit Required</h2>
+        </div>
+        <p className="mt-3 text-sm leading-6 text-brand-sub">
+          Your new trading account needs its first deposit before trading permissions can be activated.
+          Deposit funds, then return here to enable trading.
+        </p>
+        <div className="mt-5 flex gap-2">
+          <button type="button" onClick={handleClose}
+            className="flex-1 rounded-xl border border-brand-border px-3 py-3 text-xs font-semibold text-brand-text">Later</button>
+          <button type="button" onClick={() => { handleClose(); onOpenFunds?.(); }}
+            className="flex-1 rounded-xl bg-brand-primary px-3 py-3 text-xs font-bold text-brand-bg">Go to Funds</button>
+        </div>
+      </div>
+    </div>;
+  }
+
   const allDone =
     stepStates.agent === "done" &&
     stepStates.builderFee === "done" &&
@@ -500,7 +540,7 @@ export default function BuilderFeePopup({
   const isVerifying = awaitingConfirm || inspecting;
   const isWalletRequest = running && !isVerifying;
   const showButtonLoader = isVerifying || isWalletRequest;
-  const buttonLoaderLabel = isWalletRequest ? "CHECK YOUR WALLET" : "VERIFYING...";
+  const buttonLoaderLabel = isWalletRequest ? "CONFIRM IN WALLET" : "CONFIRMING...";
 
   const primaryButtonLabel =
     activeStep === "agent"
@@ -527,10 +567,10 @@ export default function BuilderFeePopup({
             {activeStep === "agent" && (
               <div className="my-2">
                 <p className="text-brand-sub text-sm sm:text-[15px] leading-relaxed">
-                  Confirm the one-time wallet authorization to activate trading on HideDex (hidedex.com).
+                  Enable trading on HideDex by approving the trading agent in your wallet.
                 </p>
                 <p className="text-brand-sub text-xs sm:text-sm mt-2 leading-relaxed">
-                  This permission allows orders to be submitted from your account. Review the wallet request before confirming.
+                  Review the actual network, permissions and signed message in your wallet before confirming.
                 </p>
               </div>
             )}
@@ -574,15 +614,6 @@ export default function BuilderFeePopup({
                 </span>
               </div>
             )}
-
-            {/* Verifying on Hyperliquid indicator */}
-            {awaitingConfirm && (
-              <div className="flex items-center justify-center gap-2 py-2 px-3 my-2 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-xs">
-                <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
-                <span>Checking trading approval…</span>
-              </div>
-            )}
-
 
     </HideDexTradingAuthorizationSheet>
   );

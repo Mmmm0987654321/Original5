@@ -4716,6 +4716,10 @@ export default function App() {
           onRunningChange={
             setTradingSetupBusy
           }
+          onOpenFunds={() => {
+            handleTradingSetupClose();
+            setActiveTab(ActiveTab.Portfolio);
+          }}
         />
       )}
 

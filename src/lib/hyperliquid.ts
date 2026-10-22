@@ -646,7 +646,7 @@ export async function setupTradingAccount(args: {
   await withUserSignedExchange(provider, userAddress, (exchange) =>
     exchange.approveAgent({
       agentAddress: args.agentAddress,
-      agentName: 'Anonymous Liquid'
+      agentName: 'HideDex'
     }),
   );
 
@@ -5044,7 +5044,7 @@ export async function runSeamlessSetupStepwise(args: {
     if (cancelled()) return stopForMoreSignatures();
     const next = await runSignedStep('agent', () =>
       withUserSignedExchange(args.userWalletProvider, userAddress, (exchange) =>
-        exchange.approveAgent({ agentAddress: agent.agentAddress, agentName: 'Anonymous Liquid' }),
+        exchange.approveAgent({ agentAddress: agent.agentAddress, agentName: 'HideDex' }),
       ),
     );
     if (next === 'yield') return stopForMoreSignatures();

@@ -34,7 +34,7 @@ export default function HideDexReferralPage({
  const [message,setMessage]=useState("");
  const [pendingSaved,setPendingSaved]=useState("");
  const [claimBusy,setClaimBusy]=useState(false);
- const [checkBusy,setCheckBusy]=useState(false);
+ const [saveNotice,setSaveNotice]=useState<"pending"|"applied"|null>(null);
  const [input,setInput]=useState(()=>{
   try {
    const param=new URLSearchParams(window.location.search).get("ref")||"";
@@ -46,7 +46,7 @@ export default function HideDexReferralPage({
 
  useEffect(()=>{
   let alive=true;
-  setProfile(null);setError("");setMessage("");setLoading(!!valid);
+  setProfile(null);setError("");setMessage("");setSaveNotice(null);setLoading(!!valid);
   try{const code=localStorage.getItem(pendingWalletKey(wallet))||"";
     setPendingSaved(HIDEDEX_INVITE_CODE.test(code)?code:"");}catch{setPendingSaved("");}
   if(valid){
@@ -80,33 +80,20 @@ export default function HideDexReferralPage({
     try{sessionStorage.setItem(pendingKey,code);localStorage.setItem(pendingWalletKey(wallet),code);}
     catch{setError("Cannot save on this device. Use the code during signed Early Access registration.");return;}
     setPendingSaved(code);
-    setMessage("Saved on this device; permanent linking awaits verified Early Access enrollment.");
+    setSaveNotice("pending");
     return;
    }
    await hidedexReferralCall({action:"apply",wallet,token,referral_code:code});
    try{sessionStorage.removeItem(pendingKey);localStorage.removeItem(pendingWalletKey(wallet));}catch{}
    setPendingSaved("");
    await refresh();
-   setMessage("Referral linked successfully.");
+   setSaveNotice("applied");
   }catch(e){
    setError(e instanceof Error?e.message:"Could not apply referral.");
   }finally{setBusy(false);}
  };
 
- const checkQualification=async()=>{
-  if(!valid||checkBusy)return;
-  const token=hidedexReferralSession(wallet);
-  if(!token){setError("Verification needs an existing signed Early Access session.");return;}
-  setCheckBusy(true);setError("");setMessage("");
-  try{
-   const checked=await hidedexReferralCall({action:"refresh_qualification",wallet,token});
-   await refresh();
-   setMessage(checked.checked
-     ? "Checked "+checked.checked+" invites; "+checked.updated+" updated."
-     : "No referrals are due for another check yet.");
-  }catch(e){setError(e instanceof Error?e.message:"Unable to check trades.");}
-  finally{setCheckBusy(false);}
- };
+
  const claimRewards=async()=>{
   if(!valid||claimBusy||!profile||Number(profile.claimable_points)<=0)return;
   const token=hidedexReferralSession(wallet);
@@ -168,15 +155,12 @@ export default function HideDexReferralPage({
           <div><p className="text-[10px] text-brand-muted">Claimable</p><p className="text-lg font-mono font-bold text-brand-primary">{Number(profile.claimable_points||0).toFixed(2)} pts</p><p className="text-[10px] text-brand-muted">Claimed {Number(profile.claimed_points||0).toFixed(2)} · Earned {Number(profile.potential_points||0).toFixed(2)}</p></div>
           <button type="button" onClick={()=>void claimRewards()} disabled={claimBusy||Number(profile.claimable_points)<=0} className="px-4 py-2.5 rounded-lg bg-brand-primary text-xs font-bold text-black disabled:opacity-40">{claimBusy?"Claiming…":"Claim"}</button>
          </div>
-         <button type="button" disabled={checkBusy||profile.total_invited===0} onClick={()=>void checkQualification()}
-           className="text-[11px] text-brand-primary underline disabled:opacity-40 text-left self-start">
-           {checkBusy?"Checking…":"Check new trading activity"}
-         </button>
+         <p className="text-[11px] text-brand-muted">Activity updates nightly at 12:00 AM IST.</p>
          <h3 className="text-xs font-bold">Apply a referral code</h3>
         {profile.applied_referral_code
          ? <p className="text-xs text-brand-sub inline-flex items-center gap-1.5"><CheckCircle2 size={15} className="text-brand-primary"/> Applied: <strong className="font-mono text-brand-text">{profile.applied_referral_code.startsWith("HDX-")?profile.applied_referral_code.slice(4):profile.applied_referral_code}</strong></p>
          : <>
-          <p className="text-xs text-brand-muted">{pendingSaved ? "Saved on this device: "+pendingSaved+" (pending verification)." : "Enter a code to link or save for registration."}</p>
+          <p className="text-xs text-brand-muted">{pendingSaved ? "Pending referral: "+pendingSaved : "Enter a referral code."}</p>
           <div className="flex gap-2">
            <input aria-label="Referral code" value={input} onChange={e=>setInput(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g,"").slice(0,12))}
              placeholder="Referral code" maxLength={12} className="flex-1 min-w-0 rounded-lg bg-brand-bg border border-brand-border px-3 py-2.5 font-mono text-sm text-brand-text outline-none focus:border-brand-primary"/>
@@ -207,5 +191,22 @@ export default function HideDexReferralPage({
        <button type="button" onClick={()=>{setLoading(true);void refresh().catch(e=>setError(e.message)).finally(()=>setLoading(false));}} className="text-xs text-brand-primary">Try again</button>
       </div>}
    {(error||message)&&<p role="status" aria-live="polite" className="rounded-lg border border-brand-border bg-brand-surface px-3 py-2 text-xs text-brand-sub">{error||message}</p>}
+   {saveNotice&&<div className="fixed inset-0 z-[175] flex items-center justify-center px-5">
+     <button type="button" onClick={()=>setSaveNotice(null)} aria-label="Dismiss referral notice"
+       className="absolute inset-0 bg-black/75 backdrop-blur-sm"/>
+     <div role="dialog" aria-modal="true" aria-labelledby="hidedex-referral-save-notice"
+       className="relative w-full max-w-xs rounded-2xl border border-brand-border bg-brand-surface p-5 text-brand-text shadow-2xl">
+       <h2 id="hidedex-referral-save-notice" className="text-base font-bold">
+        {saveNotice==="pending"?"Referral Saved":"Referral Applied"}
+       </h2>
+       <p className="mt-2 text-xs leading-5 text-brand-sub">
+        {saveNotice==="pending"
+          ? "Complete your signed Early Access registration to activate this referral."
+          : "Your referral is now linked to this wallet."}
+       </p>
+       <button type="button" onClick={()=>setSaveNotice(null)}
+         className="mt-4 w-full rounded-lg bg-brand-primary py-2.5 text-xs font-bold text-brand-bg">OK</button>
+     </div>
+   </div>}
  </section>;
 }
