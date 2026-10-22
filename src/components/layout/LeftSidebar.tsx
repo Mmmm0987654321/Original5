@@ -73,7 +73,7 @@ export default function LeftSidebar({
   const menuItems = [
     { id: ActiveTab.Profile, label: "Account", icon: User, desc: "Manage profile & alerts" },
     { id: ActiveTab.Portfolio, label: "Fund", icon: Briefcase, desc: "Wallet & portfolio balance" },
-    { id: ActiveTab.Points, label: "Airdrop Points", badge: "Access", icon: Trophy, desc: "Your verified HideDex rewards" },
+    { id: ActiveTab.Points, label: "Airdrop Points", icon: Trophy, desc: "Trading & referral rewards" },
     { id: ActiveTab.EarlyAccess, label: "Early Access", icon: Sparkles, desc: "Join or check application" },
     { id: ActiveTab.Referral, label: "Referrals", icon: UserPlus, desc: "Invite friends and apply a code" },
     { id: ActiveTab.Markets, label: "Market", icon: Compass, desc: "Global asset screener" },
@@ -156,7 +156,7 @@ export default function LeftSidebar({
               <button
                 key={idx}
                 onClick={() => handleItemClick(item.id)}
-                className={`w-full flex items-center rounded-lg text-left transition-all group relative ${
+                className={`w-full items-center rounded-lg text-left transition-all group relative ${[ActiveTab.Profile,ActiveTab.Portfolio,ActiveTab.Markets,ActiveTab.Perp].includes(item.id)?"hidden md:flex":"flex"} ${
                   "cursor-pointer"
                 } ${
                   isCollapsed ? "justify-center p-2" : "gap-2.5 px-2.5 py-1.5"

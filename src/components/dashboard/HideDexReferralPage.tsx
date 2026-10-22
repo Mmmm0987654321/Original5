@@ -34,6 +34,7 @@ export default function HideDexReferralPage({
  const [message,setMessage]=useState("");
  const [pendingSaved,setPendingSaved]=useState("");
  const [claimBusy,setClaimBusy]=useState(false);
+ const [checkBusy,setCheckBusy]=useState(false);
  const [input,setInput]=useState(()=>{
   try {
    const param=new URLSearchParams(window.location.search).get("ref")||"";
@@ -91,6 +92,21 @@ export default function HideDexReferralPage({
    setError(e instanceof Error?e.message:"Could not apply referral.");
   }finally{setBusy(false);}
  };
+
+ const checkQualification=async()=>{
+  if(!valid||checkBusy)return;
+  const token=hidedexReferralSession(wallet);
+  if(!token){setError("Verification needs an existing signed Early Access session.");return;}
+  setCheckBusy(true);setError("");setMessage("");
+  try{
+   const checked=await hidedexReferralCall({action:"refresh_qualification",wallet,token});
+   await refresh();
+   setMessage(checked.checked
+     ? "Checked "+checked.checked+" invites; "+checked.updated+" updated."
+     : "No referrals are due for another check yet.");
+  }catch(e){setError(e instanceof Error?e.message:"Unable to check trades.");}
+  finally{setCheckBusy(false);}
+ };
  const claimRewards=async()=>{
   if(!valid||claimBusy||!profile||Number(profile.claimable_points)<=0)return;
   const token=hidedexReferralSession(wallet);
@@ -115,7 +131,7 @@ export default function HideDexReferralPage({
    </button>
    <div className="flex items-center gap-3">
     <div className="w-10 h-10 rounded-xl bg-brand-primary/10 border border-brand-primary/20 flex justify-center items-center text-brand-primary"><Users size={19}/></div>
-    <div><h1 className="text-xl sm:text-2xl font-extrabold">Invite & Referrals</h1><p className="text-xs text-brand-muted">Share a link. Track registered invites.</p></div>
+    <div><h1 className="text-xl sm:text-2xl font-extrabold">Referrals</h1><p className="text-xs text-brand-muted">Share • Earn • Claim</p></div>
    </div>
    {!valid
     ? <div className="rounded-xl border border-brand-border bg-brand-surface p-5 space-y-3">
@@ -127,7 +143,7 @@ export default function HideDexReferralPage({
     : profile
     ? <>
        <div className="rounded-xl border border-brand-border bg-brand-surface p-4 sm:p-5 space-y-3">
-        <div className="flex items-center justify-between gap-3"><h2 className="text-sm font-bold">Your referral code</h2><span className="text-[10px] text-brand-muted">Unique per wallet</span></div>
+        <div className="flex items-center justify-between gap-3"><h2 className="text-sm font-bold">Your referral code</h2></div>
         <div className="flex items-center gap-2">
          <div className="flex-1 min-w-0 bg-brand-bg border border-brand-border rounded-lg px-3 py-3 font-mono text-lg tracking-wider font-bold select-all">{ownCode}</div>
          <button type="button" onClick={()=>void copy(ownCode)} className="inline-flex gap-1.5 items-center px-3 py-3 rounded-lg bg-brand-primary text-black font-semibold text-xs"><Copy size={14}/> Copy</button>
@@ -152,11 +168,15 @@ export default function HideDexReferralPage({
           <div><p className="text-[10px] text-brand-muted">Claimable</p><p className="text-lg font-mono font-bold text-brand-primary">{Number(profile.claimable_points||0).toFixed(2)} pts</p><p className="text-[10px] text-brand-muted">Claimed {Number(profile.claimed_points||0).toFixed(2)} · Earned {Number(profile.potential_points||0).toFixed(2)}</p></div>
           <button type="button" onClick={()=>void claimRewards()} disabled={claimBusy||Number(profile.claimable_points)<=0} className="px-4 py-2.5 rounded-lg bg-brand-primary text-xs font-bold text-black disabled:opacity-40">{claimBusy?"Claiming…":"Claim"}</button>
          </div>
+         <button type="button" disabled={checkBusy||profile.total_invited===0} onClick={()=>void checkQualification()}
+           className="text-[11px] text-brand-primary underline disabled:opacity-40 text-left self-start">
+           {checkBusy?"Checking…":"Check new trading activity"}
+         </button>
          <h3 className="text-xs font-bold">Apply a referral code</h3>
         {profile.applied_referral_code
          ? <p className="text-xs text-brand-sub inline-flex items-center gap-1.5"><CheckCircle2 size={15} className="text-brand-primary"/> Applied: <strong className="font-mono text-brand-text">{profile.applied_referral_code.startsWith("HDX-")?profile.applied_referral_code.slice(4):profile.applied_referral_code}</strong></p>
          : <>
-          <p className="text-xs text-brand-muted">{pendingSaved ? "Saved on this device: "+pendingSaved+" (pending verification)." : "Have a referral code? Apply with an existing verified session, or save it for signed Early Access enrollment."}</p>
+          <p className="text-xs text-brand-muted">{pendingSaved ? "Saved on this device: "+pendingSaved+" (pending verification)." : "Enter a code to link or save for registration."}</p>
           <div className="flex gap-2">
            <input aria-label="Referral code" value={input} onChange={e=>setInput(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g,"").slice(0,12))}
              placeholder="Referral code" maxLength={12} className="flex-1 min-w-0 rounded-lg bg-brand-bg border border-brand-border px-3 py-2.5 font-mono text-sm text-brand-text outline-none focus:border-brand-primary"/>
@@ -180,7 +200,7 @@ export default function HideDexReferralPage({
          </div>}
         {profile.total_invited>profile.shown_invites&&<p className="text-[11px] text-brand-muted">Showing latest {profile.shown_invites} invites.</p>}
        </div>
-       <p className="text-[11px] text-brand-muted">Each invite needs $100 verified trading volume. 50 qualified invites give a 1-point bonus; 100 unlocks the 15-point maximum.</p>
+       <p className="text-[11px] text-brand-muted">Only $100 in verified trading after referral linking counts. Claim in 0.1-point steps, up to 15 total.</p>
       </>
     : <div className="rounded-xl border border-brand-border bg-brand-surface p-5 space-y-2">
        <p className="text-xs text-brand-muted">Referral details are temporarily unavailable.</p>

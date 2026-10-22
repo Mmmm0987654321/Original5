@@ -3952,40 +3952,12 @@ export default function App() {
     setActiveTab(mode === "perp" ? ActiveTab.Perp : ActiveTab.Spot);
   };
 
+  // Airdrop Points is read-only and accessible to all wallets, even pending
+  // or unregistered users. No approval lookup or additional API call here.
   const openPointsHub = async () => {
-    if (pointsChecking) return;
-    const wallet = walletAddress.trim().toLowerCase();
-    if (!walletConnected || !/^0x[0-9a-f]{40}$/.test(wallet)) {
-      setPointsNotice("Connect your wallet and join Early Access to open Points Hub.");
-      return;
-    }
-    setPointsChecking(true);
-    try {
-      const response = await fetch(HIDEDEX_EARLY_ACCESS_API, {
-        method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({action:"access",wallet}),
-      });
-      const data = await response.json().catch(() => ({}));
-      if (!response.ok || data.wallet !== wallet ||
-          !["none","pending","granted"].includes(data.access_status)) {
-        setPointsNotice("Could not verify Early Access approval. Please try again.");
-        return;
-      }
-      if (!walletConnected || walletAddress.trim().toLowerCase() !== wallet) return;
-      setConnectedAccess({wallet,status:data.access_status,checkedAt:Date.now()});
-      setAccessLookupState("ready");
-      if (data.access_status !== "granted") {
-        setPointsNotice("Points Hub is for approved Early Access wallets. Join Early Access to unlock.");
-        return;
-      }
-      setPointsNotice("");
-      setPublicWorkspaceOpened(true);
-      setActiveTab(ActiveTab.Points);
-    } catch {
-      setPointsNotice("Connection failed. Please try again to check Early Access.");
-    } finally {
-      setPointsChecking(false);
-    }
+    setPointsNotice("");
+    setPublicWorkspaceOpened(true);
+    setActiveTab(ActiveTab.Points);
   };
 
   return (
@@ -4507,16 +4479,14 @@ export default function App() {
             <LegalPanel activeSection={selectedSubLegalTab} />
           )}
 
-          {/* Points is its own screen, never an overlay. Approval is rechecked on opening. */}
-          {activeTab === ActiveTab.Points && (hasPerpApproval
-            ? <HideDexPointsHub walletAddress={walletAddress}
-                apiUrl={HIDEDEX_EARLY_ACCESS_API}
-                onBack={() => setActiveTab(ActiveTab.Markets)}/>
-            : <div className="max-w-xl mx-auto p-6 text-sm text-brand-muted">
-                Points Hub requires approved Early Access.
-                <button type="button" onClick={() => setActiveTab(ActiveTab.Markets)}
-                  className="ml-3 text-brand-primary underline">Back to Markets</button>
-              </div>)}
+          {/* Open to everyone: no Early Access approval gate or preflight request. */}
+          {activeTab === ActiveTab.Points && (
+            <HideDexPointsHub walletAddress={walletConnected ? walletAddress : ""}
+              apiUrl={HIDEDEX_EARLY_ACCESS_API}
+              onConnectWallet={() => setShowWalletModal(true)}
+              onEarlyAccess={() => setActiveTab(ActiveTab.EarlyAccess)}
+              onBack={() => setActiveTab(ActiveTab.Markets)}/>
+          )}
 
           {/* Wallet-signed referral attribution and post-enrollment referral application. */}
           {activeTab === ActiveTab.Referral && (

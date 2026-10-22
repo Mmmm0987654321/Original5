@@ -1,111 +1,89 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ArrowLeft, CheckCircle2, ShieldCheck, Trophy } from "lucide-react";
+import { ArrowLeft, Trophy, Wallet, CheckCircle2 } from "lucide-react";
 
-type PointsSnapshot = {
-  access_status?: string;
-  points?: number | string | null;
-  referral_claimed_points?: number | string | null;
-  total_airdrop_points?: number | string | null;
-  points_status?: string | null;
-  volume_total_usd?: number | string | null;
-  volume_source?: string | null;
-  points_source?: string | null;
-  x_username?: string | null;
-  x_verification_status?: string | null;
+type Rewards = {
+ access_status?:string;
+ registration_complete?:boolean;
+ points?:number|string|null;
+ points_status?:string|null;
+ referral_claimed_points?:number|string|null;
+ total_airdrop_points?:number|string|null;
+ volume_total_usd?:number|string|null;
 };
-interface Props { walletAddress: string; apiUrl: string; onBack: () => void; }
+type Props={walletAddress:string;apiUrl:string;onBack:()=>void;onConnectWallet:()=>void;onEarlyAccess:()=>void};
+const amount=(x:unknown)=>{
+ const v=Number(x);
+ return x===null||x===undefined||!Number.isFinite(v)||v<0?0:v;
+};
 
-/** Dedicated HideDex Airdrop Points page. Only the authenticated registration
- * service defines rewards; no guessed balances, rank, dates, or token values.
+/** Public rewards overview with one status request and no approval lookup.
+ *  Unregistered wallets show zero and may still navigate around the app.
  */
-export default function HideDexPointsHub({ walletAddress, apiUrl, onBack }: Props) {
-  const [data,setData] = useState<PointsSnapshot | null>(null);
-  const [loading,setLoading] = useState(true);
-  const [error,setError] = useState("");
-  const readPoints = useCallback(async (signal:AbortSignal) => {
-    const wallet = walletAddress.trim().toLowerCase();
-    if(!/^0x[0-9a-f]{40}$/.test(wallet)){
-      setLoading(false);setData(null);setError("Connect an approved Early Access wallet.");return;
-    }
-    setLoading(true);setError("");
-    try {
-      const response = await fetch(apiUrl,{
-        method:"POST",
-        headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({action:"status",wallet}),
-        signal,
-      });
-      const result:PointsSnapshot = await response.json();
-      if (!response.ok || result?.access_status !== "granted") {
-        if(!signal.aborted){setData(null);setError("Could not verify your Early Access rewards.");}
-        return;
-      }
-      if(!signal.aborted)setData(result);
-    } catch {
-      if(!signal.aborted){setData(null);setError("Rewards are temporarily unavailable.");}
-    } finally {
-      if(!signal.aborted)setLoading(false);
-    }
-  },[walletAddress,apiUrl]);
-  useEffect(()=>{
-    const controller=new AbortController();
-    void readPoints(controller.signal);
-    return ()=>controller.abort();
-  },[readPoints]);
-
-  const rawPoints = data?.points == null ? null : Number(data.points);
-  const basePoints = rawPoints!==null&&Number.isFinite(rawPoints)&&rawPoints>=0 ? rawPoints : null;
-  const rawReferral=data?.referral_claimed_points==null?0:Number(data.referral_claimed_points);
-  const referralPoints=Number.isFinite(rawReferral)&&rawReferral>=0?rawReferral:0;
-  const points=basePoints===null?(referralPoints>0?referralPoints:null):Math.round((basePoints+referralPoints)*100)/100;
-  const rawVolume = data?.volume_total_usd==null?null:Number(data.volume_total_usd);
-  const volume = rawVolume!==null&&Number.isFinite(rawVolume)&&rawVolume>=0?rawVolume:null;
-  const pointsVerified = data?.points_status==="verified";
-  const xVerified = data?.x_verification_status==="verified";
-  return <section id="hidedex-airdrop-points" className="w-full max-w-3xl mx-auto px-2 sm:px-5 py-3 sm:py-6 space-y-3 text-brand-text">
-    <div className="flex items-center justify-between gap-3">
-      <button type="button" onClick={onBack} className="flex items-center gap-1.5 rounded-lg border border-brand-border bg-brand-surface px-3 py-2 text-xs text-brand-sub hover:text-brand-text cursor-pointer">
-        <ArrowLeft size={15}/> Markets
-      </button>
-      <span className="flex items-center gap-1.5 text-[10px] uppercase tracking-wide text-brand-muted"><ShieldCheck size={13}/> Early Access</span>
-    </div>
-    <div className="flex items-center gap-2">
-      <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-brand-border bg-brand-surface text-brand-primary"><Trophy size={18}/></div>
-      <div>
-        <h1 className="text-lg sm:text-xl font-bold leading-tight">Airdrop Points</h1>
-        <p className="text-[11px] text-brand-muted">HideDex Rewards</p>
+export default function HideDexPointsHub({walletAddress,apiUrl,onBack,onConnectWallet,onEarlyAccess}:Props){
+ const wallet=walletAddress.trim().toLowerCase();
+ const connected=/^0x[0-9a-f]{40}$/.test(wallet);
+ const [data,setData]=useState<Rewards|null>(null);
+ const [loading,setLoading]=useState(false);
+ const [error,setError]=useState("");
+ const read=useCallback(async(signal:AbortSignal)=>{
+   if(!connected){setData(null);setLoading(false);setError("");return;}
+   setLoading(true);setError("");
+   try{
+    const res=await fetch(apiUrl,{method:"POST",headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({action:"status",wallet}),signal});
+    const body:Rewards=await res.json();
+    if(!res.ok)throw Error("Points balance is temporarily unavailable.");
+    if(!signal.aborted)setData(body);
+   }catch(e){
+    if(!signal.aborted)setError(e instanceof Error?e.message:"Points temporarily unavailable.");
+   }finally{if(!signal.aborted)setLoading(false);}
+ },[apiUrl,wallet,connected]);
+ useEffect(()=>{
+  const c=new AbortController();void read(c.signal);
+  return ()=>c.abort();
+ },[read]);
+ const trading=amount(data?.points);
+ const social=amount(data?.referral_claimed_points);
+ const total=Math.round((trading+social)*100)/100;
+ const registered=!!data?.registration_complete;
+ const verified=data?.points_status==="verified";
+ const f=(n:number)=>n.toLocaleString(undefined,{maximumFractionDigits:2,minimumFractionDigits:1});
+ return <section id="hidedex-airdrop-points" className="w-full max-w-3xl mx-auto px-2 sm:px-5 py-3 sm:py-6 space-y-3 text-brand-text">
+   <button type="button" onClick={onBack} className="flex items-center gap-2 rounded-lg border border-brand-border bg-brand-surface px-3 py-2 text-xs text-brand-sub"><ArrowLeft size={15}/> Markets</button>
+   <div className="flex items-center gap-2">
+    <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-brand-border bg-brand-surface text-brand-primary"><Trophy size={18}/></div>
+    <div><h1 className="text-lg sm:text-xl font-bold">Airdrop Points</h1>
+     <p className="text-[11px] text-brand-muted">Trading + Social Referral</p></div>
+   </div>
+   {!connected?<div className="rounded-xl border border-brand-border bg-brand-surface p-4 space-y-3">
+     <p className="text-xs text-brand-muted">Connect a wallet to view your saved rewards. Early Access approval is not required.</p>
+     <button type="button" onClick={onConnectWallet} className="inline-flex items-center gap-2 rounded-lg bg-brand-primary text-black font-semibold px-4 py-2.5 text-xs"><Wallet size={14}/> Connect Wallet</button>
+    </div>:<>
+     <div className="rounded-xl border border-brand-border bg-brand-surface p-4 sm:p-5">
+      <p className="text-[10px] uppercase tracking-wide font-semibold text-brand-muted">Total Airdrop Points</p>
+      <div className="flex items-center justify-between gap-2 mt-1">
+       <div className="text-3xl sm:text-4xl font-mono font-bold tabular-nums">{loading?"…":f(total)}</div>
+       {registered?<span className="inline-flex items-center gap-1 text-[10px] text-brand-primary"><CheckCircle2 size={13}/> Registered</span>:
+          <span className="text-[10px] text-brand-muted">Not enrolled</span>}
       </div>
-    </div>
-    <div className="rounded-xl border border-brand-border bg-brand-surface p-4 sm:p-5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="space-y-1">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-brand-muted">Your total Airdrop Points</p>
-          <div className="text-3xl sm:text-4xl font-extrabold font-mono tabular-nums tracking-tight">{loading?"…":points===null?"—":points.toLocaleString(undefined,{maximumFractionDigits:2})}</div>
-        </div>
-        <span className={`shrink-0 px-2 py-1 rounded-md border text-[10px] font-semibold ${pointsVerified?"bg-emerald-500/10 border-emerald-500/25 text-emerald-400":"border-brand-border text-brand-muted"}`}>
-          {loading?"Checking":pointsVerified?"Verified":"Pending"}
-        </span>
+      <p className="text-[10px] text-brand-muted mt-2 font-mono">{wallet.slice(0,6)}…{wallet.slice(-4)}</p>
+     </div>
+     <div className="grid grid-cols-2 gap-2">
+      <div className="rounded-xl border border-brand-border bg-brand-surface p-4">
+       <p className="text-[11px] font-semibold text-brand-muted">Trading Points</p>
+       <div className="mt-2 text-2xl font-mono font-bold">{loading?"…":f(trading)}</div>
+       <p className="mt-2 text-[10px] text-brand-muted">{registered?(verified?"Verified Early Access":"Verification pending"):"Join Early Access"}</p>
       </div>
-      {referralPoints>0 && <div className="mt-3 rounded-lg bg-brand-bg border border-brand-border px-3 py-2 text-xs flex justify-between gap-3">
-        <span className="text-brand-muted">Referral points claimed</span>
-        <span className="font-mono font-bold text-brand-primary">+{referralPoints.toFixed(2)}</span>
-      </div>}
-      <div className="mt-4 pt-3 border-t border-brand-border/70 grid grid-cols-2 gap-3 text-xs">
-        <div>
-          <div className="text-[10px] text-brand-muted">Registered wallet</div>
-          <div className="mt-1 font-mono font-semibold text-brand-text">{walletAddress.slice(0,6)}…{walletAddress.slice(-6)}</div>
-        </div>
-        <div>
-          <div className="text-[10px] text-brand-muted">Eligible trading volume</div>
-          <div className="mt-1 font-mono font-semibold tabular-nums text-brand-text">{loading?"…":volume===null?"—":"$"+volume.toLocaleString(undefined,{maximumFractionDigits:2})}</div>
-        </div>
+      <div className="rounded-xl border border-brand-border bg-brand-surface p-4">
+       <p className="text-[11px] font-semibold text-brand-muted">Social Referral Points</p>
+       <div className="mt-2 text-2xl font-mono font-bold text-brand-primary">{loading?"…":f(social)}</div>
+       <p className="mt-2 text-[10px] text-brand-muted">Claimed referral rewards</p>
       </div>
-    </div>
-    {data?.x_username && <div className="flex justify-between items-center gap-3 rounded-xl border border-brand-border bg-brand-surface px-4 py-3 text-xs">
-      <span className="truncate text-brand-sub">X <strong className="text-brand-text">{data.x_username}</strong></span>
-      <span className="flex items-center gap-1 font-semibold text-brand-muted">{xVerified&&<CheckCircle2 className="text-emerald-400" size={14}/>} {xVerified?"Verified":"Pending"}</span>
-    </div>}
-    {error && <p role="status" className="rounded-lg border border-brand-border bg-brand-surface p-3 text-xs text-brand-muted">{error}</p>}
-    <p className="text-[10px] leading-relaxed text-brand-muted">Programme points only. Token distribution and conversion are not guaranteed.</p>
-  </section>;
+     </div>
+     {!registered && !loading && !error && <button type="button" onClick={onEarlyAccess} className="rounded-lg border border-brand-primary/40 px-4 py-2.5 text-xs font-semibold text-brand-primary">Join Early Access</button>}
+     {!!data?.volume_total_usd && registered && <p className="text-[11px] text-brand-muted">Recorded trading volume: ${amount(data.volume_total_usd).toLocaleString(undefined,{maximumFractionDigits:2})}</p>}
+    </>}
+   {error&&<p role="status" className="rounded-lg border border-brand-border bg-brand-surface p-3 text-xs text-brand-muted">{error}</p>}
+   <p className="text-[10px] text-brand-muted">Programme points are not transferable tokens or guaranteed token allocations.</p>
+ </section>;
 }
