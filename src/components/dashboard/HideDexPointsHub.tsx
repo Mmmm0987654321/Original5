@@ -4,6 +4,8 @@ import { ArrowLeft, CheckCircle2, ShieldCheck, Trophy } from "lucide-react";
 type PointsSnapshot = {
   access_status?: string;
   points?: number | string | null;
+  referral_claimed_points?: number | string | null;
+  total_airdrop_points?: number | string | null;
   points_status?: string | null;
   volume_total_usd?: number | string | null;
   volume_source?: string | null;
@@ -52,7 +54,10 @@ export default function HideDexPointsHub({ walletAddress, apiUrl, onBack }: Prop
   },[readPoints]);
 
   const rawPoints = data?.points == null ? null : Number(data.points);
-  const points = rawPoints!==null&&Number.isFinite(rawPoints)&&rawPoints>=0 ? rawPoints : null;
+  const basePoints = rawPoints!==null&&Number.isFinite(rawPoints)&&rawPoints>=0 ? rawPoints : null;
+  const rawReferral=data?.referral_claimed_points==null?0:Number(data.referral_claimed_points);
+  const referralPoints=Number.isFinite(rawReferral)&&rawReferral>=0?rawReferral:0;
+  const points=basePoints===null?(referralPoints>0?referralPoints:null):Math.round((basePoints+referralPoints)*100)/100;
   const rawVolume = data?.volume_total_usd==null?null:Number(data.volume_total_usd);
   const volume = rawVolume!==null&&Number.isFinite(rawVolume)&&rawVolume>=0?rawVolume:null;
   const pointsVerified = data?.points_status==="verified";
@@ -74,13 +79,17 @@ export default function HideDexPointsHub({ walletAddress, apiUrl, onBack }: Prop
     <div className="rounded-xl border border-brand-border bg-brand-surface p-4 sm:p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-1">
-          <p className="text-[10px] font-bold uppercase tracking-wider text-brand-muted">Your saved points</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-brand-muted">Your total Airdrop Points</p>
           <div className="text-3xl sm:text-4xl font-extrabold font-mono tabular-nums tracking-tight">{loading?"…":points===null?"—":points.toLocaleString(undefined,{maximumFractionDigits:2})}</div>
         </div>
         <span className={`shrink-0 px-2 py-1 rounded-md border text-[10px] font-semibold ${pointsVerified?"bg-emerald-500/10 border-emerald-500/25 text-emerald-400":"border-brand-border text-brand-muted"}`}>
           {loading?"Checking":pointsVerified?"Verified":"Pending"}
         </span>
       </div>
+      {referralPoints>0 && <div className="mt-3 rounded-lg bg-brand-bg border border-brand-border px-3 py-2 text-xs flex justify-between gap-3">
+        <span className="text-brand-muted">Referral points claimed</span>
+        <span className="font-mono font-bold text-brand-primary">+{referralPoints.toFixed(2)}</span>
+      </div>}
       <div className="mt-4 pt-3 border-t border-brand-border/70 grid grid-cols-2 gap-3 text-xs">
         <div>
           <div className="text-[10px] text-brand-muted">Registered wallet</div>

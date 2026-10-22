@@ -23,6 +23,11 @@ export const appKit = createAppKit({
   adapters: [new EthersAdapter()],
   networks,
   defaultNetwork: arbitrum,
+  // Referral entry is read-only. Do not eagerly reconnect a remembered wallet
+  // on a fresh referral landing; Reown will only request consent on a user click.
+  // Normal website/terminal refresh retains its original reconnect behavior.
+  enableReconnect: typeof window === "undefined" ||
+    !new URLSearchParams(window.location.search).has("ref"),
   projectId,
   metadata: {
     name: "HideDex",

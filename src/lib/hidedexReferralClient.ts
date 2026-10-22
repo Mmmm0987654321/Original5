@@ -15,6 +15,10 @@ export type HideDexReferralOverview = {
  shown_invites:number;
  qualification_volume_usd:number;
  reward_points_configured:boolean;
+ qualified_total:number;
+ potential_points:number;
+ claimed_points:number;
+ claimable_points:number;
  invitees:HideDexReferralInvite[];
  attribution_requires_signed_enrollment?:boolean;
 };

@@ -14,6 +14,8 @@ type Props={
  onEarlyAccess:()=>void;onBack:()=>void;
 };
 const pendingKey="hidedex_pending_invite_code";
+const pendingWalletKey=(w:string)=>"hidedex_referral_pending_wallet_"+w;
+const rewardTiers=[{n:1,p:0.1},{n:2,p:0.2},{n:5,p:0.5},{n:10,p:1},{n:50,p:6},{n:100,p:15}];
 
 /** Read-only invite overview opens directly after wallet connection.
  * No referral-specific wallet signatures are requested, including on Apply.
@@ -30,6 +32,8 @@ export default function HideDexReferralPage({
  const [busy,setBusy]=useState(false);
  const [error,setError]=useState("");
  const [message,setMessage]=useState("");
+ const [pendingSaved,setPendingSaved]=useState("");
+ const [claimBusy,setClaimBusy]=useState(false);
  const [input,setInput]=useState(()=>{
   try {
    const param=new URLSearchParams(window.location.search).get("ref")||"";
@@ -42,6 +46,8 @@ export default function HideDexReferralPage({
  useEffect(()=>{
   let alive=true;
   setProfile(null);setError("");setMessage("");setLoading(!!valid);
+  try{const code=localStorage.getItem(pendingWalletKey(wallet))||"";
+    setPendingSaved(HIDEDEX_INVITE_CODE.test(code)?code:"");}catch{setPendingSaved("");}
   if(valid){
    void hidedexReferralOverview(wallet).then(data=>{
     if(alive)setProfile(data);
@@ -70,18 +76,32 @@ export default function HideDexReferralPage({
    // event or through a verified session that already exists.
    const token=hidedexReferralSession(wallet);
    if(!token){
-    try{sessionStorage.setItem(pendingKey,code);}
-    catch{setError("Browser storage is unavailable. Apply the referral during signed Early Access registration.");return;}
-    setMessage("Referral saved as pending. It will link after verified Early Access registration.");
+    try{sessionStorage.setItem(pendingKey,code);localStorage.setItem(pendingWalletKey(wallet),code);}
+    catch{setError("Cannot save on this device. Use the code during signed Early Access registration.");return;}
+    setPendingSaved(code);
+    setMessage("Saved on this device; permanent linking awaits verified Early Access enrollment.");
     return;
    }
    await hidedexReferralCall({action:"apply",wallet,token,referral_code:code});
-   try{sessionStorage.removeItem(pendingKey);}catch{}
+   try{sessionStorage.removeItem(pendingKey);localStorage.removeItem(pendingWalletKey(wallet));}catch{}
+   setPendingSaved("");
    await refresh();
    setMessage("Referral linked successfully.");
   }catch(e){
    setError(e instanceof Error?e.message:"Could not apply referral.");
   }finally{setBusy(false);}
+ };
+ const claimRewards=async()=>{
+  if(!valid||claimBusy||!profile||Number(profile.claimable_points)<=0)return;
+  const token=hidedexReferralSession(wallet);
+  if(!token){setError("Claim needs an existing verified Early Access session. No referral signature will open.");return;}
+  setClaimBusy(true);setError("");setMessage("");
+  try{const r=await hidedexReferralCall({action:"claim",wallet,token});
+      await refresh();setMessage(Number(r.newly_claimed_points)>0
+        ?Number(r.newly_claimed_points).toFixed(2)+" Airdrop Points claimed."
+        :"No additional qualified points to claim.");}
+  catch(e){setError(e instanceof Error?e.message:"Claim unavailable.");}
+  finally{setClaimBusy(false);}
  };
  const ownCode=profile?.referral_code??"";
  const shareLink=ownCode?"https://hidedex.com/?ref="+encodeURIComponent(ownCode):"";
@@ -119,20 +139,30 @@ export default function HideDexReferralPage({
        </div>
        <div className="grid grid-cols-2 gap-2 sm:gap-3">
         <div className="rounded-xl border border-brand-border bg-brand-surface p-4"><p className="text-[10px] text-brand-muted">Registered invites</p><div className="mt-1 text-2xl font-mono font-bold">{profile.total_invited}</div></div>
-        <div className="rounded-xl border border-brand-border bg-brand-surface p-4"><p className="text-[10px] text-brand-muted">Qualified (shown)</p><div className="mt-1 text-2xl font-mono font-bold text-brand-primary">{profile.qualified_in_shown}</div></div>
+        <div className="rounded-xl border border-brand-border bg-brand-surface p-4"><p className="text-[10px] text-brand-muted">Qualified referrals</p><div className="mt-1 text-2xl font-mono font-bold text-brand-primary">{profile.qualified_total}</div></div>
        </div>
        <div className="rounded-xl border border-brand-border bg-brand-surface p-4 sm:p-5 space-y-3">
-        <h2 className="flex items-center gap-2 text-sm font-bold"><Gift size={16}/> Apply a referral</h2>
+        <h2 className="flex items-center gap-2 text-sm font-bold"><Gift size={16}/> Referral rewards <span className="ml-auto text-[10px] text-brand-muted">15 points max</span></h2>
+         <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+          {rewardTiers.map(t=><div key={t.n} className={`rounded-lg border p-2 text-center text-[10px] ${profile.qualified_total>=t.n?"border-brand-primary/40 bg-brand-primary/10":"border-brand-border"}`}>
+            <div className="font-bold">{t.n} invites</div><div className="mt-0.5 text-brand-muted">{t.p} pts</div>
+          </div>)}
+         </div>
+         <div className="flex items-center justify-between gap-2 border-b border-brand-border/60 pb-3">
+          <div><p className="text-[10px] text-brand-muted">Claimable</p><p className="text-lg font-mono font-bold text-brand-primary">{Number(profile.claimable_points||0).toFixed(2)} pts</p><p className="text-[10px] text-brand-muted">Claimed {Number(profile.claimed_points||0).toFixed(2)} · Earned {Number(profile.potential_points||0).toFixed(2)}</p></div>
+          <button type="button" onClick={()=>void claimRewards()} disabled={claimBusy||Number(profile.claimable_points)<=0} className="px-4 py-2.5 rounded-lg bg-brand-primary text-xs font-bold text-black disabled:opacity-40">{claimBusy?"Claiming…":"Claim"}</button>
+         </div>
+         <h3 className="text-xs font-bold">Apply a referral code</h3>
         {profile.applied_referral_code
          ? <p className="text-xs text-brand-sub inline-flex items-center gap-1.5"><CheckCircle2 size={15} className="text-brand-primary"/> Applied: <strong className="font-mono text-brand-text">{profile.applied_referral_code.startsWith("HDX-")?profile.applied_referral_code.slice(4):profile.applied_referral_code}</strong></p>
          : <>
-          <p className="text-xs text-brand-muted">Joined without a referral? Enter a code. It applies immediately with an existing verified session, otherwise stays pending until verified enrollment.</p>
+          <p className="text-xs text-brand-muted">{pendingSaved ? "Saved on this device: "+pendingSaved+" (pending verification)." : "Have a referral code? Apply with an existing verified session, or save it for signed Early Access enrollment."}</p>
           <div className="flex gap-2">
            <input aria-label="Referral code" value={input} onChange={e=>setInput(e.target.value.toUpperCase().replace(/[^A-Z0-9-]/g,"").slice(0,12))}
              placeholder="Referral code" maxLength={12} className="flex-1 min-w-0 rounded-lg bg-brand-bg border border-brand-border px-3 py-2.5 font-mono text-sm text-brand-text outline-none focus:border-brand-primary"/>
            <button type="button" disabled={busy||!HIDEDEX_INVITE_CODE.test(input.trim().toUpperCase())} onClick={()=>void apply()}
              className="rounded-lg bg-brand-primary px-4 text-black text-xs font-semibold disabled:opacity-50">
-            {busy?<Loader2 size={15} className="animate-spin"/>:hidedexReferralSession(wallet)?"Apply":"Save"}
+            {busy?<Loader2 size={15} className="animate-spin"/>:hidedexReferralSession(wallet)?"Apply":pendingSaved===input.trim().toUpperCase()?"Saved":"Save"}
            </button>
           </div>
          </>}
@@ -150,7 +180,7 @@ export default function HideDexReferralPage({
          </div>}
         {profile.total_invited>profile.shown_invites&&<p className="text-[11px] text-brand-muted">Showing latest {profile.shown_invites} invites.</p>}
        </div>
-       <p className="text-[11px] text-brand-muted">Qualification: verified $100 trading volume. Extra referral reward points are not currently configured.</p>
+       <p className="text-[11px] text-brand-muted">Each invite needs $100 verified trading volume. 50 qualified invites give a 1-point bonus; 100 unlocks the 15-point maximum.</p>
       </>
     : <div className="rounded-xl border border-brand-border bg-brand-surface p-5 space-y-2">
        <p className="text-xs text-brand-muted">Referral details are temporarily unavailable.</p>

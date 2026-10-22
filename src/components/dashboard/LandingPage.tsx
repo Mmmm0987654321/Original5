@@ -539,7 +539,9 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
       // validates and attributes it after the signed registration is accepted.
       let referralCode = "";
       try {
-        const pending=(sessionStorage.getItem("hidedex_pending_invite_code")||"").trim().toUpperCase();
+        const pending=(sessionStorage.getItem("hidedex_pending_invite_code")||
+          localStorage.getItem("hidedex_referral_pending_wallet_"+normalized)||
+          new URLSearchParams(window.location.search).get("ref")||"").trim().toUpperCase();
         if (/^(?:[A-Z2-9]{8}|[0-9]{6}|HDX-[A-Z2-9]{8})$/.test(pending)) referralCode=pending;
       } catch { /* Registration still works without browser storage. */ }
       const record = await callEarlyAccess({
@@ -548,7 +550,10 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
         ...(referralCode ? {referral_code:referralCode} : {}),
       });
       if (record?.referral_applied === true) {
-        try { sessionStorage.removeItem("hidedex_pending_invite_code"); } catch {}
+        try {
+          sessionStorage.removeItem("hidedex_pending_invite_code");
+          localStorage.removeItem("hidedex_referral_pending_wallet_"+normalized);
+        } catch {}
       }
       // The signed registration already proves wallet ownership. Cache its
       // short-lived referral session to avoid a second signature later.

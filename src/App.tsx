@@ -503,12 +503,26 @@ export default function App() {
     // or a user-initiated signed Apply; don't attribute by wallet string alone.
     const token=hidedexReferralSession(wallet);
     let code="";
-    try{code=(sessionStorage.getItem("hidedex_pending_invite_code")||"").trim().toUpperCase();}catch{}
+    try {
+      // The referral-link URL is read even if Reown finishes connecting before
+      // the separate initial URL-capture effect. No consent prompt here.
+      const fromUrl=new URLSearchParams(window.location.search).get("ref")||"";
+      const pending=sessionStorage.getItem("hidedex_pending_invite_code")||"";
+      const durable=localStorage.getItem("hidedex_referral_pending_wallet_"+wallet)||"";
+      code=(fromUrl||pending||durable).trim().toUpperCase();
+      if(HIDEDEX_INVITE_CODE.test(code)){
+        sessionStorage.setItem("hidedex_pending_invite_code",code);
+        if(!token)localStorage.setItem("hidedex_referral_pending_wallet_"+wallet,code);
+      }
+    }catch{}
     if(!token||!HIDEDEX_INVITE_CODE.test(code))return;
     let cancelled=false;
     void hidedexReferralCall({action:"apply",wallet,token,referral_code:code}).then(()=>{
       if(cancelled)return;
-      try{sessionStorage.removeItem("hidedex_pending_invite_code");}catch{}
+      try{
+        sessionStorage.removeItem("hidedex_pending_invite_code");
+        localStorage.removeItem("hidedex_referral_pending_wallet_"+wallet);
+      }catch{}
       hidedexReferralExpire(wallet);
     }).catch(()=>{ /* Keep the code for explicit Apply if another code exists. */ });
     return ()=>{cancelled=true;};
