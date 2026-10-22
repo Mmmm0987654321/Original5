@@ -116,3 +116,4 @@ export default function HideDexReferralPage({walletAddress,walletConnected,onCon
       </>}
    {(error||message)&&<p role="status" aria-live="polite" className="rounded-lg border border-brand-border bg-brand-surface px-3 py-2 text-xs text-brand-sub">{error||message}</p>}
  </section>;
+}
