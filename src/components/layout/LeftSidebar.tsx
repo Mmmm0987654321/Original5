@@ -75,6 +75,7 @@ export default function LeftSidebar({
     { id: ActiveTab.Portfolio, label: "Fund", icon: Briefcase, desc: "Wallet & portfolio balance" },
     { id: ActiveTab.Points, label: "Airdrop Points", badge: "Access", icon: Trophy, desc: "Your verified HideDex rewards" },
     { id: ActiveTab.EarlyAccess, label: "Early Access", icon: Sparkles, desc: "Join or check application" },
+    { id: ActiveTab.Referral, label: "Referrals", icon: UserPlus, desc: "Invite friends and apply a code" },
     { id: ActiveTab.Markets, label: "Market", icon: Compass, desc: "Global asset screener" },
     { id: ActiveTab.Perp, label: "Trade", icon: Activity, desc: "Leverage trading desk" },
   ].filter(item => !(item.id === ActiveTab.Profile && trustShieldMode === "ANONYMOUS"));
@@ -99,7 +100,7 @@ export default function LeftSidebar({
     <div className={`h-full flex flex-col justify-between bg-brand-bg/95 backdrop-blur-md border-r border-brand-border text-brand-sub font-sans transition-all duration-300 ${
       isCollapsed ? "w-16 p-2" : "w-64 p-3.5"
     }`} id="left-exchange-sidebar">
-      <div className="flex flex-col flex-1 min-h-0 space-y-3">
+      <div className="flex flex-col flex-1 min-h-0 overflow-y-auto overscroll-contain space-y-3">
         
         {/* Brand Header */}
         <div className={`flex items-center gap-2 border-b border-brand-border pb-3 shrink-0 ${
@@ -221,7 +222,7 @@ export default function LeftSidebar({
       </div>
 
       {/* Sidebar footers */}
-      <div className="space-y-1.5 pt-4 border-t border-brand-border">
+      <div className="shrink-0 space-y-1.5 pt-3 border-t border-brand-border">
         
         {/* Support & FAQ button */}
         <button

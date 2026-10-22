@@ -37,6 +37,7 @@ import SupportPanel from "./components/dashboard/SupportPanel";
 import LegalPanel from "./components/dashboard/LegalPanel";
 import LandingPage from "./components/dashboard/LandingPage";
 import HideDexPointsHub from "./components/dashboard/HideDexPointsHub";
+import HideDexReferralPage from "./components/dashboard/HideDexReferralPage";
 import AccountSettingsPanel from "./components/dashboard/AccountSettingsPanel";
 import { applyPreferencesToDOM } from "./components/trading/TradingPreferencesModal";
 import { WalletConnectModal } from "./components/common/WalletConnectModal";
@@ -486,6 +487,14 @@ export default function App() {
   // Public terminal access is UI navigation, never Early Access approval.
   const [publicWorkspaceOpened, setPublicWorkspaceOpened] = useState(isWorkspaceReload);
   const [pointsNotice, setPointsNotice] = useState("");
+  // A referral URL does not automatically credit anyone. It only remembers the
+  // invited code until the registered wallet explicitly verifies and applies it.
+  useEffect(() => {
+    try {
+      const code=(new URLSearchParams(window.location.search).get("ref")||"").trim().toUpperCase();
+      if (/^HDX-[A-Z2-9]{8}$/.test(code)) sessionStorage.setItem("hidedex_pending_invite_code",code);
+    } catch { /* Browsers without session storage can still type a code. */ }
+  }, []);
   const [pointsChecking, setPointsChecking] = useState(false);
   useEffect(() => {
     if (!pointsNotice) return;
@@ -4466,6 +4475,28 @@ export default function App() {
                 <button type="button" onClick={() => setActiveTab(ActiveTab.Markets)}
                   className="ml-3 text-brand-primary underline">Back to Markets</button>
               </div>)}
+
+          {/* Wallet-signed referral attribution and post-enrollment referral application. */}
+          {activeTab === ActiveTab.Referral && (
+            <HideDexReferralPage key={walletAddress.trim().toLowerCase()}
+              walletAddress={walletAddress}
+              walletConnected={walletConnected}
+              onConnectWallet={() => setShowWalletModal(true)}
+              onSignMessage={async (message:string):Promise<string> => {
+                const provider = await getTradingSetupProvider();
+                const signer = await new BrowserProvider(provider as any).getSigner();
+                if (!walletConnected || getAddress(await signer.getAddress()) !== getAddress(walletAddress)) {
+                  throw new Error("Connected wallet does not match signing wallet.");
+                }
+                return signer.signMessage(message);
+              }}
+              onEarlyAccess={() => {
+                setEarlyAccessRequestedFromPerp(false);
+                setActiveTab(ActiveTab.EarlyAccess);
+              }}
+              onBack={() => setActiveTab(ActiveTab.Markets)}
+            />
+          )}
 
           {/* ACCOUNT & SETTINGS PAGE */}
           {(selectedExchange === "hyperliquid" || selectedExchange === "lighter" || selectedExchange === "aster") && activeTab === ActiveTab.Profile && (

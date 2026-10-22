@@ -535,10 +535,21 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
     try {
       const challenge = await callEarlyAccess({action:"challenge",wallet:normalized});
       const signature = await onSignEarlyAccessMessage(challenge.message);
+      // Use an invited referral only when supplied by a valid link. The server
+      // validates and attributes it after the signed registration is accepted.
+      let referralCode = "";
+      try {
+        const pending=(sessionStorage.getItem("hidedex_pending_invite_code")||"").trim().toUpperCase();
+        if (/^HDX-[A-Z2-9]{8}$/.test(pending)) referralCode=pending;
+      } catch { /* Registration still works without browser storage. */ }
       const record = await callEarlyAccess({
         action:"join",wallet:normalized,signature,
         x_username:xTrimmed,gmail:emailTrimmed.toLowerCase(),
+        ...(referralCode ? {referral_code:referralCode} : {}),
       });
+      if (record?.referral_applied === true) {
+        try { sessionStorage.removeItem("hidedex_pending_invite_code"); } catch {}
+      }
       applyEarlyAccessRecord(record);
     } catch (err: unknown) {
       // Backgrounded WalletConnect browsers may lose the HTTP response after
