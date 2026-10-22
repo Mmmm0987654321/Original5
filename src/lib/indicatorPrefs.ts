@@ -114,7 +114,7 @@ export const DEFAULT_EMA_ROWS: MaBandRow[] = EMA_SLOT_PERIODS.map((period, i) =>
 }));
 
 export const DEFAULT_MA_ROWS: MaBandRow[] = MA_SLOT_PERIODS.map((period, i) => ({
-  enabled: i === 0,
+  enabled: i < 3,
   period,
   source: 'close',
   color: MA_DEFAULT_COLORS[i] ?? '#94a3b8',
@@ -1461,6 +1461,31 @@ function migratePristineEmaToSma(prefs: WebIndicatorPrefs, hadSaved: boolean): W
   }
 }
 
+
+/** Restore the established three-MA preset only for untouched single-SMA charts. */
+const THREE_MA_RESTORE_KEY = 'builderpad:threeMaDefaultRestore.v1';
+function restoreThreeMaPreset(prefs: WebIndicatorPrefs, hadSaved: boolean): WebIndicatorPrefs {
+  if (!hadSaved) return prefs;
+  try {
+    if (localStorage.getItem(THREE_MA_RESTORE_KEY) === '1') return prefs;
+    localStorage.setItem(THREE_MA_RESTORE_KEY, '1');
+    const pristineSingle = prefs.maVisible && !prefs.emaVisible &&
+      prefs.maRows.length === MA_SLOT_PERIODS.length &&
+      prefs.maRows.every((r, i) => r.period === MA_SLOT_PERIODS[i] &&
+        r.enabled === (i === 0) && r.source === 'close' &&
+        r.color.toLowerCase() === MA_DEFAULT_COLORS[i].toLowerCase() &&
+        (r.lineWidth ?? 1) === 1) &&
+      !prefs.emaRows.some(r => r.enabled) &&
+      !prefs.vwap && !prefs.boll && !prefs.macd && !prefs.rsi &&
+      !prefs.cci && !prefs.supertrend &&
+      prefs.extraIndicators.length === 0 && prefs.customIndicators.length === 0;
+    if (!pristineSingle) return prefs;
+    const next = { ...prefs, maRows: prefs.maRows.map((r, i) => ({ ...r, enabled: i < 3 })) };
+    localStorage.setItem(KEY, JSON.stringify(next));
+    return next;
+  } catch { return prefs; }
+}
+
 export function loadIndicatorPrefs(): WebIndicatorPrefs {
   try {
     const raw = localStorage.getItem(KEY);
@@ -1841,10 +1866,10 @@ export function loadIndicatorPrefs(): WebIndicatorPrefs {
       indicatorSettings,
     };
     const volMigrated = migrateVolumeOff(loaded, true);
-    return migratePristineEmaToSma(
+    return restoreThreeMaPreset(migratePristineEmaToSma(
       migrateLegacyDefaultAverages(migrateLegacyIndicatorColors(volMigrated, true), true),
       true,
-    );
+    ), true);
   } catch {
     return freshPrefs();
   }

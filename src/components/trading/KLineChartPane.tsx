@@ -659,8 +659,8 @@ function getChartThemeStyles(isLight: boolean) {
 
   return {
     grid: {
-      horizontal: { color: gridColor, dashedValue: [3, 3] },
-      vertical: { color: gridColor, dashedValue: [3, 3] },
+      horizontal: { show: false },
+      vertical: { show: false },
     },
     xAxis: {
       size: 0,
