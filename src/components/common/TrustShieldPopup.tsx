@@ -111,10 +111,8 @@ export const TrustShieldPopup: React.FC<TrustShieldPopupProps> = ({ isOpen, onCl
     localStorage.setItem("trustShieldMode", targetMode.toLowerCase());
     localStorage.setItem("trust_shield_mode", targetMode);
     
-    // Automatically remember unlock for the current browser session and persistence
-    localStorage.setItem("privacy_unlocked", "true");
-    sessionStorage.setItem("funds_unlocked", "true");
-    
+    // A newly enabled privacy mode must start MASKED.
+    // Password creation must not automatically persistently unlock balances.
     setPopupSeen(true);
     setView("modes");
     onClose();

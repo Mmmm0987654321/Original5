@@ -22,6 +22,7 @@ export enum ActiveTab {
   Vaults = "vaults",
   Analytics = "analytics",
   Points = "points",
+  EarlyAccess = "early_access",
 }
 
 // LEVERAGE_MAP removed - all leverage is retrieved dynamically from MarketRegistryService

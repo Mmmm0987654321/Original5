@@ -189,6 +189,8 @@ interface LandingPageProps {
   onSignEarlyAccessMessage: (message: string) => Promise<string>;
   onVerifyLaunchApp: (wallet: string) => Promise<void>;
   showEarlyAccessOnMount?: boolean;
+  embeddedEarlyAccessPage?: boolean;
+  onCloseEarlyAccessPage?: () => void;
   onClosePerpEarlyAccess?: () => void;
   onDisconnectWallet?: () => void;
   walletAddress: string;
@@ -206,6 +208,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   onSignEarlyAccessMessage,
   onVerifyLaunchApp,
   showEarlyAccessOnMount = false,
+  embeddedEarlyAccessPage = false,
+  onCloseEarlyAccessPage,
   onClosePerpEarlyAccess,
   onDisconnectWallet,
   walletAddress,
@@ -223,7 +227,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   // Ephemeral wallet-app roundtrip flag. No Gmail, X handle or permission is stored.
   const earlyAccessReturnKey = "hidedex_ea_wallet_return";
   const [isEarlyAccessOpen, setIsEarlyAccessOpen] = useState(() => {
-    if (showEarlyAccessOnMount) return true;
+    if (showEarlyAccessOnMount || embeddedEarlyAccessPage) return true;
     try {
       const requestedAt = Number(sessionStorage.getItem(earlyAccessReturnKey));
       return Number.isFinite(requestedAt) && requestedAt > 0 &&
@@ -233,7 +237,8 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   const closeEarlyAccess = () => {
     try { sessionStorage.removeItem(earlyAccessReturnKey); } catch {}
     setIsEarlyAccessOpen(false);
-    if (showEarlyAccessOnMount) onClosePerpEarlyAccess?.();
+    if (embeddedEarlyAccessPage) onCloseEarlyAccessPage?.();
+    else if (showEarlyAccessOnMount) onClosePerpEarlyAccess?.();
   };
   const handleEarlyAccessConnect = () => {
     try { sessionStorage.setItem(earlyAccessReturnKey, String(Date.now())); } catch {}
@@ -248,7 +253,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
   // Freeze the document behind the fullscreen enrollment modal (Android too).
   // The form itself may scroll on small screens; the landing page never may.
   useEffect(() => {
-    if (!isEarlyAccessOpen) return;
+    if (!isEarlyAccessOpen || embeddedEarlyAccessPage) return;
     const html = document.documentElement;
     const body = document.body;
     const y = window.scrollY;
@@ -283,7 +288,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({
       body.style.width = previous.width;
       window.scrollTo(0, y);
     };
-  }, [isEarlyAccessOpen]);
+  }, [isEarlyAccessOpen, embeddedEarlyAccessPage]);
   const [earlyAccessX, setEarlyAccessX] = useState("");
   const [earlyAccessEmail, setEarlyAccessEmail] = useState("");
   const [earlyAccessError, setEarlyAccessError] = useState("");
@@ -667,20 +672,29 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
   return (
     <div className="relative min-h-screen bg-[#08090D] text-gray-100 font-sans selection:bg-[#F5D061]/30 selection:text-white overflow-x-hidden">
       
-      <HideDexLandingPage
+      {!embeddedEarlyAccessPage && <HideDexLandingPage
         onEarlyAccess={() => setIsEarlyAccessOpen(true)}
         onLaunchApp={handleLaunchApp}
-      />
+      />}
 
       {/* EARLY ACCESS FULLSCREEN (MOBILE) / MODAL (DESKTOP) */}
       {isEarlyAccessOpen && (
         <div
-          id="hidedex-early-access" className="fixed inset-0 z-[100] h-[100dvh] overflow-hidden overscroll-none bg-[#090B0F] dark:bg-[#090B0F] md:bg-black/80 md:flex md:items-center md:justify-center"
-          onClick={closeEarlyAccess}
+          id={embeddedEarlyAccessPage ? "hidedex-early-access-page" : "hidedex-early-access"}
+          className={embeddedEarlyAccessPage
+            ? "relative w-full min-h-[70dvh] py-4 sm:py-8 bg-brand-bg"
+            : "fixed inset-0 z-[100] h-[100dvh] overflow-hidden overscroll-none bg-[#090B0F] dark:bg-[#090B0F] md:bg-black/80 md:flex md:items-center md:justify-center"}
+          onClick={embeddedEarlyAccessPage ? undefined : closeEarlyAccess}
         >
-          <style>{HIDEDEX_EARLY_ACCESS_STYLES}</style>
+          <style>{embeddedEarlyAccessPage
+            ? HIDEDEX_EARLY_ACCESS_STYLES.replaceAll("#hidedex-early-access", "#hidedex-early-access-page")
+                .replace("#hidedex-early-access-page { position:fixed!important; inset:0!important; height:100dvh!important; overflow:hidden!important; overscroll-behavior:none!important; }",
+                  "#hidedex-early-access-page { position:relative!important; min-height:70dvh!important; overflow:visible!important; }")
+            : HIDEDEX_EARLY_ACCESS_STYLES}</style>
           <div
-            className="hidedex-ea-panel relative w-screen h-[100dvh] max-w-none max-h-none rounded-none overflow-y-auto overscroll-contain bg-[#090d14] px-5 pt-6 pb-[max(32px,env(safe-area-inset-bottom))] text-white md:w-full md:max-w-[500px] md:h-auto md:max-h-[89dvh] md:rounded-[24px] md:p-6 md:shadow-2xl"
+            className={embeddedEarlyAccessPage
+              ? "hidedex-ea-panel relative w-full max-w-2xl mx-auto rounded-2xl overflow-visible bg-[#090d14] px-4 py-5 sm:px-7 sm:py-7 text-white border border-brand-border"
+              : "hidedex-ea-panel relative w-screen h-[100dvh] max-w-none max-h-none rounded-none overflow-y-auto overscroll-contain bg-[#090d14] px-5 pt-6 pb-[max(32px,env(safe-area-inset-bottom))] text-white md:w-full md:max-w-[500px] md:h-auto md:max-h-[89dvh] md:rounded-[24px] md:p-6 md:shadow-2xl"}
             onClick={(e) => e.stopPropagation()}
           >
             {/* Inner Content Container */}
@@ -796,7 +810,7 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
                   {walletConnected && (
                     <div className="hidedex-ea-points mt-3 rounded-xl p-3" aria-live="polite">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] font-bold tracking-wider text-[#e5edf9] uppercase">Free Points</span>
+                        <span className="text-[11px] font-bold tracking-wider text-[#e5edf9] uppercase">Airdrop Points</span>
                         <span className="text-[10px] text-[#a3b8d0]">
                           {earlyAccessState === "pending" || earlyAccessState === "granted"
                             ? isManualRewardCredit ? "Early Access bonus" : "Saved reward"
@@ -840,11 +854,11 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
                   )}
 
 
-                {/* The original Free Points card stays in place until wallet connection. */}
+                {/* The original Airdrop Points card stays in place until wallet connection. */}
                 {!walletConnected && (
                   <div className="hidedex-ea-points p-4" aria-live="polite">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-[11px] font-bold tracking-wider text-[#e5edf9] uppercase">Free Points</span>
+                      <span className="text-[11px] font-bold tracking-wider text-[#e5edf9] uppercase">Airdrop Points</span>
                       <span className="rounded-md border border-[#344257] px-2 py-0.5 text-[10px] font-medium text-[#b6c4d7]">One-time reward</span>
                     </div>
                     <div className="hidedex-ea-reward-value mt-2 text-[#f0f6ff]">Submit to unlock</div>

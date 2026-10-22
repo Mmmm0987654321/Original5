@@ -21,7 +21,8 @@ import {
   User,
   Info,
   Star,
-  Trophy
+  Trophy,
+  Sparkles
 } from "lucide-react";
 import { ActiveTab } from "../../types";
 import { useLanguage } from "../../lib/LanguageContext";
@@ -34,6 +35,7 @@ interface LeftSidebarProps {
   setActiveTab: (tab: ActiveTab) => void;
   onOpenSettings: () => void;
   onRequestPoints: () => void;
+  onRequestEarlyAccess: () => void;
   walletAddress: string;
   balanceUSDC: number;
   selectedExchange?: "hyperliquid" | "lighter" | "aster";
@@ -51,6 +53,7 @@ export default function LeftSidebar({
   setActiveTab,
   onOpenSettings,
   onRequestPoints,
+  onRequestEarlyAccess,
   walletAddress,
   balanceUSDC,
   selectedExchange = "hyperliquid",
@@ -70,14 +73,16 @@ export default function LeftSidebar({
   const menuItems = [
     { id: ActiveTab.Profile, label: "Account", icon: User, desc: "Manage profile & alerts" },
     { id: ActiveTab.Portfolio, label: "Fund", icon: Briefcase, desc: "Wallet & portfolio balance" },
-    { id: ActiveTab.Points, label: "Points", badge: "Access", icon: Trophy, desc: "Your saved Early Access rewards" },
+    { id: ActiveTab.Points, label: "Airdrop Points", badge: "Access", icon: Trophy, desc: "Your verified HideDex rewards" },
+    { id: ActiveTab.EarlyAccess, label: "Early Access", icon: Sparkles, desc: "Join or check application" },
     { id: ActiveTab.Markets, label: "Market", icon: Compass, desc: "Global asset screener" },
     { id: ActiveTab.Perp, label: "Trade", icon: Activity, desc: "Leverage trading desk" },
   ].filter(item => !(item.id === ActiveTab.Profile && trustShieldMode === "ANONYMOUS"));
 
   const handleItemClick = (id: ActiveTab) => {
-    if (id === ActiveTab.Points) {
-      onRequestPoints();
+    if (id === ActiveTab.Points || id === ActiveTab.EarlyAccess) {
+      if (id === ActiveTab.Points) onRequestPoints();
+      else onRequestEarlyAccess();
       if (onCloseMobile) onCloseMobile();
       return;
     }

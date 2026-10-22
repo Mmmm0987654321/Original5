@@ -535,7 +535,7 @@ export default function Navbar({
                           >
                             <div className="flex items-center gap-2">
                               <Trophy className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-amber-400" />
-                              <span>Points Hub</span>
+                              <span>Airdrop Points</span>
                             </div>
                             <span className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-brand-primary/10 text-brand-primary border border-brand-primary/25">
                               Open

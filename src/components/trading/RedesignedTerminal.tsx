@@ -4430,6 +4430,10 @@ export default function RedesignedTerminal({
     );
   };
 
+  // Authorisation is an explicit action and must not depend on entering an order size.
+  // Early Access approval still takes precedence for Perpetuals.
+  const needsTradingSetup = !!walletAddress && !setupComplete && (!isPerp || perpTradingApproved);
+
   return (
     <div className="flex flex-col w-full text-brand-text font-sans selection:bg-cyan-500/30 select-none pb-2.5" id="unified-trading-terminal">
       
@@ -4797,8 +4801,8 @@ export default function RedesignedTerminal({
               "$"+marginRequired.toLocaleString(undefined,{minimumFractionDigits:1}):"N/A",
           }}
           place={{
-            type:"submit",onClick:showOrderButtonTap,
-            disabled:((() => {
+            type:needsTradingSetup?"button":"submit",onClick:needsTradingSetup?onSetupRequired:showOrderButtonTap,
+            disabled:!needsTradingSetup && ((() => {
                 if (isPlacingOrder) return true;
                 if (isPerp && !perpTradingApproved) return true;
                 if (isPerp) {
@@ -4835,7 +4839,7 @@ export default function RedesignedTerminal({
                 }
               })()),
             side:orderSide,busy:isPlacingOrder,tapped:orderButtonTapped,
-            label:(isPerp && !perpTradingApproved
+            label:(needsTradingSetup ? "ENABLE TRADING" : isPerp && !perpTradingApproved
                 ? "PERPETUAL LOCKED"
                 : isPlacingOrder
                 ? `Place ${orderSide === "BUY" ? (isPerp ? "Long" : "Buy") : (isPerp ? "Short" : "Sell")}`

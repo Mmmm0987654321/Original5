@@ -107,6 +107,8 @@ export const TrustShieldProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const [tempRevealed, setTempRevealed] = useState<Record<string, boolean>>({});
 
   const setMode = (newMode: TrustShieldMode) => {
+    // A reveal in Standard/another privacy mode must never leak into a new mode.
+    setTempRevealed({});
     setModeState(newMode);
     StorageAdapter.setMode(newMode);
     if (typeof window !== "undefined") {

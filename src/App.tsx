@@ -883,12 +883,8 @@ export default function App() {
     !showTrustShieldPopup &&
     !tradingSetupComplete &&
     !tradingSetupDismissed &&
-    (
-      tradingSetupRequested ||
-      tradingSetupBusy ||
-      (setupRestoreCheckedAddress === normalizedTradingAddress.toLowerCase() &&
-       setupVerifiedAddress === normalizedTradingAddress.toLowerCase())
-    );
+    // Show authorisation only on an explicit button click, not automatically at startup.
+    (tradingSetupRequested || tradingSetupBusy);
 
   const requestTradingSetup = useCallback(() => {
     setTradingSetupDismissed(false);
@@ -4033,6 +4029,10 @@ export default function App() {
             setActiveTab={setActiveTab}
             onOpenSettings={() => setActiveTab(ActiveTab.Profile)}
             onRequestPoints={() => { void openPointsHub(); }}
+            onRequestEarlyAccess={() => {
+              setEarlyAccessRequestedFromPerp(false);
+              setActiveTab(ActiveTab.EarlyAccess);
+            }}
             walletAddress={walletAddress}
             balanceUSDC={realAccountValueUsd}
             selectedExchange={selectedExchange}
@@ -4062,7 +4062,7 @@ export default function App() {
               </div>
             </div>
           )}
-          {activeTab === ActiveTab.Landing && !resumingTradingSession && (
+          {(activeTab === ActiveTab.EarlyAccess || (activeTab === ActiveTab.Landing && !resumingTradingSession)) && (
             <LandingPage
               tokens={tokens}
               setActiveTab={setActiveTab}
@@ -4080,6 +4080,8 @@ export default function App() {
               onDisconnectWallet={handleDisconnectWallet}
               walletAddress={walletAddress}
               showEarlyAccessOnMount={earlyAccessRequestedFromPerp}
+              embeddedEarlyAccessPage={activeTab === ActiveTab.EarlyAccess}
+              onCloseEarlyAccessPage={() => setActiveTab(ActiveTab.Markets)}
               onClosePerpEarlyAccess={() => {
                 setEarlyAccessRequestedFromPerp(false);
                 setActiveTab(ActiveTab.Markets);
@@ -4613,8 +4615,8 @@ export default function App() {
             </p>
             <button type="button" onClick={() => {
               setShowPerpAccessSheet(false);
-              setEarlyAccessRequestedFromPerp(true);
-              setActiveTab(ActiveTab.Landing);
+              setEarlyAccessRequestedFromPerp(false);
+              setActiveTab(ActiveTab.EarlyAccess);
             }} className="mt-5 w-full rounded-xl bg-accent py-3 text-sm font-extrabold text-brand-bg">
               Join Early Access
             </button>
