@@ -38,6 +38,10 @@ import LegalPanel from "./components/dashboard/LegalPanel";
 import LandingPage from "./components/dashboard/LandingPage";
 import HideDexPointsHub from "./components/dashboard/HideDexPointsHub";
 import HideDexReferralPage from "./components/dashboard/HideDexReferralPage";
+import {
+  HIDEDEX_INVITE_CODE,hidedexReferralOverview,hidedexReferralCall,
+  hidedexReferralExpire,hidedexReferralSession
+} from "./lib/hidedexReferralClient";
 import AccountSettingsPanel from "./components/dashboard/AccountSettingsPanel";
 import { applyPreferencesToDOM } from "./components/trading/TradingPreferencesModal";
 import { WalletConnectModal } from "./components/common/WalletConnectModal";
@@ -486,13 +490,37 @@ export default function App() {
   const [launchVerifiedWallet, setLaunchVerifiedWallet] = useState<string | null>(null);
   // Public terminal access is UI navigation, never Early Access approval.
   const [publicWorkspaceOpened, setPublicWorkspaceOpened] = useState(isWorkspaceReload);
+  // One non-authorizing overview lookup is shared between wallet connection and
+  // the Referral page. No wallet signature, token approval or modal is opened.
+  // Wallet connection alone never creates permanent signed referral attribution.
+  useEffect(() => {
+    if(!walletConnected)return;
+    const wallet=walletAddress.trim().toLowerCase();
+    if(!/^0x[a-f0-9]{40}$/.test(wallet))return;
+    void hidedexReferralOverview(wallet).catch(()=>{ /* Referral UI handles outages. */ });
+    // A previously signed wallet-scoped session allows genuinely automatic
+    // referral attribution. Without proof the code remains pending until signup
+    // or a user-initiated signed Apply; don't attribute by wallet string alone.
+    const token=hidedexReferralSession(wallet);
+    let code="";
+    try{code=(sessionStorage.getItem("hidedex_pending_invite_code")||"").trim().toUpperCase();}catch{}
+    if(!token||!HIDEDEX_INVITE_CODE.test(code))return;
+    let cancelled=false;
+    void hidedexReferralCall({action:"apply",wallet,token,referral_code:code}).then(()=>{
+      if(cancelled)return;
+      try{sessionStorage.removeItem("hidedex_pending_invite_code");}catch{}
+      hidedexReferralExpire(wallet);
+    }).catch(()=>{ /* Keep the code for explicit Apply if another code exists. */ });
+    return ()=>{cancelled=true;};
+  },[walletConnected,walletAddress]);
+
   const [pointsNotice, setPointsNotice] = useState("");
   // A referral URL does not automatically credit anyone. It only remembers the
   // invited code until the registered wallet explicitly verifies and applies it.
   useEffect(() => {
     try {
       const code=(new URLSearchParams(window.location.search).get("ref")||"").trim().toUpperCase();
-      if (/^(?:[0-9]{6}|HDX-[A-Z2-9]{8})$/.test(code)) sessionStorage.setItem("hidedex_pending_invite_code",code);
+      if (HIDEDEX_INVITE_CODE.test(code)) sessionStorage.setItem("hidedex_pending_invite_code",code);
     } catch { /* Browsers without session storage can still type a code. */ }
   }, []);
   const [pointsChecking, setPointsChecking] = useState(false);

@@ -540,7 +540,7 @@ Go fill  X  Gamil wallet and wait for your total volume and point ${code}`;
       let referralCode = "";
       try {
         const pending=(sessionStorage.getItem("hidedex_pending_invite_code")||"").trim().toUpperCase();
-        if (/^(?:[0-9]{6}|HDX-[A-Z2-9]{8})$/.test(pending)) referralCode=pending;
+        if (/^(?:[A-Z2-9]{8}|[0-9]{6}|HDX-[A-Z2-9]{8})$/.test(pending)) referralCode=pending;
       } catch { /* Registration still works without browser storage. */ }
       const record = await callEarlyAccess({
         action:"join",wallet:normalized,signature,
